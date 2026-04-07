@@ -130,6 +130,7 @@ export default function Home() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectingStatus, setConnectingStatus] = useState("Checking availability...");
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [strangerIsTyping, setStrangerIsTyping] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const roomUnsubRef = useRef<(() => void) | null>(null);
@@ -137,6 +138,8 @@ export default function Home() {
   const waitingUnsubRef = useRef<(() => void) | null>(null);
   const retryMatchIntervalRef = useRef<number | null>(null);
   const heartbeatIntervalRef = useRef<number | null>(null);
+  const typingIdleTimeoutRef = useRef<number | null>(null);
+  const selfTypingRef = useRef(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
@@ -228,6 +231,9 @@ export default function Home() {
       if (heartbeatIntervalRef.current) {
         window.clearInterval(heartbeatIntervalRef.current);
       }
+      if (typingIdleTimeoutRef.current) {
+        window.clearTimeout(typingIdleTimeoutRef.current);
+      }
 
       if (imagePreview) {
         URL.revokeObjectURL(imagePreview);
@@ -274,6 +280,8 @@ export default function Home() {
       roomUnsubRef.current = null;
       roomMessagesUnsubRef.current?.();
       roomMessagesUnsubRef.current = null;
+      setStrangerIsTyping(false);
+      selfTypingRef.current = false;
       return;
     }
 
@@ -288,6 +296,7 @@ export default function Home() {
 
       const roomData = snapshot.data() as {
         participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string }>;
+        typingBy?: Record<string, boolean>;
         status?: string;
       };
 
@@ -304,6 +313,11 @@ export default function Home() {
         setIsConnecting(true);
         setConnectingStatus("Stranger left. Finding a new one...");
       }
+
+      const isOtherUserTyping = Object.entries(roomData.typingBy ?? {}).some(
+        ([uid, typing]) => uid !== user.uid && Boolean(typing),
+      );
+      setStrangerIsTyping(isOtherUserTyping);
     });
 
     roomMessagesUnsubRef.current?.();
@@ -352,10 +366,61 @@ export default function Home() {
     }
   };
 
+  const setTypingStatus = async (typing: boolean) => {
+    if (!user || !activeRoomId) {
+      return;
+    }
+
+    if (selfTypingRef.current === typing) {
+      return;
+    }
+
+    selfTypingRef.current = typing;
+
+    try {
+      await updateDoc(doc(db, "rooms", activeRoomId), {
+        [`typingBy.${user.uid}`]: typing,
+        typingUpdatedAt: serverTimestamp(),
+      });
+    } catch {
+      // Ignore transient typing update failures.
+    }
+  };
+
+  const handleTextChange = (value: string) => {
+    setText(value);
+
+    if (isConnecting || !user || !activeRoomId) {
+      return;
+    }
+
+    if (value.trim().length === 0) {
+      if (typingIdleTimeoutRef.current) {
+        window.clearTimeout(typingIdleTimeoutRef.current);
+        typingIdleTimeoutRef.current = null;
+      }
+      void setTypingStatus(false);
+      return;
+    }
+
+    void setTypingStatus(true);
+
+    if (typingIdleTimeoutRef.current) {
+      window.clearTimeout(typingIdleTimeoutRef.current);
+    }
+
+    typingIdleTimeoutRef.current = window.setTimeout(() => {
+      void setTypingStatus(false);
+      typingIdleTimeoutRef.current = null;
+    }, 1500);
+  };
+
   const markRoomEnded = async () => {
     if (!activeRoomId || !user) {
       return;
     }
+
+    await setTypingStatus(false);
 
     try {
       await updateDoc(doc(db, "rooms", activeRoomId), {
@@ -593,6 +658,11 @@ export default function Home() {
       createdAt: serverTimestamp(),
     });
 
+    if (typingIdleTimeoutRef.current) {
+      window.clearTimeout(typingIdleTimeoutRef.current);
+      typingIdleTimeoutRef.current = null;
+    }
+    await setTypingStatus(false);
     setText("");
     clearAttachment();
   };
@@ -891,9 +961,10 @@ export default function Home() {
           chatFilters={chatFilters}
           isConnecting={isConnecting}
           connectingStatus={connectingStatus}
+          strangerIsTyping={strangerIsTyping}
           messages={messages}
           text={text}
-          setText={setText}
+          setText={handleTextChange}
           sendMessage={sendMessage}
           fileInputRef={fileInputRef}
           onSelectImage={onSelectImage}

@@ -563,6 +563,7 @@ export function ChatRoomView({
   chatFilters,
   isConnecting,
   connectingStatus,
+  strangerIsTyping,
   messages,
   text,
   setText,
@@ -580,6 +581,7 @@ export function ChatRoomView({
   chatFilters: ChatFilters | null;
   isConnecting: boolean;
   connectingStatus: string;
+  strangerIsTyping: boolean;
   messages: ChatMessage[];
   text: string;
   setText: (value: string) => void;
@@ -758,7 +760,7 @@ export function ChatRoomView({
               <div className={`flex max-w-[88%] flex-col gap-1 ${msg.author === "you" ? "items-end" : "items-start"}`}>
                 <div className={`rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
                   msg.author === "you"
-                    ? "rounded-br-sm bg-pink-500 text-black"
+                    ? "rounded-br-sm bg-pink-700 text-white"
                     : "rounded-bl-sm border border-white/10 bg-white/[0.04] text-white/90"
                 }`}>
                   {msg.text}
@@ -770,6 +772,13 @@ export function ChatRoomView({
               </div>
             </div>
           ))}
+          {!isConnecting && strangerIsTyping && (
+            <div className="flex justify-start">
+              <div className="rounded-2xl rounded-bl-sm border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-white/65">
+                Stranger is typing...
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
       </div>
