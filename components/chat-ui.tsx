@@ -569,7 +569,7 @@ export function ChatRoomView({
         </div>
 
         <div className="mt-4 flex flex-col items-start gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex w-full items-center justify-between gap-2">
             <div className="flex items-center">
               <button
                 onClick={() => setShowBackConfirm((current) => !current)}
@@ -582,7 +582,7 @@ export function ChatRoomView({
                 className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-out ${showBackConfirm ? "ml-1 max-w-xs opacity-100" : "ml-0 max-w-0 opacity-0 pointer-events-none"}`}
               >
                 <div className="flex items-center gap-1 rounded-lg border border-white/15 bg-black/85 px-2 py-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Match prefs?</span>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Sure?</span>
                   <button
                     onClick={() => {
                       setShowBackConfirm(false);
