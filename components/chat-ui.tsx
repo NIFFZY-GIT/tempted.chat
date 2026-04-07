@@ -12,15 +12,17 @@ export type ChatMessage = {
 };
 
 export type ProfileGender = "Male" | "Female" | "Other";
-export type UserProfile = { gender: ProfileGender; age: number };
+export type UserProfile = { gender: ProfileGender; age: number; country?: string; countryCode?: string };
 export type ChatMode = "text" | "video" | "group";
 export type GenderFilter = "Any" | ProfileGender;
 export type AgeGroupFilter = "Any age" | "Under 18" | "18-25" | "25+";
 export type ChatStyleFilter = "Any style" | "Casual" | "Intimate";
+export type CountryFilter = "Any" | "US" | "GB" | "IN" | "DE" | "FR" | "ES" | "IT" | "BR" | "CA" | "AU" | "JP" | "KR";
 export type ChatFilters = {
   gender: GenderFilter;
   ageGroup: AgeGroupFilter;
   style: ChatStyleFilter;
+  country: CountryFilter;
 };
 
 export const starterMessages: ChatMessage[] = [
@@ -32,6 +34,48 @@ const pickRandomGender = (): ProfileGender => {
   const genders: ProfileGender[] = ["Male", "Female", "Other"];
   return genders[Math.floor(Math.random() * genders.length)];
 };
+
+const COUNTRY_OPTIONS: Array<{ code: Exclude<CountryFilter, "Any">; label: string }> = [
+  { code: "US", label: "United States" },
+  { code: "GB", label: "United Kingdom" },
+  { code: "IN", label: "India" },
+  { code: "DE", label: "Germany" },
+  { code: "FR", label: "France" },
+  { code: "ES", label: "Spain" },
+  { code: "IT", label: "Italy" },
+  { code: "BR", label: "Brazil" },
+  { code: "CA", label: "Canada" },
+  { code: "AU", label: "Australia" },
+  { code: "JP", label: "Japan" },
+  { code: "KR", label: "South Korea" },
+];
+
+const getCountryLabel = (countryCode: CountryFilter): string => {
+  if (countryCode === "Any") {
+    return "Any country";
+  }
+
+  return COUNTRY_OPTIONS.find((option) => option.code === countryCode)?.label ?? countryCode;
+};
+
+const pickRandomCountryCode = (): string => {
+  const countryCodes = COUNTRY_OPTIONS.map((option) => option.code);
+  return countryCodes[Math.floor(Math.random() * countryCodes.length)];
+};
+
+const toFlagEmoji = (countryCode?: string): string => {
+  if (!countryCode || countryCode.length !== 2) {
+    return "🌐";
+  }
+
+  return String.fromCodePoint(
+    ...countryCode.toUpperCase().split("").map((char) => 127397 + char.charCodeAt(0)),
+  );
+};
+
+const FLAG_EMOJI_STYLE = {
+  fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif',
+} as const;
 
 export const generateRandomStrangerProfile = (filters?: ChatFilters): UserProfile => {
   const ageRangeByGroup: Record<AgeGroupFilter, [number, number]> = {
@@ -46,6 +90,7 @@ export const generateRandomStrangerProfile = (filters?: ChatFilters): UserProfil
   return {
     gender: filters?.gender && filters.gender !== "Any" ? filters.gender : pickRandomGender(),
     age: Math.floor(Math.random() * (maxAge - minAge + 1)) + minAge,
+    countryCode: filters?.country && filters.country !== "Any" ? filters.country : pickRandomCountryCode(),
   };
 };
 
@@ -142,17 +187,24 @@ export function AuthView({
           <button
             onClick={loginAnonymously}
             disabled={authBusy}
-            className={`flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 font-semibold transition ${authMethod === "anonymous" ? "border-pink-400/70 bg-pink-400/10 text-white" : "border-white/15 bg-white/[0.04] text-white/80 hover:border-white/25 hover:bg-white/[0.08]"}`}
+            className={`flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 font-semibold transition ${authMethod === "anonymous" ? "border-emerald-300/60 bg-gradient-to-r from-emerald-400/20 to-cyan-400/15 text-white shadow-[0_10px_28px_rgba(52,211,153,0.2)]" : "border-white/20 bg-white/[0.04] text-white/80 hover:border-emerald-200/40 hover:bg-emerald-300/10"}`}
           >
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/30 bg-white/10 text-[11px] font-black">A</span>
             <span>Sign in Anonymously</span>
-            <span className="rounded-full bg-pink-500 px-2 py-0.5 text-[10px] font-extrabold text-black">FAST</span>
+            <span className="rounded-full bg-emerald-300 px-2 py-0.5 text-[10px] font-extrabold text-black">FAST</span>
           </button>
 
           <button
             onClick={loginWithGoogle}
             disabled={authBusy}
-            className={`flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 font-bold transition ${authMethod === "google" ? "border-white bg-white text-black" : "border-white/15 bg-white/[0.04] text-white/85 hover:border-white/30 hover:bg-white/[0.08]"}`}
+            className={`flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 font-bold transition ${authMethod === "google" ? "border-blue-300 bg-white text-slate-900 ring-2 ring-blue-300/60" : "border-white/40 bg-white text-slate-900 hover:border-blue-200 hover:bg-white/95"}`}
           >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.3-1.9 3l3 2.3c1.8-1.7 2.8-4.1 2.8-7 0-.6-.1-1.2-.2-1.8H12z" />
+              <path fill="#34A853" d="M12 21c2.5 0 4.7-.8 6.3-2.2l-3-2.3c-.8.6-1.9 1-3.3 1-2.5 0-4.6-1.7-5.3-4H3.6v2.4C5.2 19 8.3 21 12 21z" />
+              <path fill="#FBBC05" d="M6.7 13.5c-.2-.6-.3-1.1-.3-1.7s.1-1.2.3-1.7V7.7H3.6C2.9 9 2.5 10.3 2.5 11.8s.4 2.8 1.1 4.1l3.1-2.4z" />
+              <path fill="#4285F4" d="M12 6.1c1.4 0 2.7.5 3.7 1.4l2.8-2.8C16.7 3 14.5 2 12 2 8.3 2 5.2 4 3.6 7.7l3.1 2.4c.7-2.3 2.8-4 5.3-4z" />
+            </svg>
             Continue with Google
           </button>
 
@@ -163,8 +215,9 @@ export function AuthView({
               emailInputRef.current?.focus();
             }}
             disabled={authBusy}
-            className={`w-full rounded-2xl border px-4 py-3 text-sm font-semibold transition ${authMethod === "email" ? "border-pink-400/70 bg-pink-400/10 text-white" : "border-white/15 bg-white/[0.04] text-white/70 hover:border-white/30 hover:bg-white/[0.08] hover:text-white"}`}
+            className={`flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold transition ${authMethod === "email" ? "border-fuchsia-300/70 bg-gradient-to-r from-fuchsia-400/20 to-pink-400/15 text-white shadow-[0_10px_26px_rgba(217,70,239,0.2)]" : "border-white/20 bg-white/[0.04] text-white/75 hover:border-fuchsia-200/40 hover:bg-fuchsia-300/10 hover:text-white"}`}
           >
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/30 bg-white/10 text-[11px] font-black">@</span>
             Use Email and Password
           </button>
         </div>
@@ -198,7 +251,7 @@ export function AuthView({
               type="button"
               onClick={loginWithEmail}
               disabled={authBusy}
-              className="rounded-xl bg-pink-500 px-4 py-3 font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
+              className="rounded-xl bg-gradient-to-r from-fuchsia-400 to-pink-400 px-4 py-3 font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
             >
               {authMode === "signup" ? "Create Account" : "Login"}
             </button>
@@ -239,6 +292,8 @@ export function ProfileSetupView({
   setProfileGender,
   profileAge,
   setProfileAge,
+  profileCountry,
+  profileCountryCode,
   profileError,
   onBack,
   onContinue,
@@ -247,10 +302,18 @@ export function ProfileSetupView({
   setProfileGender: (value: ProfileGender) => void;
   profileAge: string;
   setProfileAge: (value: string) => void;
+  profileCountry: string;
+  profileCountryCode: string;
   profileError: string | null;
   onBack: () => void;
   onContinue: () => void;
 }) {
+  const countryFlag =
+    profileCountryCode && profileCountryCode.length === 2
+      ? String.fromCodePoint(...profileCountryCode.toUpperCase().split("").map((char) => 127397 + char.charCodeAt(0)))
+      : "🌐";
+  const normalizedCountryName = /^[A-Z]{2}$/.test(profileCountry) ? "" : profileCountry;
+
   return (
     <section className="w-full max-w-[640px] rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a1320] to-[#0f0d16] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] md:p-8">
       <p className="text-xs font-bold uppercase tracking-[0.26em] text-pink-300/80">Profile Setup</p>
@@ -284,6 +347,16 @@ export function ProfileSetupView({
         placeholder="Enter your age"
         className="mt-2 w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-white/35 outline-none transition focus:border-pink-400/70"
       />
+
+      <label htmlFor="profile-country" className="mt-4 block text-xs font-bold uppercase tracking-[0.14em] text-white/60">Country</label>
+      <input
+        id="profile-country"
+        type="text"
+        value={profileCountry ? `${countryFlag}${normalizedCountryName ? ` ${normalizedCountryName}` : ""}` : "🌐 Detecting..."}
+        readOnly
+        className="mt-2 w-full rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-white/90 outline-none"
+      />
+      <p className="mt-1 text-[11px] text-white/45">Auto-detected from your browser locale.</p>
 
       {profileError && <p className="mt-3 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-200">{profileError}</p>}
 
@@ -357,9 +430,10 @@ export function FilterOptionsView({
   const [gender, setGender] = useState<GenderFilter>(initialFilters.gender);
   const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>(initialFilters.ageGroup);
   const [style, setStyle] = useState<ChatStyleFilter>(initialFilters.style);
+  const [country, setCountry] = useState<CountryFilter>(initialFilters.country);
 
   const applyFilters = () => {
-    onApply({ gender, ageGroup, style });
+    onApply({ gender, ageGroup, style, country });
   };
 
   return (
@@ -440,6 +514,27 @@ export function FilterOptionsView({
             })}
           </div>
         </div>
+
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <label htmlFor="country-filter" className="text-xs font-bold uppercase tracking-[0.14em] text-white/55">Country</label>
+            <span className="text-[10px] uppercase tracking-[0.18em] text-white/35">Any or specific</span>
+          </div>
+          <select
+            id="country-filter"
+            value={country}
+            onChange={(event) => setCountry(event.target.value as CountryFilter)}
+            className="w-full rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-semibold text-white outline-none transition focus:border-pink-400/60"
+            style={FLAG_EMOJI_STYLE}
+          >
+            <option value="Any" className="bg-[#141722] text-white" style={FLAG_EMOJI_STYLE}>Any country</option>
+            {COUNTRY_OPTIONS.map((option) => (
+              <option key={option.code} value={option.code} className="bg-[#141722] text-white" style={FLAG_EMOJI_STYLE}>
+                {`${toFlagEmoji(option.code)} ${option.label}`}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-white/10 pt-5">
@@ -466,6 +561,8 @@ export function ChatRoomView({
   strangerProfile,
   chatMode,
   chatFilters,
+  isConnecting,
+  connectingStatus,
   messages,
   text,
   setText,
@@ -481,6 +578,8 @@ export function ChatRoomView({
   strangerProfile: UserProfile;
   chatMode: ChatMode;
   chatFilters: ChatFilters | null;
+  isConnecting: boolean;
+  connectingStatus: string;
   messages: ChatMessage[];
   text: string;
   setText: (value: string) => void;
@@ -503,7 +602,9 @@ export function ChatRoomView({
   const ageLabel = chatFilters?.ageGroup ?? "Any age";
   const genderLabel = chatFilters?.gender && chatFilters.gender !== "Any" ? chatFilters.gender : "Any gender";
   const styleLabel = chatFilters?.style ?? "Any style";
+  const countryLabel = getCountryLabel(chatFilters?.country ?? "Any");
   const selectedStyle = chatFilters?.style && chatFilters.style !== "Any style" ? chatFilters.style : null;
+  const strangerFlag = toFlagEmoji(strangerProfile.countryCode);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -543,6 +644,7 @@ export function ChatRoomView({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-bold uppercase tracking-[0.18em] text-white/65">Stranger</span>
+                <span style={FLAG_EMOJI_STYLE} className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-sm leading-none">{strangerFlag}</span>
                 <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/75">{`${strangerProfile.gender}, ${strangerProfile.age}`}</span>
                 <span className="rounded-full border border-pink-400/25 bg-pink-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-pink-200">{modeLabel}</span>
                 {selectedStyle && (
@@ -552,10 +654,10 @@ export function ChatRoomView({
                 )}
               </div>
               <div className="mt-1.5 flex items-center gap-2 text-[11px] font-medium text-white/42">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.8)]" />
-                <span>Live session</span>
+                <span className={`h-1.5 w-1.5 rounded-full ${isConnecting ? "bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.8)]" : "bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.8)]"}`} />
+                <span>{isConnecting ? "Connecting" : "Live session"}</span>
                 <span className="text-white/20">•</span>
-                <span>Matching preferences applied</span>
+                <span>{isConnecting ? connectingStatus : "Matching preferences applied"}</span>
               </div>
             </div>
           </div>
@@ -565,6 +667,7 @@ export function ChatRoomView({
             <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{ageLabel}</span>
             <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{genderLabel}</span>
             <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{styleLabel}</span>
+            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{countryLabel}</span>
           </div>
         </div>
 
@@ -639,6 +742,17 @@ export function ChatRoomView({
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_40%),linear-gradient(180deg,rgba(11,13,19,0.92),rgba(7,8,12,0.96))] px-3 py-4 md:px-4">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 md:gap-4">
+          {isConnecting && (
+            <div className="flex justify-center">
+              <div className="flex items-center gap-3 rounded-2xl border border-amber-300/35 bg-amber-400/10 px-4 py-3 text-amber-100">
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-amber-200/70 border-t-transparent" />
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold uppercase tracking-[0.12em]">Connecting stranger...</span>
+                  <span className="text-[11px] text-amber-100/85">{connectingStatus}</span>
+                </div>
+              </div>
+            </div>
+          )}
           {messages.map((msg) => (
             <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
               <div className={`flex max-w-[88%] flex-col gap-1 ${msg.author === "you" ? "items-end" : "items-start"}`}>
@@ -674,8 +788,9 @@ export function ChatRoomView({
 
           <div className="relative flex items-center gap-1 rounded-2xl border border-white/12 bg-white/[0.04] p-2 transition focus-within:border-white/30 focus-within:bg-white/[0.055]">
             <button
+              disabled={isConnecting}
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-xl p-2.5 text-white/45 transition hover:bg-white/10 hover:text-white"
+              className="rounded-xl p-2.5 text-white/45 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
             >
               <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>
             </button>
@@ -684,15 +799,16 @@ export function ChatRoomView({
               type="text"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              placeholder="Write a message..."
+              onKeyDown={(e) => e.key === "Enter" && !isConnecting && sendMessage()}
+              placeholder={isConnecting ? "Finding an available stranger..." : "Write a message..."}
+              disabled={isConnecting}
               className="flex-1 border-none bg-transparent px-2 py-2 text-white outline-none placeholder:text-white/30"
             />
 
             <button
               onClick={sendMessage}
-              disabled={!text.trim() && !imagePreview}
-              className="rounded-xl bg-white px-4 py-2.5 text-sm font-extrabold text-black transition hover:bg-white/90 disabled:opacity-20"
+              disabled={isConnecting || (!text.trim() && !imagePreview)}
+              className="rounded-xl bg-white px-4 py-2.5 text-sm font-extrabold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-20"
             >
               Send
             </button>

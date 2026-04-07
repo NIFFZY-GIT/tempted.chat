@@ -1,6 +1,6 @@
 "use client";
 
-import { auth, googleProvider } from "@/lib/firebase";
+import { auth, db, googleProvider, storage } from "@/lib/firebase";
 import {
   AuthView,
   ChatFilters,
@@ -11,12 +11,28 @@ import {
   ModeSelectionView,
   ProfileGender,
   ProfileSetupView,
-  starterMessages,
   type ChatMessage,
   type UserProfile,
 } from "@/components/chat-ui";
 import { SiteFooter } from "@/components/footer";
 import { TopNav } from "@/components/navbar";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  runTransaction,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -28,6 +44,62 @@ import {
   type User,
 } from "firebase/auth";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+
+type WaitingUser = {
+  uid: string;
+  status: "searching" | "matched";
+  mode: ChatMode;
+  roomId?: string;
+  filters: ChatFilters;
+  profile: {
+    gender: ProfileGender;
+    age: number;
+    countryCode?: string;
+  };
+};
+
+const ageGroupMatches = (ageGroup: ChatFilters["ageGroup"], age: number): boolean => {
+  if (ageGroup === "Any age") {
+    return true;
+  }
+
+  if (ageGroup === "Under 18") {
+    return age < 18;
+  }
+
+  if (ageGroup === "18-25") {
+    return age >= 18 && age <= 25;
+  }
+
+  return age >= 25;
+};
+
+const countryMatches = (country: ChatFilters["country"], countryCode?: string): boolean => {
+  if (country === "Any") {
+    return true;
+  }
+
+  return countryCode?.toUpperCase() === country;
+};
+
+const styleMatches = (a: ChatFilters["style"], b: ChatFilters["style"]): boolean => {
+  return a === "Any style" || b === "Any style" || a === b;
+};
+
+const profileMatchesFilters = (filters: ChatFilters, profile: WaitingUser["profile"]): boolean => {
+  const genderOk = filters.gender === "Any" || filters.gender === profile.gender;
+  const ageOk = ageGroupMatches(filters.ageGroup, profile.age);
+  const countryOk = countryMatches(filters.country, profile.countryCode);
+  return genderOk && ageOk && countryOk;
+};
+
+const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
+  return (
+    styleMatches(a.filters.style, b.filters.style) &&
+    profileMatchesFilters(a.filters, b.profile) &&
+    profileMatchesFilters(b.filters, a.profile)
+  );
+};
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -44,18 +116,27 @@ export default function Home() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [chatMode, setChatMode] = useState<ChatMode | null>(null);
   const [chatFilters, setChatFilters] = useState<ChatFilters | null>(null);
-  const [strangerProfile, setStrangerProfile] = useState<UserProfile>(
-    generateRandomStrangerProfile(),
-  );
+  const [strangerProfile, setStrangerProfile] = useState<UserProfile>(generateRandomStrangerProfile());
   const [profileGender, setProfileGender] = useState<ProfileGender | null>(null);
   const [profileAge, setProfileAge] = useState("");
+  const [profileCountry, setProfileCountry] = useState("");
+  const [profileCountryCode, setProfileCountryCode] = useState("");
   const [profileError, setProfileError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>(starterMessages);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [connectingStatus, setConnectingStatus] = useState("Checking availability...");
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const roomUnsubRef = useRef<(() => void) | null>(null);
+  const roomMessagesUnsubRef = useRef<(() => void) | null>(null);
+  const waitingUnsubRef = useRef<(() => void) | null>(null);
+  const retryMatchIntervalRef = useRef<number | null>(null);
+  const heartbeatIntervalRef = useRef<number | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
@@ -92,6 +173,13 @@ export default function Home() {
         Number.isFinite(parsed.age)
       ) {
         setProfile(parsed);
+        if (typeof parsed.country === "string" && parsed.country.trim().length > 0) {
+          setProfileCountry(parsed.country === "GB" || parsed.country === "UK" ? "United Kingdom" : parsed.country);
+        }
+        if (typeof parsed.countryCode === "string" && parsed.countryCode.trim().length === 2) {
+          const normalizedCode = parsed.countryCode.toUpperCase() === "UK" ? "GB" : parsed.countryCode.toUpperCase();
+          setProfileCountryCode(normalizedCode);
+        }
       }
     } catch {
       setProfile(null);
@@ -99,12 +187,359 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
+    if (profileCountry) {
+      return;
+    }
+
+    const locale = navigator.languages?.[0] ?? navigator.language;
+    const rawRegionCode = locale.split("-")[1]?.toUpperCase();
+    const regionCode = rawRegionCode === "UK" ? "GB" : rawRegionCode;
+
+    if (!regionCode) {
+      setProfileCountry("Unknown");
+      setProfileCountryCode("");
+      return;
+    }
+
+    setProfileCountryCode(regionCode);
+
+    try {
+      const regionName = new Intl.DisplayNames([locale], { type: "region" }).of(regionCode);
+      setProfileCountry(regionName ?? (regionCode === "GB" ? "United Kingdom" : regionCode));
+    } catch {
+      setProfileCountry(regionCode === "GB" ? "United Kingdom" : regionCode);
+    }
+  }, [profileCountry]);
+
+  useEffect(() => {
     return () => {
+      if (roomUnsubRef.current) {
+        roomUnsubRef.current();
+      }
+      if (roomMessagesUnsubRef.current) {
+        roomMessagesUnsubRef.current();
+      }
+      if (waitingUnsubRef.current) {
+        waitingUnsubRef.current();
+      }
+      if (retryMatchIntervalRef.current) {
+        window.clearInterval(retryMatchIntervalRef.current);
+      }
+      if (heartbeatIntervalRef.current) {
+        window.clearInterval(heartbeatIntervalRef.current);
+      }
+
       if (imagePreview) {
         URL.revokeObjectURL(imagePreview);
       }
     };
   }, [imagePreview]);
+
+  useEffect(() => {
+    if (!user) {
+      setIsConnecting(false);
+      setActiveRoomId(null);
+      setMessages([]);
+      return;
+    }
+
+    const waitingRef = doc(db, "waitingUsers", user.uid);
+    setIsConnecting(true);
+    setConnectingStatus("Checking availability...");
+
+    waitingUnsubRef.current?.();
+    waitingUnsubRef.current = onSnapshot(waitingRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        if (!activeRoomId) {
+          setConnectingStatus("Waiting for available strangers...");
+        }
+        return;
+      }
+
+      const data = snapshot.data() as WaitingUser;
+      if (data.status === "matched" && typeof data.roomId === "string" && data.roomId.length > 0) {
+        setActiveRoomId(data.roomId);
+      }
+    });
+
+    return () => {
+      waitingUnsubRef.current?.();
+      waitingUnsubRef.current = null;
+    };
+  }, [activeRoomId, user]);
+
+  useEffect(() => {
+    if (!activeRoomId || !user) {
+      roomUnsubRef.current?.();
+      roomUnsubRef.current = null;
+      roomMessagesUnsubRef.current?.();
+      roomMessagesUnsubRef.current = null;
+      return;
+    }
+
+    const roomRef = doc(db, "rooms", activeRoomId);
+    const messagesRef = query(collection(roomRef, "messages"), orderBy("createdAt", "asc"));
+
+    roomUnsubRef.current?.();
+    roomUnsubRef.current = onSnapshot(roomRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        return;
+      }
+
+      const roomData = snapshot.data() as {
+        participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string }>;
+        status?: string;
+      };
+
+      const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
+      if (stranger) {
+        setStrangerProfile({
+          gender: stranger.gender,
+          age: stranger.age,
+          countryCode: stranger.countryCode,
+        });
+      }
+
+      if (roomData.status === "ended") {
+        setIsConnecting(true);
+        setConnectingStatus("Stranger left. Finding a new one...");
+      }
+    });
+
+    roomMessagesUnsubRef.current?.();
+    roomMessagesUnsubRef.current = onSnapshot(messagesRef, (snapshot) => {
+      const nextMessages: ChatMessage[] = snapshot.docs.map((messageDoc, index) => {
+        const data = messageDoc.data() as {
+          senderId?: string;
+          text?: string;
+          imageUrl?: string;
+          createdAt?: { toDate?: () => Date };
+        };
+
+        const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+
+        return {
+          id: index + 1,
+          author: data.senderId === user.uid ? "you" : "stranger",
+          text: data.text,
+          image: data.imageUrl,
+          sentAt: `${String(createdAtDate.getHours()).padStart(2, "0")}:${String(createdAtDate.getMinutes()).padStart(2, "0")}`,
+        };
+      });
+
+      setMessages(nextMessages);
+      setIsConnecting(false);
+      setConnectingStatus("Connected");
+    });
+
+    return () => {
+      roomUnsubRef.current?.();
+      roomUnsubRef.current = null;
+      roomMessagesUnsubRef.current?.();
+      roomMessagesUnsubRef.current = null;
+    };
+  }, [activeRoomId, user]);
+
+  const cleanupWaitIntervals = () => {
+    if (retryMatchIntervalRef.current) {
+      window.clearInterval(retryMatchIntervalRef.current);
+      retryMatchIntervalRef.current = null;
+    }
+
+    if (heartbeatIntervalRef.current) {
+      window.clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+  };
+
+  const markRoomEnded = async () => {
+    if (!activeRoomId || !user) {
+      return;
+    }
+
+    try {
+      await updateDoc(doc(db, "rooms", activeRoomId), {
+        status: "ended",
+        endedBy: user.uid,
+        endedAt: serverTimestamp(),
+      });
+    } catch {
+      // Ignore room end race conditions.
+    }
+
+    setActiveRoomId(null);
+    setMessages([]);
+  };
+
+  const tryMatchWithAvailableUser = async (
+    filters: ChatFilters,
+    mode: ChatMode,
+    currentUser: User,
+    currentProfile: UserProfile,
+  ) => {
+    setConnectingStatus("Checking availability...");
+
+    const waitingUsersRef = collection(db, "waitingUsers");
+    const searchingQuery = query(
+      waitingUsersRef,
+      where("status", "==", "searching"),
+      where("mode", "==", mode),
+      limit(25),
+    );
+    const searchSnapshot = await getDocs(searchingQuery);
+
+    const me: WaitingUser = {
+      uid: currentUser.uid,
+      status: "searching",
+      mode,
+      filters,
+      profile: {
+        gender: currentProfile.gender,
+        age: currentProfile.age,
+        countryCode: currentProfile.countryCode,
+      },
+    };
+
+    const candidates = searchSnapshot.docs
+      .filter((candidateDoc) => candidateDoc.id !== currentUser.uid)
+      .map((candidateDoc) => candidateDoc.data() as WaitingUser)
+      .filter((candidate) => areUsersCompatible(me, candidate));
+
+    if (candidates.length === 0) {
+      setConnectingStatus("Waiting for an available stranger...");
+      return;
+    }
+
+    const candidate = candidates[0];
+
+    try {
+      const matchedRoomId = await runTransaction(db, async (transaction) => {
+        const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
+        const candidateWaitingRef = doc(db, "waitingUsers", candidate.uid);
+
+        const [mySnapshot, candidateSnapshot] = await Promise.all([
+          transaction.get(myWaitingRef),
+          transaction.get(candidateWaitingRef),
+        ]);
+
+        if (!mySnapshot.exists() || !candidateSnapshot.exists()) {
+          throw new Error("Queue entry expired");
+        }
+
+        const myData = mySnapshot.data() as WaitingUser;
+        const candidateData = candidateSnapshot.data() as WaitingUser;
+
+        if (
+          myData.status !== "searching" ||
+          candidateData.status !== "searching" ||
+          myData.mode !== mode ||
+          candidateData.mode !== mode ||
+          !areUsersCompatible(myData, candidateData)
+        ) {
+          throw new Error("Candidate no longer available");
+        }
+
+        const roomRef = doc(collection(db, "rooms"));
+
+        transaction.set(roomRef, {
+          status: "active",
+          mode,
+          participants: [currentUser.uid, candidate.uid],
+          participantProfiles: [
+            {
+              uid: currentUser.uid,
+              gender: myData.profile.gender,
+              age: myData.profile.age,
+              countryCode: myData.profile.countryCode ?? null,
+            },
+            {
+              uid: candidate.uid,
+              gender: candidateData.profile.gender,
+              age: candidateData.profile.age,
+              countryCode: candidateData.profile.countryCode ?? null,
+            },
+          ],
+          createdAt: serverTimestamp(),
+        });
+
+        transaction.update(myWaitingRef, {
+          status: "matched",
+          roomId: roomRef.id,
+          matchedAt: serverTimestamp(),
+        });
+
+        transaction.update(candidateWaitingRef, {
+          status: "matched",
+          roomId: roomRef.id,
+          matchedAt: serverTimestamp(),
+        });
+
+        return roomRef.id;
+      });
+
+      setConnectingStatus("Stranger found. Connecting...");
+      setActiveRoomId(matchedRoomId);
+    } catch {
+      setConnectingStatus("Retrying match...");
+    }
+  };
+
+  const startSearching = async (filters: ChatFilters) => {
+    if (!user || !profile || !chatMode) {
+      return;
+    }
+
+    cleanupWaitIntervals();
+    setIsConnecting(true);
+    setConnectingStatus("Checking availability...");
+    setMessages([]);
+    setText("");
+    clearAttachment();
+    setActiveRoomId(null);
+
+    const waitingRef = doc(db, "waitingUsers", user.uid);
+    await setDoc(
+      waitingRef,
+      {
+        uid: user.uid,
+        status: "searching",
+        mode: chatMode,
+        filters,
+        profile: {
+          gender: profile.gender,
+          age: profile.age,
+          countryCode: profile.countryCode ?? null,
+        },
+        createdAt: serverTimestamp(),
+        lastSeenAt: serverTimestamp(),
+      },
+      { merge: true },
+    );
+
+    await tryMatchWithAvailableUser(filters, chatMode, user, profile);
+
+    retryMatchIntervalRef.current = window.setInterval(() => {
+      void tryMatchWithAvailableUser(filters, chatMode, user, profile);
+    }, 2500);
+
+    heartbeatIntervalRef.current = window.setInterval(() => {
+      void updateDoc(waitingRef, { lastSeenAt: serverTimestamp() });
+    }, 8000);
+  };
+
+  const stopSearching = async () => {
+    if (!user) {
+      return;
+    }
+
+    cleanupWaitIntervals();
+
+    try {
+      await deleteDoc(doc(db, "waitingUsers", user.uid));
+    } catch {
+      // Ignore if already removed.
+    }
+  };
 
   const onSelectImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -118,6 +553,7 @@ export default function Home() {
 
     setImagePreview(URL.createObjectURL(file));
     setSelectedFileName(file.name);
+    setSelectedImageFile(file);
   };
 
   const clearAttachment = () => {
@@ -127,37 +563,38 @@ export default function Home() {
 
     setImagePreview(null);
     setSelectedFileName(null);
+    setSelectedImageFile(null);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  const sendMessage = () => {
-    if (!text.trim() && !imagePreview) {
+  const sendMessage = async () => {
+    if (!user || !activeRoomId || isConnecting || (!text.trim() && !selectedImageFile)) {
       return;
     }
 
-    const now = new Date();
-    const sentAt = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    let imageUrl: string | undefined;
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: prev.length + 1,
-        author: "you",
-        text: text.trim() || undefined,
-        image: imagePreview ?? undefined,
-        sentAt,
-      },
-    ]);
+    if (selectedImageFile) {
+      const uploadRef = ref(
+        storage,
+        `chatUploads/${activeRoomId}/${user.uid}/${Date.now()}-${selectedImageFile.name}`,
+      );
+      await uploadBytes(uploadRef, selectedImageFile);
+      imageUrl = await getDownloadURL(uploadRef);
+    }
+
+    await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
+      senderId: user.uid,
+      text: text.trim() || null,
+      imageUrl: imageUrl ?? null,
+      createdAt: serverTimestamp(),
+    });
 
     setText("");
-    setImagePreview(null);
-    setSelectedFileName(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
+    clearAttachment();
   };
 
   const loginAnonymously = async () => {
@@ -239,6 +676,8 @@ export default function Home() {
   const logout = async () => {
     try {
       setAuthBusy(true);
+      await markRoomEnded();
+      await stopSearching();
       await signOut(auth);
     } finally {
       setAuthBusy(false);
@@ -268,6 +707,8 @@ export default function Home() {
     const nextProfile: UserProfile = {
       gender: profileGender,
       age: parsedAge,
+      country: profileCountry || "Unknown",
+      countryCode: profileCountryCode || undefined,
     };
 
     window.localStorage.setItem(`profile_${user.uid}`, JSON.stringify(nextProfile));
@@ -353,6 +794,8 @@ export default function Home() {
             setProfileGender={setProfileGender}
             profileAge={profileAge}
             setProfileAge={setProfileAge}
+            profileCountry={profileCountry}
+            profileCountryCode={profileCountryCode}
             profileError={profileError}
             onBack={logout}
             onContinue={saveProfile}
@@ -381,7 +824,9 @@ export default function Home() {
               setChatMode(mode);
               setChatFilters(null);
             }}
-            onBack={() => {
+            onBack={async () => {
+              await markRoomEnded();
+              await stopSearching();
               setChatMode(null);
               setProfileGender(profile.gender);
               setProfileAge(String(profile.age));
@@ -411,12 +856,16 @@ export default function Home() {
               gender: "Any",
               ageGroup: "Any age",
               style: "Any style",
+              country: "Any",
             }}
             onApply={(filters) => {
               setChatFilters(filters);
-              setStrangerProfile(generateRandomStrangerProfile(filters));
+              void startSearching(filters);
             }}
-            onBack={() => setChatMode(null)}
+            onBack={async () => {
+              await stopSearching();
+              setChatMode(null);
+            }}
           />
         </main>
         <SiteFooter />
@@ -440,6 +889,8 @@ export default function Home() {
           strangerProfile={strangerProfile}
           chatMode={chatMode}
           chatFilters={chatFilters}
+          isConnecting={isConnecting}
+          connectingStatus={connectingStatus}
           messages={messages}
           text={text}
           setText={setText}
@@ -450,13 +901,18 @@ export default function Home() {
           imagePreview={imagePreview}
           selectedFileName={selectedFileName}
           onLeaveChat={(filters) => {
-            setStrangerProfile(generateRandomStrangerProfile(filters));
-            setMessages(starterMessages);
-            setText("");
-            clearAttachment();
+            void (async () => {
+              await markRoomEnded();
+              await stopSearching();
+              await startSearching(filters);
+            })();
           }}
           onChangeMode={() => {
-            setChatFilters(null);
+            void (async () => {
+              await markRoomEnded();
+              await stopSearching();
+              setChatFilters(null);
+            })();
           }}
         />
       </main>
