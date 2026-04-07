@@ -1,65 +1,328 @@
+"use client";
+
+import "@/lib/firebase";
 import Image from "next/image";
+import { useEffect, useRef, useState } from "react";
+
+type ChatMessage = {
+  id: number;
+  author: "you" | "stranger";
+  text?: string;
+  image?: string;
+  sentAt: string;
+};
+
+const starterMessages: ChatMessage[] = [
+  {
+    id: 1,
+    author: "stranger",
+    text: "Hey! I am a random stranger. Tell me what music you are into.",
+    sentAt: "09:12",
+  },
+  {
+    id: 2,
+    author: "you",
+    text: "Mostly indie + electronic. Want to trade playlists?",
+    sentAt: "09:12",
+  },
+];
+
+function GoogleMark() {
+  return (
+    <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+      <path
+        fill="#FFC107"
+        d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.7 1.1 7.8 3l5.7-5.7C34 6 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.3-.1-2.4-.4-3.5z"
+      />
+      <path
+        fill="#FF3D00"
+        d="M6.3 14.7l6.6 4.8C14.7 15.3 18.9 12 24 12c3 0 5.7 1.1 7.8 3l5.7-5.7C34 6 29.3 4 24 4c-7.7 0-14.4 4.3-17.7 10.7z"
+      />
+      <path
+        fill="#4CAF50"
+        d="M24 44c5.1 0 9.8-1.9 13.4-5.1l-6.2-5.2c-2 1.5-4.5 2.3-7.2 2.3-5.2 0-9.6-3.3-11.1-8l-6.5 5C9.7 39.5 16.3 44 24 44z"
+      />
+      <path
+        fill="#1976D2"
+        d="M43.6 20.5H42V20H24v8h11.3c-1.1 3-3.2 5.4-6.1 6.8l6.2 5.2C39 36.7 44 31 44 24c0-1.3-.1-2.4-.4-3.5z"
+      />
+    </svg>
+  );
+}
+
+function MainLogo() {
+  return (
+    <Image
+      src="/asstes/logo/logologoheartandtempetedchat.png"
+      alt="Tempted Chat"
+      width={260}
+      height={48}
+      priority
+      className="main-logo-image"
+    />
+  );
+}
+
+function TopNav({
+  isAuthenticated,
+  onAuthToggle,
+}: {
+  isAuthenticated: boolean;
+  onAuthToggle: () => void;
+}) {
+  return (
+    <nav className="top-nav" aria-label="Main navigation">
+      <div className="top-nav-inner">
+        <a href="#" className="brand-link" aria-label="Tempted Chat home">
+          <MainLogo />
+        </a>
+
+        <div className="nav-links" aria-label="Primary links">
+          <a href="#">Home</a>
+          <a href="#">Safety</a>
+          <a href="#">About</a>
+        </div>
+
+        <button type="button" className="nav-cta" onClick={onAuthToggle}>
+          {isAuthenticated ? "Log Out" : "Log In"}
+        </button>
+      </div>
+    </nav>
+  );
+}
 
 export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [messages, setMessages] = useState(starterMessages);
+  const [text, setText] = useState("");
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (imagePreview) {
+        URL.revokeObjectURL(imagePreview);
+      }
+    };
+  }, [imagePreview]);
+
+  const onSelectImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+    }
+
+    setImagePreview(URL.createObjectURL(file));
+    setSelectedFileName(file.name);
+  };
+
+  const clearAttachment = () => {
+    if (imagePreview) {
+      URL.revokeObjectURL(imagePreview);
+    }
+
+    setImagePreview(null);
+    setSelectedFileName(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  const sendMessage = () => {
+    if (!text.trim() && !imagePreview) {
+      return;
+    }
+
+    const now = new Date();
+    const sentAt = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: prev.length + 1,
+        author: "you",
+        text: text.trim() || undefined,
+        image: imagePreview ?? undefined,
+        sentAt,
+      },
+    ]);
+
+    setText("");
+    setImagePreview(null);
+    setSelectedFileName(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <main className="screen">
+        <TopNav
+          isAuthenticated={isAuthenticated}
+          onAuthToggle={() => setIsAuthenticated(true)}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+        <section className="auth-shell">
+          <article className="auth-brand">
+            <p className="eyebrow">TEMPTED.CHAT</p>
+            <h1>Video-era random chat, rebuilt for 2026.</h1>
+            <p>
+              Match in seconds, keep things respectful, and share text + images
+              in one clean interface.
+            </p>
+            <ul className="feature-list">
+              <li>Google-only sign in</li>
+              <li>Fast stranger matching flow</li>
+              <li>Image sharing in chat</li>
+            </ul>
+          </article>
+
+          <article className="auth-panel">
+            <h2>Start with Google</h2>
+            <p>
+              We will hook this to real authentication next. For now, this takes
+              you to the chat UI preview.
+            </p>
+
+            <button
+              type="button"
+              className="google-btn"
+              onClick={() => setIsAuthenticated(true)}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
+              <span className="google-icon-wrap">
+                <GoogleMark />
+              </span>
+              <span>Continue with Google</span>
+            </button>
+
+            <p className="tiny-note">
+              By continuing, you agree to community rules and anti-abuse policy.
+            </p>
+          </article>
+        </section>
       </main>
-    </div>
+    );
+  }
+
+  return (
+    <main className="screen">
+      <TopNav
+        isAuthenticated={isAuthenticated}
+        onAuthToggle={() => setIsAuthenticated(false)}
+      />
+      <section className="chat-shell">
+        <aside className="chat-sidebar">
+          <p className="eyebrow">TEMPTED.CHAT</p>
+          <h3>Session controls</h3>
+          <button type="button" className="sidebar-btn">
+            New Stranger
+          </button>
+          <button type="button" className="sidebar-btn stop">
+            End Chat
+          </button>
+          <div className="safe-box">
+            <p>Safety reminders</p>
+            <ul className="feature-list">
+              <li>Do not share personal info</li>
+              <li>Report abusive content</li>
+              <li>Keep chat respectful</li>
+            </ul>
+          </div>
+        </aside>
+
+        <section className="chat-main">
+          <header className="chat-header">
+            <div>
+              <p className="eyebrow">LIVE CHAT</p>
+              <h2>You are now chatting with a stranger</h2>
+            </div>
+            <span className="status-dot">Connected</span>
+          </header>
+
+          <div className="chat-log">
+            {messages.map((message) => (
+              <article
+                key={message.id}
+                className={`bubble ${message.author === "you" ? "outgoing" : "incoming"}`}
+              >
+                <p className="author-label">
+                  {message.author === "you" ? "You" : "Stranger"}
+                </p>
+                {message.text && <p>{message.text}</p>}
+                {message.image && (
+                  <Image
+                    src={message.image}
+                    alt="Uploaded by sender"
+                    className="bubble-image"
+                    width={520}
+                    height={280}
+                    unoptimized
+                  />
+                )}
+                <time>{message.sentAt}</time>
+              </article>
+            ))}
+          </div>
+
+          {imagePreview && (
+            <div className="attachment-preview">
+              <Image
+                src={imagePreview}
+                alt="Attachment preview"
+                width={64}
+                height={64}
+                unoptimized
+              />
+              <div>
+                <p>{selectedFileName}</p>
+                <button type="button" onClick={clearAttachment}>
+                  Remove image
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="composer">
+            <input
+              type="text"
+              placeholder="Say hi..."
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  sendMessage();
+                }
+              }}
+            />
+
+            <input
+              ref={fileInputRef}
+              className="hidden-input"
+              type="file"
+              accept="image/*"
+              onChange={onSelectImage}
+            />
+
+            <button
+              type="button"
+              className="attach-btn"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              Add Image
+            </button>
+
+            <button type="button" className="send-btn" onClick={sendMessage}>
+              Send
+            </button>
+          </div>
+        </section>
+      </section>
+    </main>
   );
 }

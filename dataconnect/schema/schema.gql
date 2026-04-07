@@ -1,0 +1,40 @@
+type User @table {
+  username: String!
+  createdAt: Timestamp!
+  lastActive: Timestamp
+  reportCount: Int
+}
+
+type Interest @table {
+  name: String!
+  description: String
+}
+
+type UserInterest @table(key: ["user", "interest"]) {
+  user: User!
+  interest: Interest!
+  createdAt: Timestamp!
+}
+
+type ChatSession @table {
+  startTime: Timestamp!
+  user1: User!
+  user2: User!
+  endTime: Timestamp
+  duration: Int
+}
+
+type Report @table {
+  reportedBy: User!
+  reportedUser: User!
+  reason: String!
+  createdAt: Timestamp!
+  chatSession: ChatSession
+  status: String
+}
+
+type Block @table(key: ["blockingUser", "blockedUser"]) {
+  blockingUser: User!
+  blockedUser: User!
+  createdAt: Timestamp!
+}

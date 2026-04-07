@@ -1,0 +1,29 @@
+mutation CreateUser($username: String!) @auth(level: PUBLIC, insecureReason: "This operation is safe to expose to the public") {
+  user_insert(data: {username: $username, createdAt_expr: "request.time"}) {
+    id
+  }
+}
+
+query GetMyProfile @auth(level: USER) {
+  user(key: {id_expr: "auth.uid"}) {
+    id
+    username
+    createdAt
+    lastActive
+    reportCount
+  }
+}
+
+mutation UpdateMyLastActive @auth(level: USER) {
+  user_update(key: {id_expr: "auth.uid"}, data: {lastActive_expr: "request.time"}) {
+    id
+  }
+}
+
+query ListAllInterests @auth(level: PUBLIC, insecureReason: "This operation is safe to expose to the public") {
+  interests {
+    id
+    name
+    description
+  }
+}

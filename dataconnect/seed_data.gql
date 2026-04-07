@@ -1,0 +1,83 @@
+mutation CreateDemoData @transaction @auth(level: USER, insecureReason: "This operation is for seeding data and only used by authenticated users.") {
+  user1: user_insert(data: {
+    id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    username: "alice_tempter",
+    createdAt: "2023-01-01T10:00:00Z",
+    lastActive: "2023-10-26T15:30:00Z",
+    reportCount: 0
+  })
+  user2: user_insert(data: {
+    id: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+    username: "bob_chatter",
+    createdAt: "2023-02-15T11:00:00Z",
+    lastActive: "2023-10-26T16:00:00Z",
+    reportCount: 0
+  })
+  user3: user_insert(data: {
+    id: "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+    username: "charlie_listener",
+    createdAt: "2023-03-20T12:00:00Z",
+    lastActive: "2023-10-26T17:00:00Z",
+    reportCount: 0
+  })
+  interest1: interest_insert(data: {
+    id: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+    name: "Coding",
+    description: "Enjoying programming and software development."
+  })
+  interest2: interest_insert(data: {
+    id: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+    name: "Reading",
+    description: "Avid reader of various genres."
+  })
+  interest3: interest_insert(data: {
+    id: "f0eebc99-9c0b-4ef8-bb6d-6bb9bd380a66",
+    name: "Hiking",
+    description: "Exploring nature trails and mountains."
+  })
+  userInterest1: userInterest_insert(data: {
+    userId: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    interestId: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+    createdAt: "2023-01-05T10:30:00Z"
+  })
+  userInterest2: userInterest_insert(data: {
+    userId: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    interestId: "e0eebc99-9c0b-4ef8-bb6d-6bb9bd380a55",
+    createdAt: "2023-01-06T11:00:00Z"
+  })
+  userInterest3: userInterest_insert(data: {
+    userId: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+    interestId: "d0eebc99-9c0b-4ef8-bb6d-6bb9bd380a44",
+    createdAt: "2023-02-20T11:30:00Z"
+  })
+  chatSession1: chatSession_insert(data: {
+    id: "10eebc99-9c0b-4ef8-bb6d-6bb9bd380a77",
+    user1Id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    user2Id: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+    startTime: "2023-10-26T15:00:00Z",
+    endTime: "2023-10-26T15:15:00Z",
+    duration: 900
+  })
+  chatSession2: chatSession_insert(data: {
+    id: "20eebc99-9c0b-4ef8-bb6d-6bb9bd380a88",
+    user1Id: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    user2Id: "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+    startTime: "2023-10-26T16:00:00Z",
+    endTime: "2023-10-26T16:20:00Z",
+    duration: 1200
+  })
+  report1: report_insert(data: {
+    id: "30eebc99-9c0b-4ef8-bb6d-6bb9bd380a99",
+    reportedById: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    reportedUserId: "b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a22",
+    reason: "Inappropriate language",
+    createdAt: "2023-10-26T15:18:00Z",
+    chatSessionId: "10eebc99-9c0b-4ef8-bb6d-6bb9bd380a77",
+    status: "Pending"
+  })
+  block1: block_insert(data: {
+    blockingUserId: "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11",
+    blockedUserId: "c0eebc99-9c0b-4ef8-bb6d-6bb9bd380a33",
+    createdAt: "2023-10-26T16:25:00Z"
+  })
+}
