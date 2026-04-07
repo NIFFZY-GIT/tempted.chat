@@ -1,6 +1,16 @@
 "use client";
 
-import "@/lib/firebase";
+import { auth, googleProvider } from "@/lib/firebase";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInAnonymously,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut,
+  type User,
+} from "firebase/auth";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 
@@ -10,6 +20,27 @@ type ChatMessage = {
   text?: string;
   image?: string;
   sentAt: string;
+};
+
+type ProfileGender = "male" | "female" | "other";
+
+type UserProfile = {
+  gender: ProfileGender;
+  age: number;
+};
+
+type ChatMode = "text" | "video" | "group";
+
+const pickRandomGender = (): ProfileGender => {
+  const genders: ProfileGender[] = ["male", "female", "other"];
+  return genders[Math.floor(Math.random() * genders.length)];
+};
+
+const generateRandomStrangerProfile = (): UserProfile => {
+  return {
+    gender: pickRandomGender(),
+    age: Math.floor(Math.random() * (45 - 18 + 1)) + 18,
+  };
 };
 
 const starterMessages: ChatMessage[] = [
@@ -63,12 +94,48 @@ function MainLogo() {
   );
 }
 
+function GenderIcon({ gender }: { gender: ProfileGender }) {
+  if (gender === "male") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="9" cy="15" r="5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M12.5 11.5 19 5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M14 5h5v5" fill="none" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  if (gender === "female") {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="8" r="5" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M12 13v8" fill="none" stroke="currentColor" strokeWidth="2" />
+        <path d="M8.5 18h7" fill="none" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <circle cx="10" cy="10" r="4" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M13 7l5-5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M14.5 2h3.5v3.5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M10 14v7" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path d="M7.5 18h5" fill="none" stroke="currentColor" strokeWidth="2" />
+    </svg>
+  );
+}
+
 function TopNav({
   isAuthenticated,
-  onAuthToggle,
+  onLogin,
+  onLogout,
+  isWorking,
 }: {
   isAuthenticated: boolean;
-  onAuthToggle: () => void;
+  onLogin: () => void;
+  onLogout: () => void;
+  isWorking: boolean;
 }) {
   return (
     <nav className="top-nav" aria-label="Main navigation">
@@ -83,7 +150,12 @@ function TopNav({
           <a href="#">About</a>
         </div>
 
-        <button type="button" className="nav-cta" onClick={onAuthToggle}>
+        <button
+          type="button"
+          className="nav-cta"
+          onClick={isAuthenticated ? onLogout : onLogin}
+          disabled={isWorking}
+        >
           {isAuthenticated ? "Log Out" : "Log In"}
         </button>
       </div>
@@ -92,12 +164,71 @@ function TopNav({
 }
 
 export default function Home() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authMethod, setAuthMethod] = useState<"email" | "google" | "anonymous">(
+    "anonymous",
+  );
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [chatMode, setChatMode] = useState<ChatMode | null>(null);
+  const [strangerProfile, setStrangerProfile] = useState<UserProfile>(
+    generateRandomStrangerProfile(),
+  );
+  const [profileGender, setProfileGender] = useState<ProfileGender | null>(null);
+  const [profileAge, setProfileAge] = useState("");
+  const [profileError, setProfileError] = useState<string | null>(null);
   const [messages, setMessages] = useState(starterMessages);
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      setUser(nextUser);
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setProfile(null);
+      setChatMode(null);
+      setProfileGender(null);
+      setProfileAge("");
+      setProfileError(null);
+      return;
+    }
+
+    const storageKey = `profile_${user.uid}`;
+    const rawProfile = window.localStorage.getItem(storageKey);
+
+    if (!rawProfile) {
+      setProfile(null);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(rawProfile) as UserProfile;
+      if (
+        (parsed.gender === "male" || parsed.gender === "female" || parsed.gender === "other") &&
+        Number.isFinite(parsed.age)
+      ) {
+        setProfile(parsed);
+      }
+    } catch {
+      setProfile(null);
+    }
+  }, [user]);
 
   useEffect(() => {
     return () => {
@@ -161,12 +292,157 @@ export default function Home() {
     }
   };
 
+  const loginAnonymously = async () => {
+    try {
+      setAuthBusy(true);
+      setAuthError(null);
+      setAuthNotice(null);
+      await signInAnonymously(auth);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Guest login failed. Try again.";
+      setAuthError(message);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const loginWithGoogle = async () => {
+    try {
+      setAuthBusy(true);
+      setAuthError(null);
+      setAuthNotice(null);
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Google login failed. Try again.";
+      setAuthError(message);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const loginWithEmail = async () => {
+    if (!email || !password) {
+      setAuthError("Enter email and password.");
+      return;
+    }
+
+    try {
+      setAuthBusy(true);
+      setAuthError(null);
+      setAuthNotice(null);
+
+      if (authMode === "signup") {
+        await createUserWithEmailAndPassword(auth, email, password);
+      } else {
+        await signInWithEmailAndPassword(auth, email, password);
+      }
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Email login failed. Try again.";
+      setAuthError(message);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const resetPassword = async () => {
+    if (!email) {
+      setAuthError("Enter your email above, then click Forgot Password.");
+      return;
+    }
+
+    try {
+      setAuthBusy(true);
+      setAuthError(null);
+      setAuthNotice(null);
+      await sendPasswordResetEmail(auth, email);
+      setAuthNotice("Password reset email sent. Check your inbox.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Could not send reset email. Try again.";
+      setAuthError(message);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      setAuthBusy(true);
+      await signOut(auth);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const isAuthenticated = Boolean(user);
+
+  const findNextStranger = () => {
+    setStrangerProfile(generateRandomStrangerProfile());
+  };
+
+  const saveProfile = () => {
+    const parsedAge = Number(profileAge);
+
+    if (!profileGender) {
+      setProfileError("Please choose your gender.");
+      return;
+    }
+
+    if (!Number.isInteger(parsedAge) || parsedAge < 13 || parsedAge > 99) {
+      setProfileError("Enter a valid age between 13 and 99.");
+      return;
+    }
+
+    if (!user) {
+      setProfileError("User session not found. Please login again.");
+      return;
+    }
+
+    const nextProfile: UserProfile = {
+      gender: profileGender,
+      age: parsedAge,
+    };
+
+    window.localStorage.setItem(`profile_${user.uid}`, JSON.stringify(nextProfile));
+    setProfile(nextProfile);
+    setProfileError(null);
+  };
+
+  if (authLoading) {
+    return (
+      <main className="screen">
+        <TopNav
+          isAuthenticated={false}
+          onLogin={() => {
+            setAuthMethod("email");
+            emailInputRef.current?.focus();
+          }}
+          onLogout={logout}
+          isWorking={true}
+        />
+        <section className="auth-shell">
+          <article className="auth-panel auth-loading">Checking account session...</article>
+        </section>
+      </main>
+    );
+  }
+
   if (!isAuthenticated) {
     return (
       <main className="screen">
         <TopNav
           isAuthenticated={isAuthenticated}
-          onAuthToggle={() => setIsAuthenticated(true)}
+          onLogin={() => {
+            setAuthMethod("email");
+            emailInputRef.current?.focus();
+          }}
+          onLogout={logout}
+          isWorking={authBusy}
         />
         <section className="auth-shell">
           <article className="auth-brand">
@@ -177,29 +453,125 @@ export default function Home() {
               in one clean interface.
             </p>
             <ul className="feature-list">
-              <li>Google-only sign in</li>
+              <li>Anonymous guest mode</li>
+              <li>Email and password login</li>
               <li>Fast stranger matching flow</li>
               <li>Image sharing in chat</li>
             </ul>
           </article>
 
           <article className="auth-panel">
-            <h2>Start with Google</h2>
-            <p>
-              We will hook this to real authentication next. For now, this takes
-              you to the chat UI preview.
-            </p>
+            <h2>Choose login option</h2>
+            <p>Select one option below. Phone login is not included.</p>
 
-            <button
-              type="button"
-              className="google-btn"
-              onClick={() => setIsAuthenticated(true)}
-            >
-              <span className="google-icon-wrap">
-                <GoogleMark />
-              </span>
-              <span>Continue with Google</span>
-            </button>
+            <div className="auth-methods">
+              <button
+                type="button"
+                className={`provider-btn provider-anonymous ${authMethod === "anonymous" ? "active" : ""}`}
+                onClick={() => {
+                  setAuthMethod("anonymous");
+                  void loginAnonymously();
+                }}
+                disabled={authBusy}
+              >
+                <span className="method-icon">A</span>
+                <span>Sign In Anonymously</span>
+                <span className="fast-pill">FAST</span>
+              </button>
+
+              <button
+                type="button"
+                className={`provider-btn provider-google ${authMethod === "google" ? "active" : ""}`}
+                onClick={() => {
+                  setAuthMethod("google");
+                  void loginWithGoogle();
+                }}
+                disabled={authBusy}
+              >
+                <span className="method-icon google-mark-icon">
+                  <GoogleMark />
+                </span>
+                <span>Continue with Google</span>
+              </button>
+
+              <button
+                type="button"
+                className={`provider-btn provider-email ${authMethod === "email" ? "active" : ""}`}
+                onClick={() => {
+                  setAuthMethod("email");
+                  setAuthError(null);
+                  emailInputRef.current?.focus();
+                }}
+                disabled={authBusy}
+              >
+                <span className="method-icon">@</span>
+                <span>Email &amp; Password</span>
+              </button>
+            </div>
+
+            {authMethod === "email" && (
+              <div className="auth-form">
+                <label htmlFor="email">Email</label>
+                <input
+                  id="email"
+                  ref={emailInputRef}
+                  type="email"
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                />
+
+                <label htmlFor="password">Password</label>
+                <input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder="At least 6 characters"
+                  autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                />
+
+                <button
+                  type="button"
+                  className="google-btn"
+                  onClick={() => void loginWithEmail()}
+                  disabled={authBusy}
+                >
+                  {authBusy
+                    ? "Please wait..."
+                    : authMode === "signup"
+                      ? "Create account"
+                      : "Login"}
+                </button>
+
+                <button
+                  type="button"
+                  className="forgot-pass-btn"
+                  onClick={() => void resetPassword()}
+                  disabled={authBusy}
+                >
+                  Forgot Password?
+                </button>
+
+                <button
+                  type="button"
+                  className="switch-auth"
+                  onClick={() => {
+                    setAuthMode((prev) => (prev === "signin" ? "signup" : "signin"));
+                    setAuthError(null);
+                    emailInputRef.current?.focus();
+                  }}
+                >
+                  {authMode === "signin"
+                    ? "New user? Create account"
+                    : "Already have an account? Sign in"}
+                </button>
+              </div>
+            )}
+
+            {authError && <p className="auth-error">{authError}</p>}
+            {authNotice && <p className="auth-notice">{authNotice}</p>}
 
             <p className="tiny-note">
               By continuing, you agree to community rules and anti-abuse policy.
@@ -210,118 +582,244 @@ export default function Home() {
     );
   }
 
+  if (!profile) {
+    return (
+      <main className="screen">
+        <TopNav
+          isAuthenticated={isAuthenticated}
+          onLogin={() => {
+            setAuthMethod("email");
+            emailInputRef.current?.focus();
+          }}
+          onLogout={logout}
+          isWorking={authBusy}
+        />
+        <section className="profile-card">
+          <p className="eyebrow">PROFILE SETUP</p>
+          <h2>Tell us about you</h2>
+          <p className="profile-copy">
+            Complete your profile before entering chat. This helps us match better.
+          </p>
+
+          <div className="gender-grid">
+            <button
+              type="button"
+              className={`gender-btn ${profileGender === "male" ? "active" : ""}`}
+              onClick={() => setProfileGender("male")}
+            >
+              <span className="gender-btn-content">
+                <span className="gender-icon male"><GenderIcon gender="male" /></span>
+                <span>Male</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`gender-btn ${profileGender === "female" ? "active" : ""}`}
+              onClick={() => setProfileGender("female")}
+            >
+              <span className="gender-btn-content">
+                <span className="gender-icon female"><GenderIcon gender="female" /></span>
+                <span>Female</span>
+              </span>
+            </button>
+            <button
+              type="button"
+              className={`gender-btn ${profileGender === "other" ? "active" : ""}`}
+              onClick={() => setProfileGender("other")}
+            >
+              <span className="gender-btn-content">
+                <span className="gender-icon other"><GenderIcon gender="other" /></span>
+                <span>Other</span>
+              </span>
+            </button>
+          </div>
+
+          <label htmlFor="profile-age" className="profile-age-label">
+            Age
+          </label>
+          <input
+            id="profile-age"
+            type="number"
+            min={13}
+            max={99}
+            value={profileAge}
+            onChange={(event) => setProfileAge(event.target.value)}
+            placeholder="Enter your age"
+            className="profile-age-input"
+          />
+
+          {profileError && <p className="auth-error">{profileError}</p>}
+
+          <button type="button" className="google-btn" onClick={saveProfile}>
+            Continue to chat
+          </button>
+        </section>
+      </main>
+    );
+  }
+
+  if (!chatMode) {
+    return (
+      <main className="screen">
+        <TopNav
+          isAuthenticated={isAuthenticated}
+          onLogin={() => {
+            setAuthMethod("email");
+            emailInputRef.current?.focus();
+          }}
+          onLogout={logout}
+          isWorking={authBusy}
+        />
+        <section className="mode-card">
+          <p className="eyebrow">CHAT MODE</p>
+          <h2>Choose how you want to connect</h2>
+          <p className="profile-copy">Pick one mode to continue.</p>
+
+          <div className="mode-grid">
+            <button
+              type="button"
+              className="mode-option"
+              onClick={() => setChatMode("text")}
+            >
+              <span className="mode-icon">TT</span>
+              <span>Text to text chat</span>
+            </button>
+
+            <button
+              type="button"
+              className="mode-option"
+              onClick={() => setChatMode("video")}
+            >
+              <span className="mode-icon">VC</span>
+              <span>Video call</span>
+            </button>
+
+            <button
+              type="button"
+              className="mode-option"
+              onClick={() => setChatMode("group")}
+            >
+              <span className="mode-icon">GT</span>
+              <span>Group text</span>
+            </button>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="screen">
       <TopNav
         isAuthenticated={isAuthenticated}
-        onAuthToggle={() => setIsAuthenticated(false)}
+        onLogin={() => {
+          setAuthMethod("email");
+          emailInputRef.current?.focus();
+        }}
+        onLogout={logout}
+        isWorking={authBusy}
       />
-      <section className="chat-shell">
-        <aside className="chat-sidebar">
-          <p className="eyebrow">TEMPTED.CHAT</p>
-          <h3>Session controls</h3>
-          <button type="button" className="sidebar-btn">
-            New Stranger
-          </button>
-          <button type="button" className="sidebar-btn stop">
-            End Chat
-          </button>
-          <div className="safe-box">
-            <p>Safety reminders</p>
-            <ul className="feature-list">
-              <li>Do not share personal info</li>
-              <li>Report abusive content</li>
-              <li>Keep chat respectful</li>
-            </ul>
+      <section className="chat-elevated">
+        <header className="chat-elevated-header">
+          <div className="header-left">
+            <p className="eyebrow">LIVE CHAT</p>
+            <h2>Stranger room</h2>
+            <p className="auth-user-chip">
+              {user?.isAnonymous ? "Guest account" : user?.email ?? "Signed in user"}
+            </p>
+            <p className="auth-user-chip">{`${profile.gender}, ${profile.age}`}</p>
+            <p className="auth-user-chip">{`Mode: ${chatMode}`}</p>
+            <p className="stranger-chip">
+              {`Connected stranger: ${strangerProfile.gender}, ${strangerProfile.age}`}
+            </p>
           </div>
-        </aside>
-
-        <section className="chat-main">
-          <header className="chat-header">
-            <div>
-              <p className="eyebrow">LIVE CHAT</p>
-              <h2>You are now chatting with a stranger</h2>
-            </div>
+          <div className="chat-actions">
             <span className="status-dot">Connected</span>
-          </header>
-
-          <div className="chat-log">
-            {messages.map((message) => (
-              <article
-                key={message.id}
-                className={`bubble ${message.author === "you" ? "outgoing" : "incoming"}`}
-              >
-                <p className="author-label">
-                  {message.author === "you" ? "You" : "Stranger"}
-                </p>
-                {message.text && <p>{message.text}</p>}
-                {message.image && (
-                  <Image
-                    src={message.image}
-                    alt="Uploaded by sender"
-                    className="bubble-image"
-                    width={520}
-                    height={280}
-                    unoptimized
-                  />
-                )}
-                <time>{message.sentAt}</time>
-              </article>
-            ))}
+            <button type="button" className="mode-switch-btn" onClick={() => setChatMode(null)}>
+              Change Mode
+            </button>
+            <button type="button" className="new-match-btn" onClick={findNextStranger}>
+              Next
+            </button>
           </div>
+        </header>
 
-          {imagePreview && (
-            <div className="attachment-preview">
-              <Image
-                src={imagePreview}
-                alt="Attachment preview"
-                width={64}
-                height={64}
-                unoptimized
-              />
-              <div>
-                <p>{selectedFileName}</p>
-                <button type="button" onClick={clearAttachment}>
-                  Remove image
-                </button>
-              </div>
-            </div>
-          )}
-
-          <div className="composer">
-            <input
-              type="text"
-              placeholder="Say hi..."
-              value={text}
-              onChange={(event) => setText(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  sendMessage();
-                }
-              }}
-            />
-
-            <input
-              ref={fileInputRef}
-              className="hidden-input"
-              type="file"
-              accept="image/*"
-              onChange={onSelectImage}
-            />
-
-            <button
-              type="button"
-              className="attach-btn"
-              onClick={() => fileInputRef.current?.click()}
+        <div className="chat-log elevated-log">
+          {messages.map((message) => (
+            <article
+              key={message.id}
+              className={`bubble ${message.author === "you" ? "outgoing" : "incoming"}`}
             >
-              Add Image
-            </button>
+              <p className="author-label">
+                {message.author === "you" ? "You" : "Stranger"}
+              </p>
+              {message.text && <p>{message.text}</p>}
+              {message.image && (
+                <Image
+                  src={message.image}
+                  alt="Uploaded by sender"
+                  className="bubble-image"
+                  width={520}
+                  height={280}
+                  unoptimized
+                />
+              )}
+              <time>{message.sentAt}</time>
+            </article>
+          ))}
+        </div>
 
-            <button type="button" className="send-btn" onClick={sendMessage}>
-              Send
-            </button>
+        {imagePreview && (
+          <div className="attachment-preview">
+            <Image
+              src={imagePreview}
+              alt="Attachment preview"
+              width={64}
+              height={64}
+              unoptimized
+            />
+            <div>
+              <p>{selectedFileName}</p>
+              <button type="button" onClick={clearAttachment}>
+                Remove image
+              </button>
+            </div>
           </div>
-        </section>
+        )}
+
+        <div className="composer elevated-composer">
+          <input
+            type="text"
+            placeholder="Write a message..."
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                sendMessage();
+              }
+            }}
+          />
+
+          <input
+            ref={fileInputRef}
+            className="hidden-input"
+            type="file"
+            accept="image/*"
+            onChange={onSelectImage}
+          />
+
+          <button
+            type="button"
+            className="attach-btn"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Attach
+          </button>
+
+          <button type="button" className="send-btn" onClick={sendMessage}>
+            Send
+          </button>
+        </div>
       </section>
     </main>
   );
