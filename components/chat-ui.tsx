@@ -4,10 +4,16 @@ import Image from "next/image";
 import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from "react";
 
 export type ChatMessage = {
-  id: number;
+  id: string;
   author: "you" | "stranger";
+  clientMessageId?: string;
+  isPending?: boolean;
   text?: string;
   image?: string;
+  imageViewTimerSeconds?: number;
+  imageRevealAtMs?: number;
+  imageExpiresAtMs?: number;
+  imageDeleted?: boolean;
   sentAt: string;
 };
 
@@ -26,8 +32,8 @@ export type ChatFilters = {
 };
 
 export const starterMessages: ChatMessage[] = [
-  { id: 1, author: "stranger", text: "Hey! What music are you into?", sentAt: "10:14 PM" },
-  { id: 2, author: "you", text: "Mostly electronic. You?", sentAt: "10:15 PM" },
+  { id: "1", author: "stranger", text: "Hey! What music are you into?", sentAt: "10:14 PM" },
+  { id: "2", author: "you", text: "Mostly electronic. You?", sentAt: "10:15 PM" },
 ];
 
 const pickRandomGender = (): ProfileGender => {
@@ -563,15 +569,23 @@ export function ChatRoomView({
   chatFilters,
   isConnecting,
   connectingStatus,
+  showNextStrangerPrompt,
   strangerIsTyping,
   messages,
   text,
   setText,
   sendMessage,
+  onRevealTimedImage,
   onLeaveChat,
   onChangeMode,
+  onNextStranger,
   imagePreview,
   selectedFileName,
+  imageTimerSeconds,
+  setImageTimerSeconds,
+  isSendingMessage,
+  imageUploadProgress,
+  sendError,
   fileInputRef,
   onSelectImage,
   clearAttachment,
@@ -581,15 +595,23 @@ export function ChatRoomView({
   chatFilters: ChatFilters | null;
   isConnecting: boolean;
   connectingStatus: string;
+  showNextStrangerPrompt: boolean;
   strangerIsTyping: boolean;
   messages: ChatMessage[];
   text: string;
   setText: (value: string) => void;
   sendMessage: () => void;
+  onRevealTimedImage: (messageId: string, timerSeconds: number) => void;
   onLeaveChat: (filters: ChatFilters) => void;
   onChangeMode: () => void;
+  onNextStranger: () => void;
   imagePreview: string | null;
   selectedFileName: string | null;
+  imageTimerSeconds: number;
+  setImageTimerSeconds?: (seconds: number) => void;
+  isSendingMessage: boolean;
+  imageUploadProgress: number | null;
+  sendError: string | null;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onSelectImage: (event: ChangeEvent<HTMLInputElement>) => void;
   clearAttachment: () => void;
@@ -599,6 +621,8 @@ export function ChatRoomView({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
+  const [revealedTimedImageIds, setRevealedTimedImageIds] = useState<Set<string>>(new Set());
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const modeLabel = chatMode === "text" ? "Text" : chatMode === "video" ? "Video" : "Group";
   const ageLabel = chatFilters?.ageGroup ?? "Any age";
@@ -632,20 +656,47 @@ export function ChatRoomView({
     messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [messages, strangerProfile]);
 
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setNowMs(Date.now());
+    }, 1000);
+
+    return () => {
+      window.clearInterval(timerId);
+    };
+  }, []);
+
+  useEffect(() => {
+    setRevealedTimedImageIds((current) => {
+      const next = new Set(current);
+      let changed = false;
+
+      for (const message of messages) {
+        if (message.imageDeleted || !message.image) {
+          if (next.delete(message.id)) {
+            changed = true;
+          }
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [messages]);
+
   return (
     <section
       ref={chatContainerRef}
-      className={`${isFullscreen ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(100dvh-8.75rem)] rounded-[28px]"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/10 bg-[linear-gradient(180deg,rgba(16,18,26,0.95),rgba(8,9,14,0.95))] shadow-[0_24px_70px_rgba(0,0,0,0.48)] backdrop-blur-sm`}
+      className={`${isFullscreen ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(100dvh-7.6rem)] rounded-[22px] md:h-[calc(100dvh-8.75rem)] md:rounded-[28px]"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/10 bg-[linear-gradient(180deg,rgba(16,18,26,0.95),rgba(8,9,14,0.95))] shadow-[0_24px_70px_rgba(0,0,0,0.48)] backdrop-blur-sm`}
     >
-      <header className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.12),transparent_42%),linear-gradient(180deg,rgba(18,20,28,0.95),rgba(14,15,21,0.9))] px-4 py-4 md:px-5">
+      <header className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.12),transparent_42%),linear-gradient(180deg,rgba(18,20,28,0.95),rgba(14,15,21,0.9))] px-3 py-3 md:px-5 md:py-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 text-white ring-1 ring-white/15">
+          <div className="flex items-center gap-2.5 md:gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white ring-1 ring-white/15 md:h-12 md:w-12 md:rounded-2xl">
               <GenderIcon gender={strangerProfile.gender} />
             </div>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-bold uppercase tracking-[0.18em] text-white/65">Stranger</span>
+                <span className="text-xs font-bold uppercase tracking-[0.14em] text-white/65 md:text-sm md:tracking-[0.18em]">Stranger</span>
                 <span style={FLAG_EMOJI_STYLE} className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-sm leading-none">{strangerFlag}</span>
                 <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/75">{`${strangerProfile.gender}, ${strangerProfile.age}`}</span>
                 <span className="rounded-full border border-pink-400/25 bg-pink-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-pink-200">{modeLabel}</span>
@@ -664,16 +715,16 @@ export function ChatRoomView({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2.5 lg:justify-end">
+          <div className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 [scrollbar-width:none] lg:mx-0 lg:w-auto lg:flex-wrap lg:overflow-visible lg:rounded-2xl lg:px-3 lg:py-2.5 lg:justify-end [&::-webkit-scrollbar]:hidden">
             <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Filters</span>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{ageLabel}</span>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{genderLabel}</span>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{styleLabel}</span>
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{countryLabel}</span>
+            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{ageLabel}</span>
+            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{genderLabel}</span>
+            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{styleLabel}</span>
+            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{countryLabel}</span>
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col items-start gap-2">
+        <div className="mt-3 flex flex-col items-start gap-2 md:mt-4">
           <div className="flex w-full items-center justify-between gap-2">
             <div className="flex items-center">
               <button
@@ -684,7 +735,7 @@ export function ChatRoomView({
                 Back
               </button>
               <div
-                className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-out ${showBackConfirm ? "ml-1 max-w-xs opacity-100" : "ml-0 max-w-0 opacity-0 pointer-events-none"}`}
+                className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-out ${showBackConfirm ? "ml-1 max-w-[9rem] opacity-100 sm:max-w-xs" : "ml-0 max-w-0 opacity-0 pointer-events-none"}`}
               >
                 <div className="flex items-center gap-1 rounded-lg border border-white/15 bg-black/85 px-2 py-1">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Sure?</span>
@@ -706,7 +757,30 @@ export function ChatRoomView({
                 </div>
               </div>
             </div>
-            <div className="flex items-center">
+            <div className="flex items-center gap-2">
+              {showNextStrangerPrompt && (
+                <button
+                  onClick={onNextStranger}
+                  className="rounded-lg bg-emerald-400 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-black transition hover:bg-emerald-300"
+                >
+                  Next Stranger
+                </button>
+              )}
+              <button
+                onClick={toggleFullscreen}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 text-white/75 transition hover:border-white/30 hover:text-white"
+                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              >
+                {isFullscreen ? (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5" />
+                  </svg>
+                ) : (
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
+                  </svg>
+                )}
+              </button>
               <button
                 onClick={() => setShowLeaveConfirm((current) => !current)}
                 className="rounded-lg bg-rose-500 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-white transition hover:bg-rose-400"
@@ -714,7 +788,7 @@ export function ChatRoomView({
                 Leave
               </button>
               <div
-                className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-out ${showLeaveConfirm ? "ml-1 max-w-xs opacity-100" : "ml-0 max-w-0 opacity-0 pointer-events-none"}`}
+                className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-out ${showLeaveConfirm ? "ml-1 max-w-[9rem] opacity-100 sm:max-w-xs" : "ml-0 max-w-0 opacity-0 pointer-events-none"}`}
               >
                 <div className="flex items-center gap-1 rounded-lg border border-white/15 bg-black/85 px-2 py-1">
                   <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Sure?</span>
@@ -742,7 +816,7 @@ export function ChatRoomView({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_40%),linear-gradient(180deg,rgba(11,13,19,0.92),rgba(7,8,12,0.96))] px-3 py-4 md:px-4">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_40%),linear-gradient(180deg,rgba(11,13,19,0.92),rgba(7,8,12,0.96))] px-2.5 py-3 md:px-4 md:py-4">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 md:gap-4">
           {isConnecting && (
             <div className="flex justify-center">
@@ -755,23 +829,99 @@ export function ChatRoomView({
               </div>
             </div>
           )}
-          {messages.map((msg) => (
+          {messages.map((msg) => {
+            const remainingSeconds =
+              typeof msg.imageExpiresAtMs === "number" && msg.imageExpiresAtMs > nowMs
+                ? Math.ceil((msg.imageExpiresAtMs - nowMs) / 1000)
+                : null;
+            const senderImageExpired =
+              msg.author === "you" &&
+              msg.imageViewTimerSeconds !== undefined &&
+              msg.imageViewTimerSeconds > 0 &&
+              typeof msg.imageExpiresAtMs === "number" &&
+              remainingSeconds === null;
+            const senderImageViewed =
+              msg.author === "you" &&
+              msg.imageViewTimerSeconds !== undefined &&
+              msg.imageViewTimerSeconds > 0 &&
+              (typeof msg.imageExpiresAtMs === "number" || typeof msg.imageRevealAtMs === "number");
+
+            return (
             <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
-              <div className={`flex max-w-[88%] flex-col gap-1 ${msg.author === "you" ? "items-end" : "items-start"}`}>
-                <div className={`rounded-2xl px-4 py-3 text-[15px] leading-relaxed shadow-sm ${
+              <div className={`flex max-w-[94%] flex-col gap-1 sm:max-w-[88%] ${msg.author === "you" ? "items-end" : "items-start"}`}>
+                <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm sm:px-4 sm:py-3 sm:text-[15px] ${
                   msg.author === "you"
                     ? "rounded-br-sm bg-pink-700 text-white"
                     : "rounded-bl-sm border border-white/10 bg-white/[0.04] text-white/90"
-                }`}>
+                } ${msg.isPending ? "opacity-70" : "opacity-100"}`}>
                   {msg.text}
-                  {msg.image && (
-                    <Image src={msg.image} alt="Sent" width={300} height={200} className="mt-2 rounded-xl" unoptimized />
+                  {msg.imageDeleted && (
+                    <p className="mt-2 rounded-lg border border-white/15 bg-black/25 px-2 py-1 text-xs font-semibold text-white/70">
+                      Timer ran out. Image deleted.
+                    </p>
+                  )}
+                  {msg.image && msg.author === "you" && !msg.imageDeleted && !senderImageExpired && (
+                    <div className="mt-2 space-y-1">
+                      <Image src={msg.image} alt="Sent" width={300} height={200} className="rounded-xl" unoptimized />
+                      {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && (
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/80">
+                          {senderImageViewed
+                            ? remainingSeconds !== null
+                              ? `Stranger viewed • ${remainingSeconds}s left`
+                              : "Stranger viewed"
+                            : "Waiting for stranger to view"}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {msg.image && msg.author === "you" && (msg.imageDeleted || senderImageExpired) && (
+                    <p className="mt-2 rounded-lg border border-white/15 bg-black/25 px-2 py-1 text-xs font-semibold text-white/70">
+                      Timer ran out. Image deleted.
+                    </p>
+                  )}
+                  {msg.image && msg.author === "stranger" && !msg.imageDeleted && (
+                    msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && !revealedTimedImageIds.has(msg.id) ? (
+                      <div className="group relative mt-2 block w-full overflow-hidden rounded-xl">
+                        <Image src={msg.image} alt="Timed image" width={300} height={200} className="rounded-xl blur-md brightness-75 transition group-hover:scale-[1.01]" unoptimized />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRevealedTimedImageIds((current) => {
+                              const next = new Set(current);
+                              next.add(msg.id);
+                              return next;
+                            });
+                            onRevealTimedImage(msg.id, msg.imageViewTimerSeconds ?? 0);
+                          }}
+                          className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs font-extrabold uppercase tracking-[0.08em] text-white"
+                        >
+                          <span>{`Tap to view (${msg.imageViewTimerSeconds}s)`}</span>
+                          <span className="text-[10px] font-semibold text-white/80">
+                            {remainingSeconds !== null ? `Timer running: ${remainingSeconds}s` : "Timer starts after tap"}
+                          </span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-1">
+                        <Image src={msg.image} alt="Sent" width={300} height={200} className="rounded-xl" unoptimized />
+                        {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && remainingSeconds !== null && (
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/80">
+                            {remainingSeconds}s left
+                          </p>
+                        )}
+                      </div>
+                    )
+                  )}
+                  {msg.isPending && (
+                    <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/60">
+                      Sending...
+                    </p>
                   )}
                 </div>
                 <span className="px-1 text-[10px] text-white/25">{msg.sentAt}</span>
               </div>
             </div>
-          ))}
+          );})}
           {!isConnecting && strangerIsTyping && (
             <div className="flex justify-start">
               <div className="rounded-2xl rounded-bl-sm border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-white/65">
@@ -783,65 +933,101 @@ export function ChatRoomView({
         </div>
       </div>
 
-      <footer className="border-t border-white/10 bg-[linear-gradient(180deg,rgba(10,11,15,0.92),rgba(6,7,10,0.98))] p-3 md:p-4">
+      <footer className="border-t border-white/10 bg-[linear-gradient(180deg,rgba(10,11,15,0.92),rgba(6,7,10,0.98))] px-2.5 pb-[max(env(safe-area-inset-bottom),0.6rem)] pt-2.5 md:p-4">
         <div className="mx-auto w-full max-w-3xl space-y-3">
           {imagePreview && (
-            <div className="relative inline-flex max-w-full items-center gap-3 rounded-2xl border border-pink-400/35 bg-pink-400/10 p-2.5">
+            <div className="relative flex w-full max-w-full items-center gap-3 rounded-2xl border border-pink-400/35 bg-pink-400/10 p-2.5 sm:inline-flex sm:w-auto">
               <Image src={imagePreview} alt="Attachment preview" width={56} height={56} className="rounded-xl object-cover" unoptimized />
               <div className="grid gap-1">
                 <p className="max-w-[200px] truncate text-xs font-semibold text-pink-100">{selectedFileName ?? "Selected image"}</p>
-                <button onClick={clearAttachment} className="text-left text-xs font-bold text-pink-200 hover:text-pink-100">Remove image</button>
+                {isSendingMessage && (
+                  <div className="w-full max-w-[220px] space-y-1">
+                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-pink-100/90">
+                      <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-pink-100/70 border-t-transparent" />
+                      <span>
+                        {imageUploadProgress !== null ? `Uploading ${imageUploadProgress}%` : "Sending..."}
+                      </span>
+                    </div>
+                    {imageUploadProgress !== null && (
+                      <div className="h-1.5 overflow-hidden rounded-full bg-black/25">
+                        <div
+                          className="h-full rounded-full bg-pink-200 transition-all duration-200"
+                          style={{ width: `${imageUploadProgress}%` }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <label htmlFor="image-expiry" className="text-[11px] font-semibold text-pink-100/85">Timer</label>
+                  <select
+                    id="image-expiry"
+                    value={imageTimerSeconds}
+                    onChange={(event) => setImageTimerSeconds?.(Number(event.target.value))}
+                    disabled={isSendingMessage}
+                    className="rounded-md border border-pink-200/30 bg-black/30 px-2 py-1 text-[11px] font-semibold text-pink-100 outline-none"
+                  >
+                    <option value={0} className="bg-[#141722] text-white">Timer off</option>
+                    <option value={3} className="bg-[#141722] text-white">3 sec</option>
+                    <option value={5} className="bg-[#141722] text-white">5 sec</option>
+                    <option value={10} className="bg-[#141722] text-white">10 sec</option>
+                    <option value={15} className="bg-[#141722] text-white">15 sec</option>
+                  </select>
+                </div>
+                <button onClick={clearAttachment} disabled={isSendingMessage} className="text-left text-xs font-bold text-pink-200 hover:text-pink-100 disabled:opacity-45">Remove image</button>
               </div>
             </div>
           )}
 
-          <div className="relative flex items-center gap-1 rounded-2xl border border-white/12 bg-white/[0.04] p-2 transition focus-within:border-white/30 focus-within:bg-white/[0.055]">
+          <div className="grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.04] p-2 transition focus-within:border-white/30 focus-within:bg-white/[0.055]">
             <button
-              disabled={isConnecting}
+              disabled={isSendingMessage}
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-xl p-2.5 text-white/45 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+              className="inline-flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3 text-[12px] font-bold text-white/75 transition hover:border-white/30 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+              aria-label="Upload image"
             >
-              <svg className="h-6 w-6" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>
+              <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>
+              <span className="hidden sm:inline">Image</span>
             </button>
 
             <input
               type="text"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !isConnecting && sendMessage()}
+              onKeyDown={(e) => e.key === "Enter" && !isSendingMessage && sendMessage()}
               placeholder={isConnecting ? "Finding an available stranger..." : "Write a message..."}
-              disabled={isConnecting}
-              className="flex-1 border-none bg-transparent px-2 py-2 text-white outline-none placeholder:text-white/30"
+              disabled={isSendingMessage}
+              className="min-h-[46px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[15px] text-white outline-none placeholder:text-white/30 focus:border-white/25"
             />
 
             <button
               onClick={sendMessage}
-              disabled={isConnecting || (!text.trim() && !imagePreview)}
-              className="rounded-xl bg-white px-4 py-2.5 text-sm font-extrabold text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-20"
+              disabled={isSendingMessage || (!text.trim() && !imagePreview)}
+              className={`inline-flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-20 ${isSendingMessage ? "bg-pink-200 text-black" : "bg-white text-black hover:bg-white/90"}`}
             >
-              Send
+              {isSendingMessage ? (
+                <>
+                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-black/60 border-t-transparent" />
+                  <span className="animate-pulse">Sending</span>
+                </>
+              ) : (
+                "Send"
+              )}
             </button>
           </div>
+
+          {isSendingMessage && (
+            <div className="flex items-center gap-2 px-1 text-xs font-semibold text-white/65">
+              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
+              <span className="animate-pulse">Sending message...</span>
+            </div>
+          )}
+
+          {sendError && (
+            <p className="px-1 text-xs font-semibold text-rose-300">{sendError}</p>
+          )}
         </div>
       </footer>
-
-      <button
-        onClick={toggleFullscreen}
-        className="absolute bottom-3 right-3 rounded-lg border border-white/15 bg-black/45 p-2.5 text-white/80 backdrop-blur-sm transition hover:border-white/30 hover:text-white"
-        aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-      >
-        {isFullscreen ? (
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5" />
-            <path d="m3 3 6 6M21 3l-6 6M3 21l6-6M21 21l-6-6" />
-          </svg>
-        ) : (
-          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M9 3H3v6M15 3h6v6M9 21H3v-6M21 15v6h-6" />
-            <path d="M3 9 9 3M21 9l-6-6M3 15l6 6M21 15l-6 6" />
-          </svg>
-        )}
-      </button>
 
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={onSelectImage} />
     </section>

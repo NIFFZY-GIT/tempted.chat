@@ -20,6 +20,7 @@ import {
   addDoc,
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDocs,
   limit,
@@ -32,7 +33,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -101,6 +102,8 @@ const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
   );
 };
 
+const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -127,10 +130,15 @@ export default function Home() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [selectedImageFile, setSelectedImageFile] = useState<File | null>(null);
+  const [imageTimerSeconds, setImageTimerSeconds] = useState(0);
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectingStatus, setConnectingStatus] = useState("Checking availability...");
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [strangerIsTyping, setStrangerIsTyping] = useState(false);
+  const [showNextStrangerPrompt, setShowNextStrangerPrompt] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const roomUnsubRef = useRef<(() => void) | null>(null);
@@ -139,7 +147,9 @@ export default function Home() {
   const retryMatchIntervalRef = useRef<number | null>(null);
   const heartbeatIntervalRef = useRef<number | null>(null);
   const typingIdleTimeoutRef = useRef<number | null>(null);
+  const imageCleanupIntervalRef = useRef<number | null>(null);
   const selfTypingRef = useRef(false);
+  const activeRoomIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
@@ -234,6 +244,9 @@ export default function Home() {
       if (typingIdleTimeoutRef.current) {
         window.clearTimeout(typingIdleTimeoutRef.current);
       }
+      if (imageCleanupIntervalRef.current) {
+        window.clearInterval(imageCleanupIntervalRef.current);
+      }
 
       if (imagePreview) {
         URL.revokeObjectURL(imagePreview);
@@ -242,10 +255,27 @@ export default function Home() {
   }, [imagePreview]);
 
   useEffect(() => {
+    activeRoomIdRef.current = activeRoomId;
+  }, [activeRoomId]);
+
+  useEffect(() => {
     if (!user) {
+      waitingUnsubRef.current?.();
+      waitingUnsubRef.current = null;
       setIsConnecting(false);
       setActiveRoomId(null);
       setMessages([]);
+      return;
+    }
+
+    if (activeRoomId) {
+      waitingUnsubRef.current?.();
+      waitingUnsubRef.current = null;
+      return;
+    }
+
+    if (showNextStrangerPrompt) {
+      setIsConnecting(false);
       return;
     }
 
@@ -256,15 +286,18 @@ export default function Home() {
     waitingUnsubRef.current?.();
     waitingUnsubRef.current = onSnapshot(waitingRef, (snapshot) => {
       if (!snapshot.exists()) {
-        if (!activeRoomId) {
+        if (!activeRoomIdRef.current) {
           setConnectingStatus("Waiting for available strangers...");
         }
         return;
       }
 
       const data = snapshot.data() as WaitingUser;
-      if (data.status === "matched" && typeof data.roomId === "string" && data.roomId.length > 0) {
-        setActiveRoomId(data.roomId);
+      const matchedRoomId = data.roomId;
+      if (data.status === "matched" && typeof matchedRoomId === "string" && matchedRoomId.length > 0) {
+        if (activeRoomIdRef.current !== matchedRoomId) {
+          setActiveRoomId(matchedRoomId);
+        }
       }
     });
 
@@ -272,6 +305,17 @@ export default function Home() {
       waitingUnsubRef.current?.();
       waitingUnsubRef.current = null;
     };
+  }, [activeRoomId, showNextStrangerPrompt, user]);
+
+  useEffect(() => {
+    if (!user || !activeRoomId) {
+      return;
+    }
+
+    cleanupWaitIntervals();
+    void deleteDoc(doc(db, "waitingUsers", user.uid)).catch(() => {
+      // Ignore if queue entry already removed.
+    });
   }, [activeRoomId, user]);
 
   useEffect(() => {
@@ -289,62 +333,122 @@ export default function Home() {
     const messagesRef = query(collection(roomRef, "messages"), orderBy("createdAt", "asc"));
 
     roomUnsubRef.current?.();
-    roomUnsubRef.current = onSnapshot(roomRef, (snapshot) => {
-      if (!snapshot.exists()) {
-        return;
-      }
+    roomUnsubRef.current = onSnapshot(
+      roomRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          return;
+        }
 
-      const roomData = snapshot.data() as {
-        participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string }>;
-        typingBy?: Record<string, boolean>;
-        status?: string;
-      };
+        setIsConnecting(false);
 
-      const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
-      if (stranger) {
-        setStrangerProfile({
-          gender: stranger.gender,
-          age: stranger.age,
-          countryCode: stranger.countryCode,
-        });
-      }
+        const roomData = snapshot.data() as {
+          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string }>;
+          typingBy?: Record<string, boolean>;
+          status?: string;
+          endedBy?: string;
+        };
 
-      if (roomData.status === "ended") {
-        setIsConnecting(true);
-        setConnectingStatus("Stranger left. Finding a new one...");
-      }
+        const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
+        if (stranger) {
+          setStrangerProfile({
+            gender: stranger.gender,
+            age: stranger.age,
+            countryCode: stranger.countryCode,
+          });
+        }
 
-      const isOtherUserTyping = Object.entries(roomData.typingBy ?? {}).some(
-        ([uid, typing]) => uid !== user.uid && Boolean(typing),
-      );
-      setStrangerIsTyping(isOtherUserTyping);
-    });
+        if (roomData.status === "ended") {
+          if (roomData.endedBy && roomData.endedBy !== user.uid) {
+            setShowNextStrangerPrompt(true);
+            setConnectingStatus(STRANGER_LEFT_PROMPT);
+            setIsConnecting(false);
+            setStrangerIsTyping(false);
+            setMessages((current) => {
+              const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
+              if (alreadyNotified) {
+                return current;
+              }
+
+              const now = new Date();
+              return [
+                ...current,
+                {
+                  id: `system-${Date.now()}`,
+                  author: "stranger",
+                  text: STRANGER_LEFT_PROMPT,
+                  sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+                },
+              ];
+            });
+            setActiveRoomId(null);
+            return;
+          }
+        }
+
+        const isOtherUserTyping = Object.entries(roomData.typingBy ?? {}).some(
+          ([uid, typing]) => uid !== user.uid && Boolean(typing),
+        );
+        setStrangerIsTyping(isOtherUserTyping);
+      },
+      () => {
+        setIsConnecting(false);
+        setConnectingStatus("Realtime connection lost. Reconnecting...");
+      },
+    );
 
     roomMessagesUnsubRef.current?.();
-    roomMessagesUnsubRef.current = onSnapshot(messagesRef, (snapshot) => {
-      const nextMessages: ChatMessage[] = snapshot.docs.map((messageDoc, index) => {
-        const data = messageDoc.data() as {
-          senderId?: string;
-          text?: string;
-          imageUrl?: string;
-          createdAt?: { toDate?: () => Date };
-        };
+    roomMessagesUnsubRef.current = onSnapshot(
+      messagesRef,
+      (snapshot) => {
+        const nextMessages: ChatMessage[] = snapshot.docs.map((messageDoc) => {
+          const data = messageDoc.data() as {
+            senderId?: string;
+            clientMessageId?: string;
+            text?: string;
+            imageUrl?: string;
+            imageViewTimerSeconds?: number | null;
+            imageRevealAtMs?: number | null;
+            imageExpiresAtMs?: number | null;
+            imageDeleted?: boolean;
+            createdAt?: { toDate?: () => Date };
+          };
 
-        const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+          const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
 
-        return {
-          id: index + 1,
-          author: data.senderId === user.uid ? "you" : "stranger",
-          text: data.text,
-          image: data.imageUrl,
-          sentAt: `${String(createdAtDate.getHours()).padStart(2, "0")}:${String(createdAtDate.getMinutes()).padStart(2, "0")}`,
-        };
-      });
+          return {
+            id: messageDoc.id,
+            author: data.senderId === user.uid ? "you" : "stranger",
+            clientMessageId: data.clientMessageId,
+            text: data.text,
+            image: data.imageUrl,
+            imageViewTimerSeconds:
+              typeof data.imageViewTimerSeconds === "number" && data.imageViewTimerSeconds > 0
+                ? data.imageViewTimerSeconds
+                : undefined,
+            imageRevealAtMs:
+              typeof data.imageRevealAtMs === "number" && data.imageRevealAtMs > 0
+                ? data.imageRevealAtMs
+                : undefined,
+            imageExpiresAtMs:
+              typeof data.imageExpiresAtMs === "number" && data.imageExpiresAtMs > 0
+                ? data.imageExpiresAtMs
+                : undefined,
+            imageDeleted: Boolean(data.imageDeleted),
+            sentAt: `${String(createdAtDate.getHours()).padStart(2, "0")}:${String(createdAtDate.getMinutes()).padStart(2, "0")}`,
+          };
+        });
 
-      setMessages(nextMessages);
-      setIsConnecting(false);
-      setConnectingStatus("Connected");
-    });
+        setMessages(nextMessages);
+        setIsConnecting(false);
+        setConnectingStatus("Connected");
+        setShowNextStrangerPrompt(false);
+      },
+      () => {
+        setIsConnecting(false);
+        setConnectingStatus("Message sync lost. Reconnecting...");
+      },
+    );
 
     return () => {
       roomUnsubRef.current?.();
@@ -353,6 +457,66 @@ export default function Home() {
       roomMessagesUnsubRef.current = null;
     };
   }, [activeRoomId, user]);
+
+  useEffect(() => {
+    if (!activeRoomId) {
+      if (imageCleanupIntervalRef.current) {
+        window.clearInterval(imageCleanupIntervalRef.current);
+        imageCleanupIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const cleanupExpiredImages = async () => {
+      const expiredSnapshot = await getDocs(
+        query(
+          collection(db, "rooms", activeRoomId, "messages"),
+          where("imageExpiresAtMs", "<=", Date.now()),
+          limit(20),
+        ),
+      );
+
+      await Promise.all(
+        expiredSnapshot.docs.map(async (messageDoc) => {
+          const data = messageDoc.data() as { imagePath?: string | null; text?: string | null; imageDeleted?: boolean };
+
+          if (data.imageDeleted) {
+            return;
+          }
+
+          if (data.imagePath) {
+            try {
+              await deleteObject(ref(storage, data.imagePath));
+            } catch {
+              // Ignore if already deleted.
+            }
+          }
+
+          await updateDoc(messageDoc.ref, {
+            imageUrl: deleteField(),
+            imagePath: deleteField(),
+            imageDeleted: true,
+            imageDeletedAt: serverTimestamp(),
+            imageExpiresAtMs: deleteField(),
+            imageRevealAtMs: deleteField(),
+            text: data.text ?? "Timer ran out. Image deleted.",
+          });
+        }),
+      );
+    };
+
+    void cleanupExpiredImages();
+    imageCleanupIntervalRef.current = window.setInterval(() => {
+      void cleanupExpiredImages();
+    }, 1000);
+
+    return () => {
+      if (imageCleanupIntervalRef.current) {
+        window.clearInterval(imageCleanupIntervalRef.current);
+        imageCleanupIntervalRef.current = null;
+      }
+    };
+  }, [activeRoomId]);
 
   const cleanupWaitIntervals = () => {
     if (retryMatchIntervalRef.current) {
@@ -420,6 +584,7 @@ export default function Home() {
       return;
     }
 
+    setShowNextStrangerPrompt(false);
     await setTypingStatus(false);
 
     try {
@@ -557,6 +722,7 @@ export default function Home() {
     cleanupWaitIntervals();
     setIsConnecting(true);
     setConnectingStatus("Checking availability...");
+    setShowNextStrangerPrompt(false);
     setMessages([]);
     setText("");
     clearAttachment();
@@ -629,6 +795,8 @@ export default function Home() {
     setImagePreview(null);
     setSelectedFileName(null);
     setSelectedImageFile(null);
+    setImageTimerSeconds(0);
+    setImageUploadProgress(null);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -636,35 +804,111 @@ export default function Home() {
   };
 
   const sendMessage = async () => {
-    if (!user || !activeRoomId || isConnecting || (!text.trim() && !selectedImageFile)) {
+    if (!user || !activeRoomId || isSendingMessage || (!text.trim() && !selectedImageFile)) {
       return;
     }
 
+    setSendError(null);
+    const outgoingText = text.trim() || null;
+
     let imageUrl: string | undefined;
+    let imagePath: string | null = null;
+    let imageViewTimer: number | null = null;
+    setIsSendingMessage(true);
+    setImageUploadProgress(selectedImageFile ? 0 : null);
 
-    if (selectedImageFile) {
-      const uploadRef = ref(
-        storage,
-        `chatUploads/${activeRoomId}/${user.uid}/${Date.now()}-${selectedImageFile.name}`,
-      );
-      await uploadBytes(uploadRef, selectedImageFile);
-      imageUrl = await getDownloadURL(uploadRef);
+    try {
+      if (selectedImageFile) {
+        imagePath = `chatUploads/${activeRoomId}/${user.uid}/${Date.now()}-${selectedImageFile.name}`;
+        const uploadRef = ref(storage, imagePath);
+        const uploadTask = uploadBytesResumable(uploadRef, selectedImageFile);
+
+        await new Promise<void>((resolve, reject) => {
+          uploadTask.on(
+            "state_changed",
+            (snapshot) => {
+              if (snapshot.totalBytes === 0) {
+                return;
+              }
+
+              const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+              setImageUploadProgress(progress);
+            },
+            reject,
+            resolve,
+          );
+        });
+
+        imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+        imageViewTimer = imageTimerSeconds > 0 ? imageTimerSeconds : null;
+      }
+
+      await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
+        senderId: user.uid,
+        text: outgoingText,
+        imageUrl: imageUrl ?? null,
+        imagePath,
+        imageViewTimerSeconds: imageViewTimer,
+        imageRevealAtMs: null,
+        imageExpiresAtMs: null,
+        imageDeleted: false,
+        createdAt: serverTimestamp(),
+      });
+
+      if (typingIdleTimeoutRef.current) {
+        window.clearTimeout(typingIdleTimeoutRef.current);
+        typingIdleTimeoutRef.current = null;
+      }
+
+      await setTypingStatus(false);
+      setText("");
+      clearAttachment();
+    } catch {
+      setSendError("Send failed. Image upload may be blocked (CORS/rules). Try again.");
+    } finally {
+      setIsSendingMessage(false);
+      setImageUploadProgress(null);
+    }
+  };
+
+  const onRevealTimedImage = async (messageId: string, timerSeconds: number) => {
+    if (!activeRoomId || timerSeconds <= 0) {
+      return;
     }
 
-    await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
-      senderId: user.uid,
-      text: text.trim() || null,
-      imageUrl: imageUrl ?? null,
-      createdAt: serverTimestamp(),
-    });
+    const messageRef = doc(db, "rooms", activeRoomId, "messages", messageId);
 
-    if (typingIdleTimeoutRef.current) {
-      window.clearTimeout(typingIdleTimeoutRef.current);
-      typingIdleTimeoutRef.current = null;
+    try {
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(messageRef);
+        if (!snapshot.exists()) {
+          return;
+        }
+
+        const data = snapshot.data() as {
+          senderId?: string;
+          imageUrl?: string | null;
+          imageDeleted?: boolean;
+          imageExpiresAtMs?: number | null;
+        };
+
+        if (!data.imageUrl || data.imageDeleted || typeof data.imageExpiresAtMs === "number") {
+          return;
+        }
+
+        if (data.senderId === user?.uid) {
+          return;
+        }
+
+        const nowMs = Date.now();
+        transaction.update(messageRef, {
+          imageRevealAtMs: nowMs,
+          imageExpiresAtMs: nowMs + timerSeconds * 1000,
+        });
+      });
+    } catch {
+      // Ignore reveal race conditions.
     }
-    await setTypingStatus(false);
-    setText("");
-    clearAttachment();
   };
 
   const loginAnonymously = async () => {
@@ -945,7 +1189,7 @@ export default function Home() {
 
   return (
     <>
-      <main className="screen">
+      <main className="screen screen-chat">
         <TopNav
           isAuthenticated={isAuthenticated}
           onLogin={() => {
@@ -961,16 +1205,23 @@ export default function Home() {
           chatFilters={chatFilters}
           isConnecting={isConnecting}
           connectingStatus={connectingStatus}
+          showNextStrangerPrompt={showNextStrangerPrompt}
           strangerIsTyping={strangerIsTyping}
           messages={messages}
           text={text}
           setText={handleTextChange}
           sendMessage={sendMessage}
+          onRevealTimedImage={onRevealTimedImage}
           fileInputRef={fileInputRef}
           onSelectImage={onSelectImage}
           clearAttachment={clearAttachment}
           imagePreview={imagePreview}
           selectedFileName={selectedFileName}
+          imageTimerSeconds={imageTimerSeconds}
+          setImageTimerSeconds={setImageTimerSeconds}
+          isSendingMessage={isSendingMessage}
+          imageUploadProgress={imageUploadProgress}
+          sendError={sendError}
           onLeaveChat={(filters) => {
             void (async () => {
               await markRoomEnded();
@@ -985,9 +1236,14 @@ export default function Home() {
               setChatFilters(null);
             })();
           }}
+          onNextStranger={() => {
+            void startSearching(chatFilters);
+          }}
         />
       </main>
-      <SiteFooter />
+      <div className="hidden md:block">
+        <SiteFooter />
+      </div>
     </>
   );
 }
