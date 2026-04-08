@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tempted Chat",
+  title: "TEMPTED.CHAT",
   description: "Google-login gated random chat UI with image messaging.",
 };
 
