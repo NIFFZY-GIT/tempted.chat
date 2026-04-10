@@ -104,6 +104,8 @@ const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
 };
 
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
+const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
+const ROOM_PRESENCE_TIMEOUT_MS = 15000;
 
 type PersistedChatSession = {
   roomId: string;
@@ -177,11 +179,13 @@ export default function Home() {
   const waitingUnsubRef = useRef<(() => void) | null>(null);
   const retryMatchIntervalRef = useRef<number | null>(null);
   const heartbeatIntervalRef = useRef<number | null>(null);
+  const roomPresenceIntervalRef = useRef<number | null>(null);
   const typingIdleTimeoutRef = useRef<number | null>(null);
   const imageCleanupIntervalRef = useRef<number | null>(null);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
   const hasAttemptedSessionRestoreRef = useRef(false);
+  const disconnectHandledRoomRef = useRef<string | null>(null);
 
   const formatFirebaseError = (error: unknown): string => {
     const fallback = "Unknown error";
@@ -343,6 +347,9 @@ export default function Home() {
       if (heartbeatIntervalRef.current) {
         window.clearInterval(heartbeatIntervalRef.current);
       }
+      if (roomPresenceIntervalRef.current) {
+        window.clearInterval(roomPresenceIntervalRef.current);
+      }
       if (typingIdleTimeoutRef.current) {
         window.clearTimeout(typingIdleTimeoutRef.current);
       }
@@ -363,6 +370,40 @@ export default function Home() {
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId;
   }, [activeRoomId]);
+
+  useEffect(() => {
+    if (!activeRoomId || !user) {
+      if (roomPresenceIntervalRef.current) {
+        window.clearInterval(roomPresenceIntervalRef.current);
+        roomPresenceIntervalRef.current = null;
+      }
+      return;
+    }
+
+    const roomRef = doc(db, "rooms", activeRoomId);
+    const sendPresence = async () => {
+      try {
+        await updateDoc(roomRef, {
+          [`presenceBy.${user.uid}`]: Date.now(),
+          presenceUpdatedAt: serverTimestamp(),
+        });
+      } catch {
+        // Ignore transient presence update failures.
+      }
+    };
+
+    void sendPresence();
+    roomPresenceIntervalRef.current = window.setInterval(() => {
+      void sendPresence();
+    }, ROOM_PRESENCE_HEARTBEAT_MS);
+
+    return () => {
+      if (roomPresenceIntervalRef.current) {
+        window.clearInterval(roomPresenceIntervalRef.current);
+        roomPresenceIntervalRef.current = null;
+      }
+    };
+  }, [activeRoomId, user]);
 
   useEffect(() => {
     if (!user) {
@@ -519,6 +560,7 @@ export default function Home() {
 
     const roomRef = doc(db, "rooms", activeRoomId);
     const messagesRef = query(collection(roomRef, "messages"), orderBy("createdAt", "asc"));
+    disconnectHandledRoomRef.current = null;
 
     roomUnsubRef.current?.();
     roomUnsubRef.current = onSnapshot(
@@ -536,6 +578,7 @@ export default function Home() {
         const roomData = snapshot.data() as {
           participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string }>;
           typingBy?: Record<string, boolean>;
+          presenceBy?: Record<string, number>;
           status?: string;
           endedBy?: string;
         };
@@ -575,6 +618,54 @@ export default function Home() {
             setActiveRoomId(null);
             return;
           }
+        }
+
+        const otherParticipant = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
+        const otherUid = otherParticipant?.uid;
+        const otherPresenceMs = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
+        const otherTimedOut =
+          typeof otherPresenceMs === "number" && Date.now() - otherPresenceMs > ROOM_PRESENCE_TIMEOUT_MS;
+
+        if (
+          otherUid &&
+          otherTimedOut &&
+          roomData.status !== "ended" &&
+          disconnectHandledRoomRef.current !== activeRoomId
+        ) {
+          disconnectHandledRoomRef.current = activeRoomId;
+          setShowNextStrangerPrompt(true);
+          setConnectingStatus(STRANGER_LEFT_PROMPT);
+          setIsConnecting(false);
+          setStrangerIsTyping(false);
+          setMessages((current) => {
+            const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
+            if (alreadyNotified) {
+              return current;
+            }
+
+            const now = new Date();
+            return [
+              ...current,
+              {
+                id: `system-${Date.now()}`,
+                author: "stranger",
+                text: STRANGER_LEFT_PROMPT,
+                sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+              },
+            ];
+          });
+          setActiveRoomId(null);
+
+          void updateDoc(roomRef, {
+            status: "ended",
+            endedBy: user.uid,
+            endedAt: serverTimestamp(),
+            endedReason: "presence-timeout",
+          }).catch(() => {
+            // Ignore timeout end race conditions.
+          });
+
+          return;
         }
 
         const isOtherUserTyping = Object.entries(roomData.typingBy ?? {}).some(
