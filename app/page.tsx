@@ -364,6 +364,29 @@ export default function Home() {
     return cipherKey;
   };
 
+  const waitForRoomCipherKey = async (timeoutMs = 4000): Promise<CryptoKey | null> => {
+    if (roomCipherKeyRef.current) {
+      return roomCipherKeyRef.current;
+    }
+
+    const startedAt = Date.now();
+
+    return new Promise((resolve) => {
+      const intervalId = window.setInterval(() => {
+        if (roomCipherKeyRef.current) {
+          window.clearInterval(intervalId);
+          resolve(roomCipherKeyRef.current);
+          return;
+        }
+
+        if (Date.now() - startedAt >= timeoutMs) {
+          window.clearInterval(intervalId);
+          resolve(null);
+        }
+      }, 120);
+    });
+  };
+
   const formatFirebaseError = (error: unknown): string => {
     const fallback = "Unknown error";
 
@@ -1516,9 +1539,9 @@ export default function Home() {
       return;
     }
 
-    const roomKey = roomCipherKeyRef.current;
+    const roomKey = await waitForRoomCipherKey();
     if (!roomKey) {
-      setSendError("Secure channel is not ready yet. Please wait and try again.");
+      setSendError("Secure channel is still negotiating. Please wait a moment and try again.");
       return;
     }
 
