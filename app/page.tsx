@@ -1544,16 +1544,17 @@ export default function Home() {
       setText("");
       clearAttachment();
     } catch (error) {
+      const detailedError = formatFirebaseError(error);
       console.error("Message send failed", {
         roomId: activeRoomId,
         uid: user.uid,
         hasImage: Boolean(selectedImageFile),
-        error: formatFirebaseError(error),
+        error: detailedError,
       });
       setSendError(
         selectedImageFile
-          ? "Send failed. Image upload or message write was blocked. Check console and Firebase rules."
-          : "Send failed. Message write was blocked. Check console and Firebase rules.",
+          ? `Send failed. Image upload or message write was blocked (${detailedError}).`
+          : `Send failed. Message write was blocked (${detailedError}).`,
       );
     } finally {
       setIsSendingMessage(false);
