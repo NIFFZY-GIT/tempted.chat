@@ -28,6 +28,7 @@ import {
   orderBy,
   query,
   runTransaction,
+  type FirestoreError,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -151,6 +152,18 @@ export default function Home() {
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
 
+  const formatFirebaseError = (error: unknown): string => {
+    const fallback = "Unknown error";
+
+    if (typeof error === "object" && error !== null) {
+      const maybeCode = "code" in error ? String(error.code) : fallback;
+      const maybeMessage = "message" in error ? String(error.message) : fallback;
+      return `${maybeCode}: ${maybeMessage}`;
+    }
+
+    return typeof error === "string" ? error : fallback;
+  };
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
@@ -247,7 +260,11 @@ export default function Home() {
       if (imageCleanupIntervalRef.current) {
         window.clearInterval(imageCleanupIntervalRef.current);
       }
+    };
+  }, []);
 
+  useEffect(() => {
+    return () => {
       if (imagePreview) {
         URL.revokeObjectURL(imagePreview);
       }
@@ -391,7 +408,12 @@ export default function Home() {
         );
         setStrangerIsTyping(isOtherUserTyping);
       },
-      () => {
+      (error: FirestoreError) => {
+        console.error("Room subscription failed", {
+          roomId: activeRoomId,
+          uid: user.uid,
+          error: formatFirebaseError(error),
+        });
         setIsConnecting(false);
         setConnectingStatus("Realtime connection lost. Reconnecting...");
       },
@@ -444,7 +466,12 @@ export default function Home() {
         setConnectingStatus("Connected");
         setShowNextStrangerPrompt(false);
       },
-      () => {
+      (error: FirestoreError) => {
+        console.error("Message subscription failed", {
+          roomId: activeRoomId,
+          uid: user.uid,
+          error: formatFirebaseError(error),
+        });
         setIsConnecting(false);
         setConnectingStatus("Message sync lost. Reconnecting...");
       },
@@ -468,41 +495,53 @@ export default function Home() {
     }
 
     const cleanupExpiredImages = async () => {
-      const expiredSnapshot = await getDocs(
-        query(
-          collection(db, "rooms", activeRoomId, "messages"),
-          where("imageExpiresAtMs", "<=", Date.now()),
-          limit(20),
-        ),
-      );
+      try {
+        const expiredSnapshot = await getDocs(
+          query(
+            collection(db, "rooms", activeRoomId, "messages"),
+            where("imageExpiresAtMs", "<=", Date.now()),
+            limit(20),
+          ),
+        );
 
-      await Promise.all(
-        expiredSnapshot.docs.map(async (messageDoc) => {
-          const data = messageDoc.data() as { imagePath?: string | null; text?: string | null; imageDeleted?: boolean };
+        await Promise.all(
+          expiredSnapshot.docs.map(async (messageDoc) => {
+            const data = messageDoc.data() as {
+              imageUrl?: string | null;
+              imagePath?: string | null;
+              text?: string | null;
+              imageDeleted?: boolean;
+            };
 
-          if (data.imageDeleted) {
-            return;
-          }
-
-          if (data.imagePath) {
-            try {
-              await deleteObject(ref(storage, data.imagePath));
-            } catch {
-              // Ignore if already deleted.
+            if (data.imageDeleted || (!data.imagePath && !data.imageUrl)) {
+              return;
             }
-          }
 
-          await updateDoc(messageDoc.ref, {
-            imageUrl: deleteField(),
-            imagePath: deleteField(),
-            imageDeleted: true,
-            imageDeletedAt: serverTimestamp(),
-            imageExpiresAtMs: deleteField(),
-            imageRevealAtMs: deleteField(),
-            text: data.text ?? "Timer ran out. Image deleted.",
-          });
-        }),
-      );
+            if (data.imagePath) {
+              try {
+                await deleteObject(ref(storage, data.imagePath));
+              } catch {
+                // Ignore if already deleted.
+              }
+            }
+
+            await updateDoc(messageDoc.ref, {
+              imageUrl: deleteField(),
+              imagePath: deleteField(),
+              imageDeleted: true,
+              imageDeletedAt: serverTimestamp(),
+              imageExpiresAtMs: deleteField(),
+              imageRevealAtMs: deleteField(),
+              text: data.text ?? "Timer ran out. Image deleted.",
+            });
+          }),
+        );
+      } catch (error) {
+        console.error("Expired image cleanup failed", {
+          roomId: activeRoomId,
+          error: formatFirebaseError(error),
+        });
+      }
     };
 
     void cleanupExpiredImages();
@@ -754,7 +793,29 @@ export default function Home() {
     }, 2500);
 
     heartbeatIntervalRef.current = window.setInterval(() => {
-      void updateDoc(waitingRef, { lastSeenAt: serverTimestamp() });
+      void (async () => {
+        try {
+          await updateDoc(waitingRef, { lastSeenAt: serverTimestamp() });
+        } catch (error) {
+          const firebaseCode =
+            typeof error === "object" && error !== null && "code" in error
+              ? String(error.code)
+              : "unknown";
+
+          if (firebaseCode === "not-found") {
+            if (heartbeatIntervalRef.current) {
+              window.clearInterval(heartbeatIntervalRef.current);
+              heartbeatIntervalRef.current = null;
+            }
+            return;
+          }
+
+          console.error("Waiting heartbeat update failed", {
+            uid: user.uid,
+            error: formatFirebaseError(error),
+          });
+        }
+      })();
     }, 8000);
   };
 
@@ -843,17 +904,32 @@ export default function Home() {
         imageViewTimer = imageTimerSeconds > 0 ? imageTimerSeconds : null;
       }
 
-      await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
+      const messagePayload: {
+        senderId: string;
+        text: string | null;
+        createdAt: ReturnType<typeof serverTimestamp>;
+        imageUrl?: string;
+        imagePath?: string;
+        imageViewTimerSeconds?: number;
+        imageRevealAtMs?: null;
+        imageExpiresAtMs?: null;
+        imageDeleted?: boolean;
+      } = {
         senderId: user.uid,
         text: outgoingText,
-        imageUrl: imageUrl ?? null,
-        imagePath,
-        imageViewTimerSeconds: imageViewTimer,
-        imageRevealAtMs: null,
-        imageExpiresAtMs: null,
-        imageDeleted: false,
         createdAt: serverTimestamp(),
-      });
+      };
+
+      if (imageUrl && imagePath) {
+        messagePayload.imageUrl = imageUrl;
+        messagePayload.imagePath = imagePath;
+        messagePayload.imageViewTimerSeconds = imageViewTimer ?? 0;
+        messagePayload.imageRevealAtMs = null;
+        messagePayload.imageExpiresAtMs = null;
+        messagePayload.imageDeleted = false;
+      }
+
+      await addDoc(collection(db, "rooms", activeRoomId, "messages"), messagePayload);
 
       if (typingIdleTimeoutRef.current) {
         window.clearTimeout(typingIdleTimeoutRef.current);
@@ -863,8 +939,18 @@ export default function Home() {
       await setTypingStatus(false);
       setText("");
       clearAttachment();
-    } catch {
-      setSendError("Send failed. Image upload may be blocked (CORS/rules). Try again.");
+    } catch (error) {
+      console.error("Message send failed", {
+        roomId: activeRoomId,
+        uid: user.uid,
+        hasImage: Boolean(selectedImageFile),
+        error: formatFirebaseError(error),
+      });
+      setSendError(
+        selectedImageFile
+          ? "Send failed. Image upload or message write was blocked. Check console and Firebase rules."
+          : "Send failed. Message write was blocked. Check console and Firebase rules.",
+      );
     } finally {
       setIsSendingMessage(false);
       setImageUploadProgress(null);
