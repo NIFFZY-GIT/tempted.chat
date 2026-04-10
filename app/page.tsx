@@ -2,6 +2,19 @@
 
 import { auth, db, googleProvider, storage } from "@/lib/firebase";
 import {
+  decryptBytes,
+  decryptString,
+  deriveRoomKey,
+  encryptBytes,
+  encryptString,
+  exportPrivateJwk,
+  exportPublicJwk,
+  generateE2EEKeyPair,
+  importPrivateJwk,
+  importPublicJwk,
+  payloadBase64ToBytes,
+} from "@/lib/e2ee";
+import {
   AuthView,
   ChatFilters,
   ChatMode,
@@ -34,7 +47,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
+import { deleteObject, getDownloadURL, listAll, ref, uploadBytesResumable, type StorageReference } from "firebase/storage";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -113,8 +126,14 @@ type PersistedChatSession = {
   chatFilters: ChatFilters;
 };
 
+type RoomE2EEKeys = {
+  publicJwk: JsonWebKey;
+  privateJwk: JsonWebKey;
+};
+
 const getChatSessionStorageKey = (uid: string): string => `chat_session_${uid}`;
 const getChatModeStorageKey = (uid: string): string => `chat_mode_${uid}`;
+const getRoomE2EEKeyStorageKey = (roomId: string, uid: string): string => `room_e2ee_${roomId}_${uid}`;
 
 const normalizeCountryCode = (countryCode?: string): string | null => {
   if (!countryCode) {
@@ -172,6 +191,7 @@ export default function Home() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [strangerIsTyping, setStrangerIsTyping] = useState(false);
   const [showNextStrangerPrompt, setShowNextStrangerPrompt] = useState(false);
+  const [e2eeReadyVersion, setE2eeReadyVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const roomUnsubRef = useRef<(() => void) | null>(null);
@@ -186,6 +206,130 @@ export default function Home() {
   const activeRoomIdRef = useRef<string | null>(null);
   const hasAttemptedSessionRestoreRef = useRef(false);
   const disconnectHandledRoomRef = useRef<string | null>(null);
+  const roomPrivateKeyRef = useRef<CryptoKey | null>(null);
+  const roomPublicJwkRef = useRef<JsonWebKey | null>(null);
+  const roomCipherKeyRef = useRef<CryptoKey | null>(null);
+  const decryptedImageUrlCacheRef = useRef<Map<string, { sourceUrl: string; objectUrl: string }>>(new Map());
+
+  const clearE2EECaches = () => {
+    for (const cacheEntry of decryptedImageUrlCacheRef.current.values()) {
+      URL.revokeObjectURL(cacheEntry.objectUrl);
+    }
+    decryptedImageUrlCacheRef.current.clear();
+    roomPrivateKeyRef.current = null;
+    roomPublicJwkRef.current = null;
+    roomCipherKeyRef.current = null;
+  };
+
+  const deleteStorageFolderRecursively = async (folderRef: StorageReference): Promise<void> => {
+    const listing = await listAll(folderRef);
+
+    await Promise.all(
+      listing.items.map(async (itemRef) => {
+        try {
+          await deleteObject(itemRef);
+        } catch {
+          // Ignore already-deleted files.
+        }
+      }),
+    );
+
+    await Promise.all(
+      listing.prefixes.map(async (childFolderRef) => {
+        await deleteStorageFolderRecursively(childFolderRef);
+      }),
+    );
+  };
+
+  const deleteRoomStorageFiles = async (roomId: string): Promise<void> => {
+    try {
+      await deleteStorageFolderRecursively(ref(storage, `chatUploads/${roomId}`));
+    } catch {
+      // Ignore if room folder does not exist or listing is blocked.
+    }
+  };
+
+  const getOrCreateRoomKeyPair = async (roomId: string, uid: string): Promise<RoomE2EEKeys> => {
+    const storageKey = getRoomE2EEKeyStorageKey(roomId, uid);
+    const existingRaw = window.sessionStorage.getItem(storageKey);
+
+    if (existingRaw) {
+      try {
+        const existing = JSON.parse(existingRaw) as RoomE2EEKeys;
+        if (existing.publicJwk && existing.privateJwk) {
+          return existing;
+        }
+      } catch {
+        window.sessionStorage.removeItem(storageKey);
+      }
+    }
+
+    const keyPair = await generateE2EEKeyPair();
+    const [publicJwk, privateJwk] = await Promise.all([
+      exportPublicJwk(keyPair.publicKey),
+      exportPrivateJwk(keyPair.privateKey),
+    ]);
+
+    const nextKeys: RoomE2EEKeys = {
+      publicJwk,
+      privateJwk,
+    };
+
+    window.sessionStorage.setItem(storageKey, JSON.stringify(nextKeys));
+    return nextKeys;
+  };
+
+  const ensureRoomE2EEKey = async (
+    roomId: string,
+    uid: string,
+    roomData: { participants?: string[]; e2eePublicKeys?: Record<string, JsonWebKey> },
+  ): Promise<CryptoKey | null> => {
+    if (roomCipherKeyRef.current) {
+      return roomCipherKeyRef.current;
+    }
+
+    const keyPair = await getOrCreateRoomKeyPair(roomId, uid);
+    roomPublicJwkRef.current = keyPair.publicJwk;
+
+    if (!roomPrivateKeyRef.current) {
+      roomPrivateKeyRef.current = await importPrivateJwk(keyPair.privateJwk);
+    }
+
+    const roomRef = doc(db, "rooms", roomId);
+    const existingPublicJwk = roomData.e2eePublicKeys?.[uid];
+
+    if (!existingPublicJwk) {
+      try {
+        await updateDoc(roomRef, {
+          [`e2eePublicKeys.${uid}`]: keyPair.publicJwk,
+          e2eeVersion: "v1",
+          e2eeUpdatedAt: serverTimestamp(),
+        });
+      } catch {
+        // Ignore races while publishing key.
+      }
+      return null;
+    }
+
+    const peerUid = roomData.participants?.find((participantId) => participantId !== uid);
+    if (!peerUid) {
+      return null;
+    }
+
+    const peerPublicJwk = roomData.e2eePublicKeys?.[peerUid];
+    if (!peerPublicJwk) {
+      return null;
+    }
+
+    const peerPublicKey = await importPublicJwk(peerPublicJwk);
+    const hadCipherKey = Boolean(roomCipherKeyRef.current);
+    const cipherKey = await deriveRoomKey(roomPrivateKeyRef.current, peerPublicKey, roomId);
+    roomCipherKeyRef.current = cipherKey;
+    if (!hadCipherKey) {
+      setE2eeReadyVersion((current) => current + 1);
+    }
+    return cipherKey;
+  };
 
   const formatFirebaseError = (error: unknown): string => {
     const fallback = "Unknown error";
@@ -197,6 +341,17 @@ export default function Home() {
     }
 
     return typeof error === "string" ? error : fallback;
+  };
+
+  const bytesToBase64 = (bytes: Uint8Array): string => {
+    let binary = "";
+    const chunk = 0x8000;
+
+    for (let index = 0; index < bytes.length; index += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+    }
+
+    return btoa(binary);
   };
 
   useEffect(() => {
@@ -356,6 +511,8 @@ export default function Home() {
       if (imageCleanupIntervalRef.current) {
         window.clearInterval(imageCleanupIntervalRef.current);
       }
+
+      clearE2EECaches();
     };
   }, []);
 
@@ -369,6 +526,14 @@ export default function Home() {
 
   useEffect(() => {
     activeRoomIdRef.current = activeRoomId;
+  }, [activeRoomId]);
+
+  useEffect(() => {
+    if (activeRoomId) {
+      return;
+    }
+
+    clearE2EECaches();
   }, [activeRoomId]);
 
   useEffect(() => {
@@ -403,7 +568,7 @@ export default function Home() {
         roomPresenceIntervalRef.current = null;
       }
     };
-  }, [activeRoomId, user]);
+  }, [activeRoomId, e2eeReadyVersion, user]);
 
   useEffect(() => {
     if (!user) {
@@ -576,12 +741,21 @@ export default function Home() {
         setIsConnecting(false);
 
         const roomData = snapshot.data() as {
+          participants?: string[];
           participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string }>;
           typingBy?: Record<string, boolean>;
           presenceBy?: Record<string, number>;
+          e2eePublicKeys?: Record<string, JsonWebKey>;
           status?: string;
           endedBy?: string;
         };
+
+        void ensureRoomE2EEKey(activeRoomId, user.uid, {
+          participants: roomData.participants,
+          e2eePublicKeys: roomData.e2eePublicKeys,
+        }).catch(() => {
+          // Ignore key negotiation races.
+        });
 
         const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
         if (stranger) {
@@ -616,6 +790,7 @@ export default function Home() {
               ];
             });
             setActiveRoomId(null);
+            void deleteRoomStorageFiles(activeRoomId);
             return;
           }
         }
@@ -656,6 +831,8 @@ export default function Home() {
           });
           setActiveRoomId(null);
 
+          void deleteRoomStorageFiles(activeRoomId);
+
           void updateDoc(roomRef, {
             status: "ended",
             endedBy: user.uid,
@@ -688,48 +865,114 @@ export default function Home() {
     roomMessagesUnsubRef.current = onSnapshot(
       messagesRef,
       (snapshot) => {
-        const nextMessages: ChatMessage[] = snapshot.docs.map((messageDoc) => {
-          const data = messageDoc.data() as {
-            senderId?: string;
-            clientMessageId?: string;
-            text?: string;
-            imageUrl?: string;
-            imageViewTimerSeconds?: number | null;
-            imageRevealAtMs?: number | null;
-            imageExpiresAtMs?: number | null;
-            imageDeleted?: boolean;
-            createdAt?: { toDate?: () => Date };
-          };
+        void (async () => {
+          const roomKey = roomCipherKeyRef.current;
 
-          const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
+          const nextMessages: ChatMessage[] = await Promise.all(
+            snapshot.docs.map(async (messageDoc) => {
+              const data = messageDoc.data() as {
+                senderId?: string;
+                clientMessageId?: string;
+                text?: string;
+                textCiphertext?: string;
+                textIv?: string;
+                imageUrl?: string;
+                imageEncrypted?: boolean;
+                imageCiphertext?: string;
+                imageIv?: string;
+                imageMimeType?: string;
+                imageViewTimerSeconds?: number | null;
+                imageRevealAtMs?: number | null;
+                imageExpiresAtMs?: number | null;
+                imageDeleted?: boolean;
+                createdAt?: { toDate?: () => Date };
+              };
 
-          return {
-            id: messageDoc.id,
-            author: data.senderId === user.uid ? "you" : "stranger",
-            clientMessageId: data.clientMessageId,
-            text: data.text,
-            image: data.imageUrl,
-            imageViewTimerSeconds:
-              typeof data.imageViewTimerSeconds === "number" && data.imageViewTimerSeconds > 0
-                ? data.imageViewTimerSeconds
-                : undefined,
-            imageRevealAtMs:
-              typeof data.imageRevealAtMs === "number" && data.imageRevealAtMs > 0
-                ? data.imageRevealAtMs
-                : undefined,
-            imageExpiresAtMs:
-              typeof data.imageExpiresAtMs === "number" && data.imageExpiresAtMs > 0
-                ? data.imageExpiresAtMs
-                : undefined,
-            imageDeleted: Boolean(data.imageDeleted),
-            sentAt: `${String(createdAtDate.getHours()).padStart(2, "0")}:${String(createdAtDate.getMinutes()).padStart(2, "0")}`,
-          };
-        });
+              const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
 
-        setMessages(nextMessages);
-        setIsConnecting(false);
-        setConnectingStatus("Connected");
-        setShowNextStrangerPrompt(false);
+              let decryptedText = data.text;
+              if (roomKey && data.textCiphertext && data.textIv) {
+                try {
+                  decryptedText = await decryptString(roomKey, {
+                    ciphertext: data.textCiphertext,
+                    iv: data.textIv,
+                  });
+                } catch {
+                  decryptedText = "Encrypted message";
+                }
+              }
+
+              let displayImageUrl = data.imageUrl;
+              if (roomKey && data.imageEncrypted && data.imageUrl && data.imageIv) {
+                const cached = decryptedImageUrlCacheRef.current.get(messageDoc.id);
+                if (cached && cached.sourceUrl === data.imageUrl) {
+                  displayImageUrl = cached.objectUrl;
+                } else {
+                  try {
+                    const encryptedBytes = new Uint8Array(await (await fetch(data.imageUrl)).arrayBuffer());
+                    const decryptedBytes = await decryptBytes(roomKey, {
+                      ciphertext: bytesToBase64(encryptedBytes),
+                      iv: data.imageIv,
+                    });
+                    const decryptedBuffer = decryptedBytes.buffer.slice(
+                      decryptedBytes.byteOffset,
+                      decryptedBytes.byteOffset + decryptedBytes.byteLength,
+                    ) as ArrayBuffer;
+                    const blob = new Blob([decryptedBuffer], { type: data.imageMimeType ?? "image/jpeg" });
+                    const objectUrl = URL.createObjectURL(blob);
+
+                    if (cached) {
+                      URL.revokeObjectURL(cached.objectUrl);
+                    }
+
+                    decryptedImageUrlCacheRef.current.set(messageDoc.id, {
+                      sourceUrl: data.imageUrl,
+                      objectUrl,
+                    });
+                    displayImageUrl = objectUrl;
+                  } catch {
+                    displayImageUrl = undefined;
+                  }
+                }
+              }
+
+              return {
+                id: messageDoc.id,
+                author: data.senderId === user.uid ? "you" : "stranger",
+                clientMessageId: data.clientMessageId,
+                text: decryptedText,
+                image: displayImageUrl,
+                imageViewTimerSeconds:
+                  typeof data.imageViewTimerSeconds === "number" && data.imageViewTimerSeconds > 0
+                    ? data.imageViewTimerSeconds
+                    : undefined,
+                imageRevealAtMs:
+                  typeof data.imageRevealAtMs === "number" && data.imageRevealAtMs > 0
+                    ? data.imageRevealAtMs
+                    : undefined,
+                imageExpiresAtMs:
+                  typeof data.imageExpiresAtMs === "number" && data.imageExpiresAtMs > 0
+                    ? data.imageExpiresAtMs
+                    : undefined,
+                imageDeleted: Boolean(data.imageDeleted),
+                sentAt: `${String(createdAtDate.getHours()).padStart(2, "0")}:${String(createdAtDate.getMinutes()).padStart(2, "0")}`,
+              };
+            }),
+          );
+
+          const validMessageIds = new Set(nextMessages.map((message) => message.id));
+          for (const [messageId, cacheEntry] of decryptedImageUrlCacheRef.current.entries()) {
+            if (!validMessageIds.has(messageId)) {
+              URL.revokeObjectURL(cacheEntry.objectUrl);
+              decryptedImageUrlCacheRef.current.delete(messageId);
+            }
+          }
+
+          setMessages(nextMessages);
+          setIsConnecting(false);
+          setConnectingStatus("Connected");
+          setShowNextStrangerPrompt(false);
+        })();
       },
       (error: FirestoreError) => {
         console.error("Message subscription failed", {
@@ -900,6 +1143,8 @@ export default function Home() {
     } catch {
       // Ignore room end race conditions.
     }
+
+    await deleteRoomStorageFiles(activeRoomId);
 
     setActiveRoomId(null);
     setMessages([]);
@@ -1134,20 +1379,48 @@ export default function Home() {
       return;
     }
 
+    const roomKey = roomCipherKeyRef.current;
+    if (!roomKey) {
+      setSendError("Secure channel is not ready yet. Please wait and try again.");
+      return;
+    }
+
     setSendError(null);
     const outgoingText = text.trim() || null;
 
     let imageUrl: string | undefined;
     let imagePath: string | null = null;
+    let imageIv: string | null = null;
+    let imageMimeType: string | null = null;
+    let imageEncrypted = false;
     let imageViewTimer: number | null = null;
+    let textCiphertext: string | null = null;
+    let textIv: string | null = null;
     setIsSendingMessage(true);
     setImageUploadProgress(selectedImageFile ? 0 : null);
 
     try {
+      if (outgoingText) {
+        const encryptedText = await encryptString(roomKey, outgoingText);
+        textCiphertext = encryptedText.ciphertext;
+        textIv = encryptedText.iv;
+      }
+
       if (selectedImageFile) {
         imagePath = `chatUploads/${activeRoomId}/${user.uid}/${Date.now()}-${selectedImageFile.name}`;
         const uploadRef = ref(storage, imagePath);
-        const uploadTask = uploadBytesResumable(uploadRef, selectedImageFile);
+        const fileBytes = new Uint8Array(await selectedImageFile.arrayBuffer());
+        const encryptedImage = await encryptBytes(roomKey, fileBytes);
+        const encryptedBytes = payloadBase64ToBytes(encryptedImage.ciphertext);
+        const encryptedBuffer = encryptedBytes.buffer.slice(
+          encryptedBytes.byteOffset,
+          encryptedBytes.byteOffset + encryptedBytes.byteLength,
+        ) as ArrayBuffer;
+        const encryptedBlob = new Blob([encryptedBuffer], {
+          type: "application/octet-stream",
+        });
+
+        const uploadTask = uploadBytesResumable(uploadRef, encryptedBlob);
 
         await new Promise<void>((resolve, reject) => {
           uploadTask.on(
@@ -1166,28 +1439,48 @@ export default function Home() {
         });
 
         imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
+        imageIv = encryptedImage.iv;
+        imageMimeType = selectedImageFile.type || "image/jpeg";
+        imageEncrypted = true;
         imageViewTimer = imageTimerSeconds > 0 ? imageTimerSeconds : null;
       }
 
       const messagePayload: {
         senderId: string;
         text: string | null;
+        textCiphertext?: string;
+        textIv?: string;
         createdAt: ReturnType<typeof serverTimestamp>;
         imageUrl?: string;
         imagePath?: string;
+        imageEncrypted?: boolean;
+        imageIv?: string;
+        imageMimeType?: string;
         imageViewTimerSeconds?: number;
         imageRevealAtMs?: null;
         imageExpiresAtMs?: null;
         imageDeleted?: boolean;
       } = {
         senderId: user.uid,
-        text: outgoingText,
+        text: null,
         createdAt: serverTimestamp(),
       };
+
+      if (textCiphertext && textIv) {
+        messagePayload.textCiphertext = textCiphertext;
+        messagePayload.textIv = textIv;
+      }
 
       if (imageUrl && imagePath) {
         messagePayload.imageUrl = imageUrl;
         messagePayload.imagePath = imagePath;
+        messagePayload.imageEncrypted = imageEncrypted;
+        if (imageIv) {
+          messagePayload.imageIv = imageIv;
+        }
+        if (imageMimeType) {
+          messagePayload.imageMimeType = imageMimeType;
+        }
         messagePayload.imageViewTimerSeconds = imageViewTimer ?? 0;
         messagePayload.imageRevealAtMs = null;
         messagePayload.imageExpiresAtMs = null;
