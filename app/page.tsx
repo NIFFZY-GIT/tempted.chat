@@ -105,6 +105,14 @@ const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
 
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 
+type PersistedChatSession = {
+  roomId: string;
+  chatMode: ChatMode;
+  chatFilters: ChatFilters;
+};
+
+const getChatSessionStorageKey = (uid: string): string => `chat_session_${uid}`;
+
 const normalizeCountryCode = (countryCode?: string): string | null => {
   if (!countryCode) {
     return null;
@@ -172,6 +180,7 @@ export default function Home() {
   const imageCleanupIntervalRef = useRef<number | null>(null);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
+  const hasAttemptedSessionRestoreRef = useRef(false);
 
   const formatFirebaseError = (error: unknown): string => {
     const fallback = "Unknown error";
@@ -356,6 +365,69 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) {
+      hasAttemptedSessionRestoreRef.current = false;
+      return;
+    }
+
+    if (hasAttemptedSessionRestoreRef.current) {
+      return;
+    }
+
+    hasAttemptedSessionRestoreRef.current = true;
+
+    const sessionRaw = window.localStorage.getItem(getChatSessionStorageKey(user.uid));
+    if (!sessionRaw) {
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(sessionRaw) as Partial<PersistedChatSession>;
+      const hasRoom = typeof parsed.roomId === "string" && parsed.roomId.length > 0;
+      const modeValid = parsed.chatMode === "text" || parsed.chatMode === "video" || parsed.chatMode === "group";
+      const filtersValid = typeof parsed.chatFilters === "object" && parsed.chatFilters !== null;
+
+      if (!hasRoom || !modeValid || !filtersValid) {
+        window.localStorage.removeItem(getChatSessionStorageKey(user.uid));
+        return;
+      }
+
+      const restoredRoomId = parsed.roomId as string;
+      const restoredMode = parsed.chatMode as ChatMode;
+      const restoredFilters = parsed.chatFilters as ChatFilters;
+
+      setChatMode(restoredMode);
+      setChatFilters(restoredFilters);
+      setActiveRoomId(restoredRoomId);
+      setIsConnecting(true);
+      setConnectingStatus("Reconnecting to your previous chat...");
+      setShowNextStrangerPrompt(false);
+    } catch {
+      window.localStorage.removeItem(getChatSessionStorageKey(user.uid));
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !hasAttemptedSessionRestoreRef.current) {
+      return;
+    }
+
+    const sessionKey = getChatSessionStorageKey(user.uid);
+
+    if (activeRoomId && chatMode && chatFilters) {
+      const payload: PersistedChatSession = {
+        roomId: activeRoomId,
+        chatMode,
+        chatFilters,
+      };
+      window.localStorage.setItem(sessionKey, JSON.stringify(payload));
+      return;
+    }
+
+    window.localStorage.removeItem(sessionKey);
+  }, [activeRoomId, chatFilters, chatMode, user]);
+
+  useEffect(() => {
+    if (!user) {
       waitingUnsubRef.current?.();
       waitingUnsubRef.current = null;
       setIsConnecting(false);
@@ -433,6 +505,9 @@ export default function Home() {
       roomRef,
       (snapshot) => {
         if (!snapshot.exists()) {
+          setIsConnecting(false);
+          setConnectingStatus("Previous chat ended.");
+          setActiveRoomId(null);
           return;
         }
 
