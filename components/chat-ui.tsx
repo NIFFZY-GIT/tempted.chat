@@ -36,6 +36,8 @@ export const starterMessages: ChatMessage[] = [
   { id: "2", author: "you", text: "Mostly electronic. You?", sentAt: "10:15 PM" },
 ];
 
+const IMAGE_DELETED_NOTICE = "Timer ran out. Image deleted.";
+
 const pickRandomGender = (): ProfileGender => {
   const genders: ProfileGender[] = ["Male", "Female", "Other"];
   return genders[Math.floor(Math.random() * genders.length)];
@@ -56,12 +58,36 @@ const COUNTRY_OPTIONS: Array<{ code: Exclude<CountryFilter, "Any">; label: strin
   { code: "KR", label: "South Korea" },
 ];
 
+const getCountryDisplayName = (country?: string): string => {
+  if (!country) {
+    return "";
+  }
+
+  const normalized = country.trim().toUpperCase() === "UK" ? "GB" : country.trim();
+
+  if (/^[A-Z]{2}$/.test(normalized.toUpperCase())) {
+    const code = normalized.toUpperCase();
+    const fromOptions = COUNTRY_OPTIONS.find((option) => option.code === code)?.label;
+    if (fromOptions) {
+      return fromOptions;
+    }
+
+    try {
+      return new Intl.DisplayNames(["en"], { type: "region" }).of(code) ?? code;
+    } catch {
+      return code;
+    }
+  }
+
+  return normalized;
+};
+
 const getCountryLabel = (countryCode: CountryFilter): string => {
   if (countryCode === "Any") {
     return "Any country";
   }
 
-  return COUNTRY_OPTIONS.find((option) => option.code === countryCode)?.label ?? countryCode;
+  return getCountryDisplayName(countryCode);
 };
 
 const pickRandomCountryCode = (): string => {
@@ -318,7 +344,7 @@ export function ProfileSetupView({
     profileCountryCode && profileCountryCode.length === 2
       ? String.fromCodePoint(...profileCountryCode.toUpperCase().split("").map((char) => 127397 + char.charCodeAt(0)))
       : "🌐";
-  const normalizedCountryName = /^[A-Z]{2}$/.test(profileCountry) ? "" : profileCountry;
+  const normalizedCountryName = getCountryDisplayName(profileCountry);
 
   return (
     <section className="w-full max-w-[640px] rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a1320] to-[#0f0d16] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] md:p-8">
@@ -830,6 +856,18 @@ export function ChatRoomView({
             </div>
           )}
           {messages.map((msg) => {
+            const isImageDeletedEvent = msg.imageDeleted || msg.text === IMAGE_DELETED_NOTICE;
+
+            if (isImageDeletedEvent) {
+              return (
+                <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
+                  <p className="rounded-full border border-amber-300/35 bg-amber-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-amber-100">
+                    {IMAGE_DELETED_NOTICE}
+                  </p>
+                </div>
+              );
+            }
+
             const remainingSeconds =
               typeof msg.imageExpiresAtMs === "number" && msg.imageExpiresAtMs > nowMs
                 ? Math.ceil((msg.imageExpiresAtMs - nowMs) / 1000)
@@ -855,11 +893,6 @@ export function ChatRoomView({
                     : "rounded-bl-sm border border-white/10 bg-white/[0.04] text-white/90"
                 } ${msg.isPending ? "opacity-70" : "opacity-100"}`}>
                   {msg.text}
-                  {msg.imageDeleted && (
-                    <p className="mt-2 rounded-lg border border-white/15 bg-black/25 px-2 py-1 text-xs font-semibold text-white/70">
-                      Timer ran out. Image deleted.
-                    </p>
-                  )}
                   {msg.image && msg.author === "you" && !msg.imageDeleted && !senderImageExpired && (
                     <div className="mt-2 space-y-1">
                       <Image src={msg.image} alt="Sent" width={300} height={200} className="rounded-xl" unoptimized />
@@ -874,11 +907,7 @@ export function ChatRoomView({
                       )}
                     </div>
                   )}
-                  {msg.image && msg.author === "you" && (msg.imageDeleted || senderImageExpired) && (
-                    <p className="mt-2 rounded-lg border border-white/15 bg-black/25 px-2 py-1 text-xs font-semibold text-white/70">
-                      Timer ran out. Image deleted.
-                    </p>
-                  )}
+                  {msg.image && msg.author === "you" && (msg.imageDeleted || senderImageExpired) && null}
                   {msg.image && msg.author === "stranger" && !msg.imageDeleted && (
                     msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && !revealedTimedImageIds.has(msg.id) ? (
                       <div className="group relative mt-2 block w-full overflow-hidden rounded-xl">
@@ -936,12 +965,22 @@ export function ChatRoomView({
       <footer className="border-t border-white/10 bg-[linear-gradient(180deg,rgba(10,11,15,0.92),rgba(6,7,10,0.98))] px-2.5 pb-[max(env(safe-area-inset-bottom),0.6rem)] pt-2.5 md:p-4">
         <div className="mx-auto w-full max-w-3xl space-y-3">
           {imagePreview && (
-            <div className="relative flex w-full max-w-full items-center gap-3 rounded-2xl border border-pink-400/35 bg-pink-400/10 p-2.5 sm:inline-flex sm:w-auto">
-              <Image src={imagePreview} alt="Attachment preview" width={56} height={56} className="rounded-xl object-cover" unoptimized />
-              <div className="grid gap-1">
-                <p className="max-w-[200px] truncate text-xs font-semibold text-pink-100">{selectedFileName ?? "Selected image"}</p>
+            <div className="relative grid w-full grid-cols-[52px_1fr] gap-2 rounded-2xl border border-pink-300/35 bg-gradient-to-r from-pink-500/12 via-fuchsia-500/8 to-transparent p-2.5 shadow-[0_10px_26px_rgba(236,72,153,0.14)] sm:grid-cols-[56px_1fr_auto] sm:items-center sm:gap-3">
+              <Image
+                src={imagePreview}
+                alt="Attachment preview"
+                width={56}
+                height={56}
+                className="h-[52px] w-[52px] rounded-lg border border-white/10 object-cover sm:h-14 sm:w-14"
+                unoptimized
+              />
+
+              <div className="min-w-0 space-y-1.5">
+                <p className="truncate text-xs font-semibold text-pink-100 sm:text-sm" title={selectedFileName ?? "Selected image"}>
+                  {selectedFileName ?? "Selected image"}
+                </p>
                 {isSendingMessage && (
-                  <div className="w-full max-w-[220px] space-y-1">
+                  <div className="w-full max-w-[280px] space-y-1">
                     <div className="flex items-center gap-1.5 text-[11px] font-semibold text-pink-100/90">
                       <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-pink-100/70 border-t-transparent" />
                       <span>
@@ -958,23 +997,38 @@ export function ChatRoomView({
                     )}
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <label htmlFor="image-expiry" className="text-[11px] font-semibold text-pink-100/85">Timer</label>
-                  <select
-                    id="image-expiry"
-                    value={imageTimerSeconds}
-                    onChange={(event) => setImageTimerSeconds?.(Number(event.target.value))}
-                    disabled={isSendingMessage}
-                    className="rounded-md border border-pink-200/30 bg-black/30 px-2 py-1 text-[11px] font-semibold text-pink-100 outline-none"
-                  >
-                    <option value={0} className="bg-[#141722] text-white">Timer off</option>
-                    <option value={3} className="bg-[#141722] text-white">3 sec</option>
-                    <option value={5} className="bg-[#141722] text-white">5 sec</option>
-                    <option value={10} className="bg-[#141722] text-white">10 sec</option>
-                    <option value={15} className="bg-[#141722] text-white">15 sec</option>
-                  </select>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-pink-100/85">Timer</span>
+                  {[0, 3, 5, 10, 15].map((seconds) => {
+                    const isActive = imageTimerSeconds === seconds;
+                    return (
+                      <button
+                        key={seconds}
+                        type="button"
+                        onClick={() => setImageTimerSeconds?.(seconds)}
+                        disabled={isSendingMessage}
+                        className={`rounded-md border px-2 py-1 text-[10px] font-bold transition ${isActive ? "border-pink-100/75 bg-pink-200 text-black" : "border-pink-200/30 bg-black/25 text-pink-100 hover:border-pink-100/55"} disabled:opacity-45`}
+                      >
+                        {seconds === 0 ? "Off" : `${seconds}s`}
+                      </button>
+                    );
+                  })}
                 </div>
-                <button onClick={clearAttachment} disabled={isSendingMessage} className="text-left text-xs font-bold text-pink-200 hover:text-pink-100 disabled:opacity-45">Remove image</button>
+
+                <button
+                  onClick={clearAttachment}
+                  disabled={isSendingMessage}
+                  className="text-left text-[11px] font-bold text-pink-200 transition hover:text-pink-100 disabled:opacity-45"
+                >
+                  Remove image
+                </button>
+              </div>
+
+              <div className="col-span-2 flex justify-end sm:col-span-1 sm:block sm:justify-self-end">
+                <span className="rounded-full border border-pink-200/30 bg-black/20 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-pink-100/85">
+                  Attachment
+                </span>
               </div>
             </div>
           )}
