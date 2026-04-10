@@ -1067,7 +1067,7 @@ export function ChatRoomView({
               <div className={`flex max-w-[94%] flex-col gap-1 sm:max-w-[88%] ${msg.author === "you" ? "items-end" : "items-start"}`}>
                 <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm sm:px-4 sm:py-3 sm:text-[15px] ${
                   msg.author === "you"
-                    ? "rounded-br-sm bg-pink-700 text-white"
+                    ? "rounded-br-sm border border-white/10 bg-pink-950 text-white"
                     : "rounded-bl-sm border border-white/10 bg-white/[0.04] text-white/90"
                 } ${msg.isPending ? "opacity-70" : "opacity-100"}`}>
                   {msg.text}
