@@ -68,6 +68,7 @@ type WaitingUser = {
   status: "searching" | "matched";
   mode: ChatMode;
   roomId?: string;
+  lastSeenAt?: { toMillis?: () => number } | number;
   filters: ChatFilters;
   profile: {
     gender: ProfileGender;
@@ -302,26 +303,33 @@ export default function Home() {
     return nextKeys;
   };
 
+  const jwkSignature = (jwk?: JsonWebKey): string => {
+    try {
+      return JSON.stringify(jwk ?? null);
+    } catch {
+      return "";
+    }
+  };
+
   const ensureRoomE2EEKey = async (
     roomId: string,
     uid: string,
     roomData: { participants?: string[]; e2eePublicKeys?: Record<string, JsonWebKey> },
   ): Promise<CryptoKey | null> => {
-    if (roomCipherKeyRef.current) {
-      return roomCipherKeyRef.current;
-    }
-
     const keyPair = await getOrCreateRoomKeyPair(roomId, uid);
+    const localPublicJwkSignature = jwkSignature(keyPair.publicJwk);
+    const activePublicJwkSignature = jwkSignature(roomPublicJwkRef.current ?? undefined);
     roomPublicJwkRef.current = keyPair.publicJwk;
 
-    if (!roomPrivateKeyRef.current) {
+    if (!roomPrivateKeyRef.current || activePublicJwkSignature !== localPublicJwkSignature) {
       roomPrivateKeyRef.current = await importPrivateJwk(keyPair.privateJwk);
     }
 
     const roomRef = doc(db, "rooms", roomId);
     const existingPublicJwk = roomData.e2eePublicKeys?.[uid];
+    const existingPublicJwkSignature = jwkSignature(existingPublicJwk);
 
-    if (!existingPublicJwk) {
+    if (!existingPublicJwk || existingPublicJwkSignature !== localPublicJwkSignature) {
       try {
         await updateDoc(roomRef, {
           [`e2eePublicKeys.${uid}`]: keyPair.publicJwk,
@@ -331,6 +339,8 @@ export default function Home() {
       } catch {
         // Ignore races while publishing key.
       }
+
+      roomCipherKeyRef.current = null;
       return null;
     }
 
@@ -1264,7 +1274,7 @@ export default function Home() {
       waitingUsersRef,
       where("status", "==", "searching"),
       where("mode", "==", mode),
-      limit(25),
+      limit(100),
     );
     const searchSnapshot = await getDocs(searchingQuery);
 
@@ -1280,17 +1290,25 @@ export default function Home() {
       },
     };
 
+    const staleThresholdMs = Date.now() - 2 * 60 * 1000;
     const candidates = searchSnapshot.docs
       .filter((candidateDoc) => candidateDoc.id !== currentUser.uid)
       .map((candidateDoc) => candidateDoc.data() as WaitingUser)
+      .filter((candidate) => {
+        const lastSeenMs =
+          typeof candidate.lastSeenAt === "number"
+            ? candidate.lastSeenAt
+            : candidate.lastSeenAt?.toMillis?.() ?? 0;
+        return lastSeenMs >= staleThresholdMs;
+      })
       .filter((candidate) => areUsersCompatible(me, candidate));
 
     if (candidates.length === 0) {
-      setConnectingStatus("Waiting for an available stranger...");
+      setConnectingStatus("Waiting for a compatible stranger...");
       return;
     }
 
-    const candidate = candidates[0];
+    const candidate = candidates[Math.floor(Math.random() * candidates.length)];
 
     try {
       const matchedRoomId = await runTransaction(db, async (transaction) => {
