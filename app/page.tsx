@@ -36,6 +36,7 @@ import {
   deleteDoc,
   deleteField,
   doc,
+  getDoc,
   getDocs,
   limit,
   onSnapshot,
@@ -364,7 +365,7 @@ export default function Home() {
     return cipherKey;
   };
 
-  const waitForRoomCipherKey = async (timeoutMs = 4000): Promise<CryptoKey | null> => {
+  const waitForRoomCipherKey = async (timeoutMs = 12000): Promise<CryptoKey | null> => {
     if (roomCipherKeyRef.current) {
       return roomCipherKeyRef.current;
     }
@@ -1539,9 +1540,32 @@ export default function Home() {
       return;
     }
 
-    const roomKey = await waitForRoomCipherKey();
+    let roomKey = roomCipherKeyRef.current;
+
     if (!roomKey) {
-      setSendError("Secure channel is still negotiating. Please wait a moment and try again.");
+      try {
+        const roomSnapshot = await getDoc(doc(db, "rooms", activeRoomId));
+        if (roomSnapshot.exists()) {
+          const roomData = roomSnapshot.data() as {
+            participants?: string[];
+            e2eePublicKeys?: Record<string, JsonWebKey>;
+          };
+          roomKey = await ensureRoomE2EEKey(activeRoomId, user.uid, {
+            participants: roomData.participants,
+            e2eePublicKeys: roomData.e2eePublicKeys,
+          });
+        }
+      } catch {
+        // Ignore transient negotiation fetch failures.
+      }
+    }
+
+    if (!roomKey) {
+      roomKey = await waitForRoomCipherKey(12000);
+    }
+
+    if (!roomKey) {
+      setSendError("Secure channel setup is taking longer than expected. Please try again in a moment.");
       return;
     }
 
