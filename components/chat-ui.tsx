@@ -11,6 +11,7 @@ export type ChatMessage = {
   text?: string;
   image?: string;
   imageUnavailable?: boolean;
+  imageDecrypting?: boolean;
   imageViewTimerSeconds?: number;
   imageRevealAtMs?: number;
   imageExpiresAtMs?: number;
@@ -1096,6 +1097,11 @@ export function ChatRoomView({
                   {!msg.image && msg.imageUnavailable && (
                     <p className="mt-2 rounded-lg border border-amber-300/35 bg-amber-400/10 px-2.5 py-2 text-[11px] font-semibold text-amber-100">
                       Image could not be displayed.
+                    </p>
+                  )}
+                  {!msg.image && msg.imageDecrypting && (
+                    <p className="mt-2 rounded-lg border border-cyan-300/35 bg-cyan-400/10 px-2.5 py-2 text-[11px] font-semibold text-cyan-100">
+                      Decrypting secure image...
                     </p>
                   )}
                   {msg.image && msg.author === "you" && (msg.imageDeleted || senderImageExpired) && null}

@@ -1034,6 +1034,7 @@ export default function Home() {
 
               let displayImageUrl = data.imageUrl;
               let imageUnavailable = false;
+              let imageDecrypting = false;
               if (roomKey && data.imageEncrypted && data.imageUrl && data.imageIv) {
                 const cached = decryptedImageUrlCacheRef.current.get(messageDoc.id);
                 if (cached && cached.sourceUrl === data.imageUrl) {
@@ -1070,15 +1071,26 @@ export default function Home() {
                     imageUnavailable = true;
                   }
                 }
+              } else if (data.imageEncrypted && data.imageUrl) {
+                displayImageUrl = undefined;
+                imageDecrypting = true;
               }
+
+              const fallbackText =
+                typeof decryptedText === "string" && decryptedText.trim().length > 0
+                  ? decryptedText
+                  : !displayImageUrl && !imageUnavailable && !imageDecrypting
+                    ? "Message unavailable"
+                    : undefined;
 
               return {
                 id: messageDoc.id,
                 author: data.senderId === user.uid ? "you" : "stranger",
                 clientMessageId: data.clientMessageId,
-                text: decryptedText,
+                text: fallbackText,
                 image: displayImageUrl,
                 imageUnavailable,
+                imageDecrypting,
                 imageViewTimerSeconds:
                   typeof data.imageViewTimerSeconds === "number" && data.imageViewTimerSeconds > 0
                     ? data.imageViewTimerSeconds
