@@ -122,6 +122,7 @@ const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
 const ROOM_PRESENCE_TIMEOUT_MS = 15000;
+const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 type PersistedChatSession = {
   roomId: string;
@@ -374,6 +375,53 @@ export default function Home() {
     }
 
     return btoa(binary);
+  };
+
+  const detectImageMimeType = (bytes: Uint8Array): string | null => {
+    if (bytes.length >= 12) {
+      if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+        return "image/jpeg";
+      }
+
+      if (
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47 &&
+        bytes[4] === 0x0d &&
+        bytes[5] === 0x0a &&
+        bytes[6] === 0x1a &&
+        bytes[7] === 0x0a
+      ) {
+        return "image/png";
+      }
+
+      if (
+        bytes[0] === 0x47 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x38 &&
+        (bytes[4] === 0x37 || bytes[4] === 0x39) &&
+        bytes[5] === 0x61
+      ) {
+        return "image/gif";
+      }
+
+      if (
+        bytes[0] === 0x52 &&
+        bytes[1] === 0x49 &&
+        bytes[2] === 0x46 &&
+        bytes[3] === 0x46 &&
+        bytes[8] === 0x57 &&
+        bytes[9] === 0x45 &&
+        bytes[10] === 0x42 &&
+        bytes[11] === 0x50
+      ) {
+        return "image/webp";
+      }
+    }
+
+    return null;
   };
 
   useEffect(() => {
@@ -949,6 +997,7 @@ export default function Home() {
               }
 
               let displayImageUrl = data.imageUrl;
+              let imageUnavailable = false;
               if (roomKey && data.imageEncrypted && data.imageUrl && data.imageIv) {
                 const cached = decryptedImageUrlCacheRef.current.get(messageDoc.id);
                 if (cached && cached.sourceUrl === data.imageUrl) {
@@ -964,7 +1013,11 @@ export default function Home() {
                       decryptedBytes.byteOffset,
                       decryptedBytes.byteOffset + decryptedBytes.byteLength,
                     ) as ArrayBuffer;
-                    const blob = new Blob([decryptedBuffer], { type: data.imageMimeType ?? "image/jpeg" });
+                    const resolvedMimeType =
+                      typeof data.imageMimeType === "string" && data.imageMimeType.startsWith("image/")
+                        ? data.imageMimeType
+                        : detectImageMimeType(decryptedBytes) ?? "image/jpeg";
+                    const blob = new Blob([decryptedBuffer], { type: resolvedMimeType });
                     const objectUrl = URL.createObjectURL(blob);
 
                     if (cached) {
@@ -978,6 +1031,7 @@ export default function Home() {
                     displayImageUrl = objectUrl;
                   } catch {
                     displayImageUrl = undefined;
+                    imageUnavailable = true;
                   }
                 }
               }
@@ -988,6 +1042,7 @@ export default function Home() {
                 clientMessageId: data.clientMessageId,
                 text: decryptedText,
                 image: displayImageUrl,
+                imageUnavailable,
                 imageViewTimerSeconds:
                   typeof data.imageViewTimerSeconds === "number" && data.imageViewTimerSeconds > 0
                     ? data.imageViewTimerSeconds
@@ -1395,10 +1450,23 @@ export default function Home() {
       return;
     }
 
+    if (!file.type.startsWith("image/")) {
+      setSendError("Only image files are supported.");
+      event.target.value = "";
+      return;
+    }
+
+    if (file.size > MAX_IMAGE_UPLOAD_BYTES) {
+      setSendError("Image is too large. Please upload an image smaller than 8MB.");
+      event.target.value = "";
+      return;
+    }
+
     if (imagePreview) {
       URL.revokeObjectURL(imagePreview);
     }
 
+    setSendError(null);
     setImagePreview(URL.createObjectURL(file));
     setSelectedFileName(file.name);
     setSelectedImageFile(file);
@@ -1422,6 +1490,11 @@ export default function Home() {
 
   const sendMessage = async () => {
     if (!user || !activeRoomId || isSendingMessage || (!text.trim() && !selectedImageFile)) {
+      return;
+    }
+
+    if (imagePreview && !selectedImageFile) {
+      setSendError("Image attachment was lost. Please select the image again.");
       return;
     }
 
@@ -1466,7 +1539,13 @@ export default function Home() {
           type: "application/octet-stream",
         });
 
-        const uploadTask = uploadBytesResumable(uploadRef, encryptedBlob);
+        const uploadTask = uploadBytesResumable(uploadRef, encryptedBlob, {
+          contentType: "application/octet-stream",
+          customMetadata: {
+            encrypted: "true",
+            originalMimeType: selectedImageFile.type || "image/jpeg",
+          },
+        });
 
         await new Promise<void>((resolve, reject) => {
           uploadTask.on(

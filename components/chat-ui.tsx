@@ -10,6 +10,7 @@ export type ChatMessage = {
   isPending?: boolean;
   text?: string;
   image?: string;
+  imageUnavailable?: boolean;
   imageViewTimerSeconds?: number;
   imageRevealAtMs?: number;
   imageExpiresAtMs?: number;
@@ -817,6 +818,7 @@ export function ChatRoomView({
 }) {
   const chatContainerRef = useRef<HTMLElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const messageInputRef = useRef<HTMLInputElement | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
@@ -881,6 +883,12 @@ export function ChatRoomView({
       return changed ? next : current;
     });
   }, [messages]);
+
+  useEffect(() => {
+    if (!isSendingMessage && !isConnecting) {
+      messageInputRef.current?.focus();
+    }
+  }, [isConnecting, isSendingMessage]);
 
   return (
     <section
@@ -1085,6 +1093,11 @@ export function ChatRoomView({
                       )}
                     </div>
                   )}
+                  {!msg.image && msg.imageUnavailable && (
+                    <p className="mt-2 rounded-lg border border-amber-300/35 bg-amber-400/10 px-2.5 py-2 text-[11px] font-semibold text-amber-100">
+                      Image could not be displayed.
+                    </p>
+                  )}
                   {msg.image && msg.author === "you" && (msg.imageDeleted || senderImageExpired) && null}
                   {msg.image && msg.author === "stranger" && !msg.imageDeleted && (
                     msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && !revealedTimedImageIds.has(msg.id) ? (
@@ -1223,10 +1236,18 @@ export function ChatRoomView({
             </button>
 
             <input
+              ref={messageInputRef}
               type="text"
               value={text}
               onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !isSendingMessage && sendMessage()}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" || isSendingMessage || e.nativeEvent.isComposing) {
+                  return;
+                }
+
+                e.preventDefault();
+                sendMessage();
+              }}
               placeholder={isConnecting ? "Finding an available stranger..." : "Write a message..."}
               disabled={isSendingMessage}
               className="min-h-[46px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[15px] text-white outline-none placeholder:text-white/30 focus:border-white/25"
