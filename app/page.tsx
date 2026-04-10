@@ -112,6 +112,7 @@ type PersistedChatSession = {
 };
 
 const getChatSessionStorageKey = (uid: string): string => `chat_session_${uid}`;
+const getChatModeStorageKey = (uid: string): string => `chat_mode_${uid}`;
 
 const normalizeCountryCode = (countryCode?: string): string | null => {
   if (!countryCode) {
@@ -376,35 +377,54 @@ export default function Home() {
     hasAttemptedSessionRestoreRef.current = true;
 
     const sessionRaw = window.localStorage.getItem(getChatSessionStorageKey(user.uid));
-    if (!sessionRaw) {
+    if (sessionRaw) {
+      try {
+        const parsed = JSON.parse(sessionRaw) as Partial<PersistedChatSession>;
+        const hasRoom = typeof parsed.roomId === "string" && parsed.roomId.length > 0;
+        const modeValid = parsed.chatMode === "text" || parsed.chatMode === "video" || parsed.chatMode === "group";
+        const filtersValid = typeof parsed.chatFilters === "object" && parsed.chatFilters !== null;
+
+        if (!hasRoom || !modeValid || !filtersValid) {
+          window.localStorage.removeItem(getChatSessionStorageKey(user.uid));
+          return;
+        }
+
+        const restoredRoomId = parsed.roomId as string;
+        const restoredMode = parsed.chatMode as ChatMode;
+        const restoredFilters = parsed.chatFilters as ChatFilters;
+
+        setChatMode(restoredMode);
+        setChatFilters(restoredFilters);
+        setActiveRoomId(restoredRoomId);
+        setIsConnecting(true);
+        setConnectingStatus("Reconnecting to your previous chat...");
+        setShowNextStrangerPrompt(false);
+        return;
+      } catch {
+        window.localStorage.removeItem(getChatSessionStorageKey(user.uid));
+      }
+    }
+
+    const savedMode = window.localStorage.getItem(getChatModeStorageKey(user.uid));
+    if (savedMode === "text" || savedMode === "video" || savedMode === "group") {
+      setChatMode(savedMode);
+      setChatFilters(null);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user || !hasAttemptedSessionRestoreRef.current) {
       return;
     }
 
-    try {
-      const parsed = JSON.parse(sessionRaw) as Partial<PersistedChatSession>;
-      const hasRoom = typeof parsed.roomId === "string" && parsed.roomId.length > 0;
-      const modeValid = parsed.chatMode === "text" || parsed.chatMode === "video" || parsed.chatMode === "group";
-      const filtersValid = typeof parsed.chatFilters === "object" && parsed.chatFilters !== null;
-
-      if (!hasRoom || !modeValid || !filtersValid) {
-        window.localStorage.removeItem(getChatSessionStorageKey(user.uid));
-        return;
-      }
-
-      const restoredRoomId = parsed.roomId as string;
-      const restoredMode = parsed.chatMode as ChatMode;
-      const restoredFilters = parsed.chatFilters as ChatFilters;
-
-      setChatMode(restoredMode);
-      setChatFilters(restoredFilters);
-      setActiveRoomId(restoredRoomId);
-      setIsConnecting(true);
-      setConnectingStatus("Reconnecting to your previous chat...");
-      setShowNextStrangerPrompt(false);
-    } catch {
-      window.localStorage.removeItem(getChatSessionStorageKey(user.uid));
+    const modeKey = getChatModeStorageKey(user.uid);
+    if (chatMode) {
+      window.localStorage.setItem(modeKey, chatMode);
+      return;
     }
-  }, [user]);
+
+    window.localStorage.removeItem(modeKey);
+  }, [chatMode, user]);
 
   useEffect(() => {
     if (!user || !hasAttemptedSessionRestoreRef.current) {

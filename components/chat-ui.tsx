@@ -142,9 +142,35 @@ const toFlagEmoji = (countryCode?: string): string => {
   );
 };
 
-const FLAG_EMOJI_STYLE = {
-  fontFamily: '"Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif',
-} as const;
+const getFlagIconUrl = (countryCode?: string): string | null => {
+  const normalizedCode = normalizeCountryCode(countryCode);
+  if (!normalizedCode) {
+    return null;
+  }
+
+  return `https://flagcdn.com/24x18/${normalizedCode.toLowerCase()}.png`;
+};
+
+function CountryFlagIcon({ countryCode, className }: { countryCode?: string; className?: string }) {
+  const iconUrl = getFlagIconUrl(countryCode);
+  const normalizedCode = normalizeCountryCode(countryCode);
+
+  if (!iconUrl || !normalizedCode) {
+    return <span className={className ?? ""}>🌐</span>;
+  }
+
+  return (
+    <img
+      src={iconUrl}
+      alt={`${normalizedCode} flag`}
+      width={20}
+      height={14}
+      className={className ?? "h-3.5 w-5 rounded-[2px] object-cover"}
+      loading="lazy"
+      decoding="async"
+    />
+  );
+}
 
 export const generateRandomStrangerProfile = (filters?: ChatFilters): UserProfile => {
   const ageRangeByGroup: Record<AgeGroupFilter, [number, number]> = {
@@ -378,7 +404,6 @@ export function ProfileSetupView({
   onContinue: () => void;
 }) {
   const resolvedCountryCode = normalizeCountryCode(profileCountryCode) ?? getCountryCodeFromName(profileCountry);
-  const countryFlag = resolvedCountryCode ? toFlagEmoji(resolvedCountryCode) : "🌐";
   const normalizedCountryName = getCountryDisplayName(profileCountry);
 
   return (
@@ -416,14 +441,13 @@ export function ProfileSetupView({
       />
 
       <label htmlFor="profile-country" className="mt-4 block text-xs font-bold uppercase tracking-[0.14em] text-white/60">Country</label>
-      <input
+      <div
         id="profile-country"
-        type="text"
-        value={profileCountry ? `${countryFlag}${normalizedCountryName ? ` ${normalizedCountryName}` : ""}` : "🌐 Detecting..."}
-        readOnly
-        className="mt-2 w-full rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-white/90 outline-none"
-        style={FLAG_EMOJI_STYLE}
-      />
+        className="mt-2 flex w-full items-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-white/90"
+      >
+        <CountryFlagIcon countryCode={resolvedCountryCode ?? undefined} className="h-4 w-5 rounded-[2px] object-cover" />
+        <span>{profileCountry ? (normalizedCountryName || "Unknown") : "Detecting..."}</span>
+      </div>
       <p className="mt-1 text-[11px] text-white/45">Auto-detected from your browser locale.</p>
 
       {profileError && <p className="mt-3 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-200">{profileError}</p>}
@@ -549,6 +573,26 @@ export function FilterOptionsView({
   const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>(initialFilters.ageGroup);
   const [style, setStyle] = useState<ChatStyleFilter>(initialFilters.style);
   const [country, setCountry] = useState<CountryFilter>(initialFilters.country);
+  const [countryMenuOpen, setCountryMenuOpen] = useState(false);
+  const countryMenuRef = useRef<HTMLDivElement | null>(null);
+  const selectedCountryCode = country !== "Any" ? country : undefined;
+
+  useEffect(() => {
+    if (!countryMenuOpen) {
+      return;
+    }
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!countryMenuRef.current?.contains(event.target as Node)) {
+        setCountryMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [countryMenuOpen]);
 
   const applyFilters = () => {
     onApply({ gender, ageGroup, style, country });
@@ -652,23 +696,65 @@ export function FilterOptionsView({
 
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
           <div className="mb-3 flex items-center justify-between gap-3">
-            <label htmlFor="country-filter" className="text-xs font-bold uppercase tracking-[0.14em] text-white/55">Country</label>
+            <label className="text-xs font-bold uppercase tracking-[0.14em] text-white/55">Country</label>
             <span className="text-[10px] uppercase tracking-[0.18em] text-white/35">Any or specific</span>
           </div>
-          <select
-            id="country-filter"
-            value={country}
-            onChange={(event) => setCountry(event.target.value as CountryFilter)}
-            className="w-full rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-semibold text-white outline-none transition focus:border-pink-400/60"
-            style={FLAG_EMOJI_STYLE}
-          >
-            <option value="Any" className="bg-[#141722] text-white" style={FLAG_EMOJI_STYLE}>Any country</option>
-            {COUNTRY_OPTIONS.map((option) => (
-              <option key={option.code} value={option.code} className="bg-[#141722] text-white" style={FLAG_EMOJI_STYLE}>
-                {`${toFlagEmoji(option.code)} ${option.label}`}
-              </option>
-            ))}
-          </select>
+          <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs font-semibold text-white/80">
+            <CountryFlagIcon countryCode={selectedCountryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
+            <span>{country === "Any" ? "Any country" : getCountryLabel(country)}</span>
+          </div>
+          <div className="relative" ref={countryMenuRef}>
+            <button
+              type="button"
+              onClick={() => setCountryMenuOpen((current) => !current)}
+              aria-haspopup="listbox"
+              aria-expanded={countryMenuOpen}
+              className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-semibold text-white outline-none transition hover:border-white/25 focus:border-pink-400/60"
+            >
+              <span className="inline-flex items-center gap-2">
+                <CountryFlagIcon countryCode={selectedCountryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
+                <span>{country === "Any" ? "Any country" : getCountryLabel(country)}</span>
+              </span>
+              <span className={`text-xs transition ${countryMenuOpen ? "rotate-180" : ""}`} aria-hidden="true">▾</span>
+            </button>
+
+            {countryMenuOpen && (
+              <div
+                role="listbox"
+                className="absolute z-30 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-white/15 bg-[#141722] p-1.5 shadow-[0_14px_28px_rgba(0,0,0,0.45)]"
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCountry("Any");
+                    setCountryMenuOpen(false);
+                  }}
+                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-semibold transition ${country === "Any" ? "bg-pink-400/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
+                >
+                  <CountryFlagIcon className="h-3.5 w-5 rounded-[2px] object-cover" />
+                  <span>Any country</span>
+                </button>
+
+                {COUNTRY_OPTIONS.map((option) => {
+                  const isSelected = country === option.code;
+                  return (
+                    <button
+                      key={option.code}
+                      type="button"
+                      onClick={() => {
+                        setCountry(option.code);
+                        setCountryMenuOpen(false);
+                      }}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-semibold transition ${isSelected ? "bg-pink-400/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
+                    >
+                      <CountryFlagIcon countryCode={option.code} className="h-3.5 w-5 rounded-[2px] object-cover" />
+                      <span>{option.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -743,7 +829,7 @@ export function ChatRoomView({
   const styleLabel = chatFilters?.style ?? "Any style";
   const countryLabel = getCountryLabel(chatFilters?.country ?? "Any");
   const selectedStyle = chatFilters?.style && chatFilters.style !== "Any style" ? chatFilters.style : null;
-  const strangerFlag = toFlagEmoji(strangerProfile.countryCode);
+  const selectedCountryCode = chatFilters?.country && chatFilters.country !== "Any" ? chatFilters.country : undefined;
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -810,7 +896,9 @@ export function ChatRoomView({
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-[0.14em] text-white/65 md:text-sm md:tracking-[0.18em]">Stranger</span>
-                <span style={FLAG_EMOJI_STYLE} className="rounded-full border border-white/15 bg-white/5 px-2 py-1 text-sm leading-none">{strangerFlag}</span>
+                <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1">
+                  <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
+                </span>
                 <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/75">{`${strangerProfile.gender}, ${strangerProfile.age}`}</span>
                 <span className="rounded-full border border-pink-400/25 bg-pink-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-pink-200">{modeLabel}</span>
                 {selectedStyle && (
@@ -833,7 +921,10 @@ export function ChatRoomView({
             <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{ageLabel}</span>
             <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{genderLabel}</span>
             <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{styleLabel}</span>
-            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{countryLabel}</span>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">
+              <CountryFlagIcon countryCode={selectedCountryCode} className="h-3 w-4 rounded-[2px] object-cover" />
+              <span>{countryLabel}</span>
+            </span>
           </div>
         </div>
 
