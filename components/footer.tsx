@@ -86,7 +86,7 @@ export function SiteFooter() {
           <div className="flex flex-col items-center justify-between gap-4 sm:gap-6 md:flex-row">
             <div className="flex flex-col items-center gap-2 md:items-start">
               <span className="text-[11px] font-medium uppercase tracking-widest text-white/40">
-                &copy; {year} Tempted Chat &bull; All Rights Reserved
+                &copy; {year} TEMPTED.CHAT &bull; All Rights Reserved
               </span>
             </div>
 

@@ -27,6 +27,7 @@ import {
   type ChatMessage,
   type UserProfile,
 } from "@/components/chat-ui";
+import { LandingPageSection } from "@/components/landing-page";
 import { SiteFooter } from "@/components/footer";
 import { TopNav } from "@/components/navbar";
 import {
@@ -58,7 +59,9 @@ import {
   signOut,
   type User,
 } from "firebase/auth";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { getUserRole } from "@/lib/admin";
 
 type WaitingUser = {
   uid: string;
@@ -156,7 +159,24 @@ const getCountryNameFromCode = (countryCode: string, locale: string): string => 
   }
 };
 
+const getAuthProviderType = (nextUser: User): "anonymous" | "google" | "email" => {
+  if (nextUser.isAnonymous) {
+    return "anonymous";
+  }
+
+  const providerIds = nextUser.providerData
+    .map((provider) => provider.providerId)
+    .filter((providerId): providerId is string => Boolean(providerId));
+
+  if (providerIds.includes("google.com")) {
+    return "google";
+  }
+
+  return "email";
+};
+
 export default function Home() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authBusy, setAuthBusy] = useState(false);
@@ -191,6 +211,8 @@ export default function Home() {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [strangerIsTyping, setStrangerIsTyping] = useState(false);
   const [showNextStrangerPrompt, setShowNextStrangerPrompt] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminRoleLoading, setAdminRoleLoading] = useState(false);
   const [e2eeReadyVersion, setE2eeReadyVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
@@ -358,6 +380,30 @@ export default function Home() {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
       setAuthLoading(false);
+
+      if (!nextUser) {
+        return;
+      }
+
+      const authProvider = getAuthProviderType(nextUser);
+      void setDoc(
+        doc(db, "users", nextUser.uid),
+        {
+          uid: nextUser.uid,
+          email: nextUser.email ?? null,
+          displayName: nextUser.displayName ?? null,
+          authProvider,
+          authProviderIds: nextUser.providerData
+            .map((provider) => provider.providerId)
+            .filter((providerId): providerId is string => Boolean(providerId)),
+          isAnonymous: nextUser.isAnonymous,
+          lastSeenAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true },
+      ).catch(() => {
+        // Ignore analytics profile write failures.
+      });
     });
 
     return () => unsubscribe();
@@ -1636,6 +1682,16 @@ export default function Home() {
       setAuthBusy(true);
       await markRoomEnded();
       await stopSearching();
+      if (user) {
+        await setDoc(
+          doc(db, "users", user.uid),
+          {
+            lastLogoutAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true },
+        );
+      }
       await signOut(auth);
     } finally {
       setAuthBusy(false);
@@ -1643,6 +1699,44 @@ export default function Home() {
   };
 
   const isAuthenticated = Boolean(user);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!user) {
+      setIsAdmin(false);
+      setAdminRoleLoading(false);
+      return;
+    }
+
+    setAdminRoleLoading(true);
+    void getUserRole(user.uid)
+      .then((role) => {
+        if (!cancelled) {
+          setIsAdmin(role === "admin");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setIsAdmin(false);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setAdminRoleLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!adminRoleLoading && isAdmin) {
+      router.push("/admin");
+    }
+  }, [adminRoleLoading, isAdmin, router]);
 
   const saveProfile = () => {
     const parsedAge = Number(profileAge);
@@ -1686,6 +1780,8 @@ export default function Home() {
             }}
             onLogout={logout}
             isWorking={true}
+            isAdmin={false}
+            onGoToAdmin={() => router.push("/admin")}
           />
           <section className="auth-shell">
             <article className="auth-panel auth-loading">Checking account session...</article>
@@ -1699,7 +1795,7 @@ export default function Home() {
   if (!isAuthenticated) {
     return (
       <>
-        <main className="screen">
+        <main className="screen !content-start gap-5">
           <TopNav
             isAuthenticated={isAuthenticated}
             onLogin={() => {
@@ -1708,6 +1804,8 @@ export default function Home() {
             }}
             onLogout={logout}
             isWorking={authBusy}
+            isAdmin={isAdmin}
+            onGoToAdmin={() => router.push("/admin")}
           />
           <AuthView
             authMethod={authMethod}
@@ -1728,6 +1826,7 @@ export default function Home() {
             loginWithEmail={loginWithEmail}
             resetPassword={resetPassword}
           />
+          <LandingPageSection />
         </main>
         <SiteFooter />
       </>
@@ -1746,6 +1845,8 @@ export default function Home() {
             }}
             onLogout={logout}
             isWorking={authBusy}
+            isAdmin={isAdmin}
+            onGoToAdmin={() => router.push("/admin")}
           />
           <ProfileSetupView
             profileGender={profileGender}
@@ -1776,6 +1877,8 @@ export default function Home() {
             }}
             onLogout={logout}
             isWorking={authBusy}
+            isAdmin={isAdmin}
+            onGoToAdmin={() => router.push("/admin")}
           />
           <ModeSelectionView
             onChooseMode={(mode) => {
@@ -1801,6 +1904,8 @@ export default function Home() {
             }}
             onLogout={logout}
             isWorking={authBusy}
+            isAdmin={isAdmin}
+            onGoToAdmin={() => router.push("/admin")}
           />
           <FilterOptionsView
             initialFilters={{
@@ -1835,6 +1940,8 @@ export default function Home() {
           }}
           onLogout={logout}
           isWorking={authBusy}
+          isAdmin={isAdmin}
+          onGoToAdmin={() => router.push("/admin")}
         />
         <ChatRoomView
           strangerProfile={strangerProfile}

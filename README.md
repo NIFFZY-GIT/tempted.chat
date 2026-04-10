@@ -16,6 +16,24 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Admin Dashboard Access
+
+Admin access is role-based from Firestore.
+
+1. Open Firestore collection `users`.
+2. Create or update a document where document ID is the user's auth UID.
+3. Set field `role` to `admin`.
+
+Example document:
+
+```json
+{
+	"role": "admin"
+}
+```
+
+When a signed-in user has `users/{uid}.role = "admin"`, they are redirected to `/admin`.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
