@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from "react";
 
 export type ChatMessage = {
   id: string;
@@ -442,46 +442,96 @@ export function ProfileSetupView({
 
 export function ModeSelectionView({
   onChooseMode,
-  onBack,
 }: {
   onChooseMode: (mode: ChatMode) => void;
-  onBack: () => void;
 }) {
-  return (
-    <section className="w-full max-w-4xl rounded-3xl border border-white/10 bg-gradient-to-br from-[#14111b] to-[#0d0b13] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] md:p-8">
-      <p className="text-xs font-bold uppercase tracking-[0.26em] text-pink-300/80">Chat Mode</p>
-      <h2 className="mt-3 text-3xl font-black text-white">Choose your vibe</h2>
-      <p className="mt-2 text-sm text-white/60">Pick one mode to start your next conversation.</p>
+  const modeOptions: Array<{
+    id: ChatMode;
+    title: string;
+    sub: string;
+    accent: string;
+    ring: string;
+    icon: ReactNode;
+  }> = [
+    {
+      id: "text",
+      title: "Text",
+      sub: "Fast and low-key conversation",
+      accent: "from-cyan-300 to-blue-400",
+      ring: "hover:border-cyan-200/60 hover:shadow-[0_12px_36px_rgba(34,211,238,0.24)]",
+      icon: (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1">
+          <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-7Z" />
+        </svg>
+      ),
+    },
+    {
+      id: "video",
+      title: "Video",
+      sub: "Face to face with live presence",
+      accent: "from-rose-300 to-fuchsia-400",
+      ring: "hover:border-fuchsia-200/60 hover:shadow-[0_12px_36px_rgba(232,121,249,0.24)]",
+      icon: (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1">
+          <path d="M15 10.5 20 7v10l-5-3.5" />
+          <rect x="3" y="6" width="12" height="12" rx="2.5" />
+        </svg>
+      ),
+    },
+    {
+      id: "group",
+      title: "Groups",
+      sub: "Join a room and meet more people",
+      accent: "from-amber-200 to-orange-400",
+      ring: "hover:border-amber-200/60 hover:shadow-[0_12px_36px_rgba(251,191,36,0.22)]",
+      icon: (
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1">
+          <circle cx="8" cy="9" r="2.5" />
+          <circle cx="16" cy="9" r="2.5" />
+          <path d="M4.5 18a3.5 3.5 0 0 1 7 0M12.5 18a3.5 3.5 0 0 1 7 0" />
+        </svg>
+      ),
+    },
+  ];
 
-      <div className="mt-6 grid gap-4 md:grid-cols-3">
-        {[
-          { id: "text", title: "Text", sub: "Simple chat", color: "bg-blue-400" },
-          { id: "video", title: "Video", sub: "Face to face", color: "bg-pink-400" },
-          { id: "group", title: "Groups", sub: "Party room", color: "bg-yellow-400" },
-        ].map((m) => (
+  return (
+    <section className="w-full max-w-5xl rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(236,72,153,0.16),transparent_36%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.12),transparent_32%),linear-gradient(145deg,#13101a,#0b0a10)] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] sm:rounded-3xl sm:p-6 md:p-8">
+      <p className="text-xs font-bold uppercase tracking-[0.26em] text-pink-300/80">Chat Mode</p>
+      <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h2 className="text-[1.75rem] font-black leading-tight text-white sm:text-3xl md:text-[2.15rem]">Choose your vibe</h2>
+          <p className="mt-1.5 text-sm text-white/60 sm:mt-2">Pick one mode to start your next conversation.</p>
+        </div>
+        <p className="w-fit rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">
+          Tap a card to continue
+        </p>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:mt-6 sm:gap-4 md:grid-cols-3">
+        {modeOptions.map((m) => (
           <button
             key={m.id}
-            onClick={() => onChooseMode(m.id as ChatMode)}
-            className="group relative rounded-3xl border border-white/15 bg-white/[0.04] p-6 text-left transition hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/[0.08]"
+            onClick={() => onChooseMode(m.id)}
+            className={`group relative overflow-hidden rounded-2xl border border-white/15 bg-white/[0.03] p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:bg-white/[0.06] sm:rounded-3xl sm:p-5 ${m.ring}`}
           >
-            <div className={`mb-4 flex h-10 w-10 items-center justify-center rounded-full ${m.color} font-bold text-black`}>
-              {m.title[0]}
+            <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/5 blur-2xl transition group-hover:scale-110" />
+            <div className="flex items-start gap-3 sm:block">
+              <div className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${m.accent} text-black shadow-[0_8px_24px_rgba(0,0,0,0.25)] sm:mb-4 sm:h-11 sm:w-11 sm:rounded-2xl`}>
+                {m.icon}
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-extrabold text-white sm:text-xl">{m.title}</h3>
+                <p className="mt-0.5 text-xs text-white/60 sm:mt-1 sm:text-sm sm:text-white/55">{m.sub}</p>
+              </div>
             </div>
-            <h3 className="text-xl font-extrabold text-white">{m.title}</h3>
-            <p className="text-sm text-white/40">{m.sub}</p>
+            <span className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white/50 transition group-hover:text-white/80 sm:mt-4">
+              Enter mode
+              <span aria-hidden="true">→</span>
+            </span>
           </button>
         ))}
       </div>
 
-      <div className="mt-5 flex justify-end">
-        <button
-          type="button"
-          className="rounded-xl border border-white/20 px-4 py-3 font-semibold text-white/80 transition hover:border-white/35 hover:text-white"
-          onClick={onBack}
-        >
-          Back
-        </button>
-      </div>
     </section>
   );
 }
@@ -509,6 +559,23 @@ export function FilterOptionsView({
       <p className="text-xs font-bold uppercase tracking-[0.3em] text-pink-300/80">Filters</p>
       <h2 className="mt-3 text-3xl font-black text-white">Match preferences</h2>
       <p className="mt-2 max-w-[34ch] text-sm text-white/60">Choose who you want to see before entering chat.</p>
+
+      <div className="mt-5 flex flex-wrap justify-end gap-3 border-b border-white/10 pb-4">
+        <button
+          type="button"
+          className="rounded-xl border border-white/20 px-4 py-3 font-semibold text-white/80 transition hover:border-white/35 hover:text-white"
+          onClick={onBack}
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          className="rounded-xl bg-pink-500 px-4 py-3 font-extrabold text-black transition hover:brightness-110"
+          onClick={applyFilters}
+        >
+          Start Chat
+        </button>
+      </div>
 
       <div className="mt-6 grid gap-4">
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -605,22 +672,6 @@ export function FilterOptionsView({
         </div>
       </div>
 
-      <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-white/10 pt-5">
-        <button
-          type="button"
-          className="rounded-xl border border-white/20 px-4 py-3 font-semibold text-white/80 transition hover:border-white/35 hover:text-white"
-          onClick={onBack}
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          className="rounded-xl bg-pink-500 px-4 py-3 font-extrabold text-black transition hover:brightness-110"
-          onClick={applyFilters}
-        >
-          Start Chat
-        </button>
-      </div>
     </section>
   );
 }

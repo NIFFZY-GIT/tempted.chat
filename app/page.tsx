@@ -1378,13 +1378,6 @@ export default function Home() {
               setChatMode(mode);
               setChatFilters(null);
             }}
-            onBack={async () => {
-              await markRoomEnded();
-              await stopSearching();
-              setChatMode(null);
-              setProfileGender(profile.gender);
-              setProfileAge(String(profile.age));
-            }}
           />
         </main>
         <SiteFooter />
