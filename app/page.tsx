@@ -227,6 +227,7 @@ export default function Home() {
   const roomPresenceIntervalRef = useRef<number | null>(null);
   const typingIdleTimeoutRef = useRef<number | null>(null);
   const imageCleanupIntervalRef = useRef<number | null>(null);
+  const pendingSendRetryIntervalRef = useRef<number | null>(null);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
   const hasAttemptedSessionRestoreRef = useRef(false);
@@ -234,9 +235,11 @@ export default function Home() {
   const roomPrivateKeyRef = useRef<CryptoKey | null>(null);
   const roomPublicJwkRef = useRef<JsonWebKey | null>(null);
   const roomCipherKeyRef = useRef<CryptoKey | null>(null);
+  const decryptedTextCacheRef = useRef<Map<string, { ciphertext: string; iv: string; text: string }>>(new Map());
   const decryptedImageUrlCacheRef = useRef<Map<string, { sourceUrl: string; objectUrl: string }>>(new Map());
 
   const clearE2EECaches = () => {
+    decryptedTextCacheRef.current.clear();
     for (const cacheEntry of decryptedImageUrlCacheRef.current.values()) {
       URL.revokeObjectURL(cacheEntry.objectUrl);
     }
@@ -386,6 +389,38 @@ export default function Home() {
         }
       }, 120);
     });
+  };
+
+  const clearPendingSendRetry = () => {
+    if (pendingSendRetryIntervalRef.current) {
+      window.clearInterval(pendingSendRetryIntervalRef.current);
+      pendingSendRetryIntervalRef.current = null;
+    }
+  };
+
+  const schedulePendingSendRetry = (sendFn: () => Promise<void>) => {
+    if (pendingSendRetryIntervalRef.current) {
+      return;
+    }
+
+    const startedAt = Date.now();
+    pendingSendRetryIntervalRef.current = window.setInterval(() => {
+      if (!activeRoomIdRef.current) {
+        clearPendingSendRetry();
+        return;
+      }
+
+      if (roomCipherKeyRef.current) {
+        clearPendingSendRetry();
+        void sendFn();
+        return;
+      }
+
+      if (Date.now() - startedAt > 30000) {
+        clearPendingSendRetry();
+        setSendError("Secure channel setup timed out. Please reconnect and try again.");
+      }
+    }, 400);
   };
 
   const formatFirebaseError = (error: unknown): string => {
@@ -639,6 +674,7 @@ export default function Home() {
       if (imageCleanupIntervalRef.current) {
         window.clearInterval(imageCleanupIntervalRef.current);
       }
+      clearPendingSendRetry();
 
       clearE2EECaches();
     };
@@ -660,6 +696,8 @@ export default function Home() {
     if (activeRoomId) {
       return;
     }
+
+    clearPendingSendRetry();
 
     clearE2EECaches();
   }, [activeRoomId]);
@@ -1019,17 +1057,31 @@ export default function Home() {
               const createdAtDate = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
 
               let decryptedText = data.text;
-              if (roomKey && data.textCiphertext && data.textIv) {
-                try {
-                  decryptedText = await decryptString(roomKey, {
-                    ciphertext: data.textCiphertext,
-                    iv: data.textIv,
-                  });
-                } catch {
-                  decryptedText = "Encrypted message";
+              if (data.textCiphertext && data.textIv) {
+                const cachedText = decryptedTextCacheRef.current.get(messageDoc.id);
+                const isCachedMatch =
+                  cachedText?.ciphertext === data.textCiphertext && cachedText?.iv === data.textIv;
+
+                if (isCachedMatch && cachedText) {
+                  decryptedText = cachedText.text;
+                } else if (roomKey) {
+                  try {
+                    const nextText = await decryptString(roomKey, {
+                      ciphertext: data.textCiphertext,
+                      iv: data.textIv,
+                    });
+                    decryptedText = nextText;
+                    decryptedTextCacheRef.current.set(messageDoc.id, {
+                      ciphertext: data.textCiphertext,
+                      iv: data.textIv,
+                      text: nextText,
+                    });
+                  } catch {
+                    decryptedText = "Encrypted message";
+                  }
+                } else {
+                  decryptedText = "Decrypting secure message...";
                 }
-              } else if (data.textCiphertext && data.textIv) {
-                decryptedText = "Decrypting secure message...";
               }
 
               let displayImageUrl = data.imageUrl;
@@ -1110,6 +1162,12 @@ export default function Home() {
           );
 
           const validMessageIds = new Set(nextMessages.map((message) => message.id));
+          for (const messageId of Array.from(decryptedTextCacheRef.current.keys())) {
+            if (!validMessageIds.has(messageId)) {
+              decryptedTextCacheRef.current.delete(messageId);
+            }
+          }
+
           for (const [messageId, cacheEntry] of decryptedImageUrlCacheRef.current.entries()) {
             if (!validMessageIds.has(messageId)) {
               URL.revokeObjectURL(cacheEntry.objectUrl);
@@ -1575,14 +1633,16 @@ export default function Home() {
     }
 
     if (!roomKey) {
-      roomKey = await waitForRoomCipherKey(12000);
+      roomKey = await waitForRoomCipherKey(2500);
     }
 
     if (!roomKey) {
-      setSendError("Secure channel setup is taking longer than expected. Please try again in a moment.");
+      setSendError("Secure channel is still negotiating. Message will send automatically when ready.");
+      schedulePendingSendRetry(sendMessage);
       return;
     }
 
+    clearPendingSendRetry();
     setSendError(null);
     const outgoingText = text.trim() || null;
 
