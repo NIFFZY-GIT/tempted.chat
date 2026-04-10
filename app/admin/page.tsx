@@ -97,8 +97,7 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    const now = Date.now();
-    const onlineThresholdMs = now - 2 * 60 * 1000;
+    const onlineThresholdMs = Date.now() - 2 * 60 * 1000;
 
     const onlineUsersQuery = query(collection(db, "users"), where("lastSeenAt", ">=", onlineThresholdMs));
     const waitingUsersQuery = query(collection(db, "waitingUsers"), where("status", "==", "searching"));
@@ -151,9 +150,27 @@ export default function AdminDashboardPage() {
     });
 
     const unsubWaitingUsers = onSnapshot(waitingUsersQuery, (snapshot) => {
+      const thresholdMs = Date.now() - 2 * 60 * 1000;
+      let waitingUsers = 0;
+
+      snapshot.docs.forEach((waitingDoc) => {
+        const data = waitingDoc.data() as {
+          lastSeenAt?: { toMillis?: () => number } | number;
+        };
+
+        const lastSeenMs =
+          typeof data.lastSeenAt === "number"
+            ? data.lastSeenAt
+            : data.lastSeenAt?.toMillis?.() ?? 0;
+
+        if (lastSeenMs >= thresholdMs) {
+          waitingUsers += 1;
+        }
+      });
+
       nextStats = {
         ...nextStats,
-        waitingUsers: snapshot.size,
+        waitingUsers,
       };
       applyStats();
     });
