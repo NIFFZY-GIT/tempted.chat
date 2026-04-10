@@ -266,9 +266,9 @@ export default function Home() {
     );
   };
 
-  const deleteRoomStorageFiles = async (roomId: string): Promise<void> => {
+  const deleteRoomStorageFiles = async (roomId: string, uid: string): Promise<void> => {
     try {
-      await deleteStorageFolderRecursively(ref(storage, `chatUploads/${roomId}`));
+      await deleteStorageFolderRecursively(ref(storage, `chatUploads/${roomId}/${uid}`));
     } catch {
       // Ignore if room folder does not exist or listing is blocked.
     }
@@ -918,7 +918,7 @@ export default function Home() {
               ];
             });
             setActiveRoomId(null);
-            void deleteRoomStorageFiles(activeRoomId);
+            void deleteRoomStorageFiles(activeRoomId, user.uid);
             return;
           }
         }
@@ -959,7 +959,7 @@ export default function Home() {
           });
           setActiveRoomId(null);
 
-          void deleteRoomStorageFiles(activeRoomId);
+          void deleteRoomStorageFiles(activeRoomId, user.uid);
 
           void updateDoc(roomRef, {
             status: "ended",
@@ -1028,6 +1028,8 @@ export default function Home() {
                 } catch {
                   decryptedText = "Encrypted message";
                 }
+              } else if (data.textCiphertext && data.textIv) {
+                decryptedText = "Decrypting secure message...";
               }
 
               let displayImageUrl = data.imageUrl;
@@ -1126,7 +1128,7 @@ export default function Home() {
       roomMessagesUnsubRef.current?.();
       roomMessagesUnsubRef.current = null;
     };
-  }, [activeRoomId, user]);
+  }, [activeRoomId, e2eeReadyVersion, user]);
 
   useEffect(() => {
     if (!activeRoomId) {
@@ -1279,7 +1281,7 @@ export default function Home() {
       // Ignore room end race conditions.
     }
 
-    await deleteRoomStorageFiles(activeRoomId);
+    await deleteRoomStorageFiles(activeRoomId, user.uid);
 
     setActiveRoomId(null);
     setMessages([]);
