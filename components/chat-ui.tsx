@@ -23,7 +23,7 @@ export type ChatMode = "text" | "video" | "group";
 export type GenderFilter = "Any" | ProfileGender;
 export type AgeGroupFilter = "Any age" | "Under 18" | "18-25" | "25+";
 export type ChatStyleFilter = "Any style" | "Casual" | "Intimate";
-export type CountryFilter = "Any" | "US" | "GB" | "IN" | "DE" | "FR" | "ES" | "IT" | "BR" | "CA" | "AU" | "JP" | "KR";
+export type CountryFilter = "Any" | "US" | "GB" | "IN" | "DE" | "FR" | "ES" | "IT" | "BR" | "CA" | "AU" | "JP" | "KR" | "LK";
 export type ChatFilters = {
   gender: GenderFilter;
   ageGroup: AgeGroupFilter;
@@ -56,7 +56,43 @@ const COUNTRY_OPTIONS: Array<{ code: Exclude<CountryFilter, "Any">; label: strin
   { code: "AU", label: "Australia" },
   { code: "JP", label: "Japan" },
   { code: "KR", label: "South Korea" },
+  { code: "LK", label: "Sri Lanka" },
 ];
+
+const normalizeCountryCode = (countryCode?: string): string | null => {
+  if (!countryCode) {
+    return null;
+  }
+
+  const normalized = countryCode.trim().toUpperCase();
+  if (normalized.length !== 2) {
+    return null;
+  }
+
+  return normalized === "UK" ? "GB" : normalized;
+};
+
+const getCountryCodeFromName = (countryName?: string): string | null => {
+  if (!countryName) {
+    return null;
+  }
+
+  const normalizedName = countryName.trim().toLowerCase();
+  if (!normalizedName) {
+    return null;
+  }
+
+  const fromOptions = COUNTRY_OPTIONS.find((option) => option.label.toLowerCase() === normalizedName)?.code;
+  if (fromOptions) {
+    return fromOptions;
+  }
+
+  if (normalizedName === "sri lanka") {
+    return "LK";
+  }
+
+  return null;
+};
 
 const getCountryDisplayName = (country?: string): string => {
   if (!country) {
@@ -96,12 +132,13 @@ const pickRandomCountryCode = (): string => {
 };
 
 const toFlagEmoji = (countryCode?: string): string => {
-  if (!countryCode || countryCode.length !== 2) {
+  const normalizedCode = normalizeCountryCode(countryCode);
+  if (!normalizedCode) {
     return "🌐";
   }
 
   return String.fromCodePoint(
-    ...countryCode.toUpperCase().split("").map((char) => 127397 + char.charCodeAt(0)),
+    ...normalizedCode.split("").map((char) => 127397 + char.charCodeAt(0)),
   );
 };
 
@@ -340,10 +377,8 @@ export function ProfileSetupView({
   onBack: () => void;
   onContinue: () => void;
 }) {
-  const countryFlag =
-    profileCountryCode && profileCountryCode.length === 2
-      ? String.fromCodePoint(...profileCountryCode.toUpperCase().split("").map((char) => 127397 + char.charCodeAt(0)))
-      : "🌐";
+  const resolvedCountryCode = normalizeCountryCode(profileCountryCode) ?? getCountryCodeFromName(profileCountry);
+  const countryFlag = resolvedCountryCode ? toFlagEmoji(resolvedCountryCode) : "🌐";
   const normalizedCountryName = getCountryDisplayName(profileCountry);
 
   return (
@@ -387,6 +422,7 @@ export function ProfileSetupView({
         value={profileCountry ? `${countryFlag}${normalizedCountryName ? ` ${normalizedCountryName}` : ""}` : "🌐 Detecting..."}
         readOnly
         className="mt-2 w-full rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-white/90 outline-none"
+        style={FLAG_EMOJI_STYLE}
       />
       <p className="mt-1 text-[11px] text-white/45">Auto-detected from your browser locale.</p>
 

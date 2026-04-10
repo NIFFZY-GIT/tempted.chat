@@ -105,6 +105,27 @@ const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
 
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 
+const normalizeCountryCode = (countryCode?: string): string | null => {
+  if (!countryCode) {
+    return null;
+  }
+
+  const normalized = countryCode.trim().toUpperCase();
+  if (normalized.length !== 2) {
+    return null;
+  }
+
+  return normalized === "UK" ? "GB" : normalized;
+};
+
+const getCountryNameFromCode = (countryCode: string, locale: string): string => {
+  try {
+    return new Intl.DisplayNames([locale], { type: "region" }).of(countryCode) ?? countryCode;
+  } catch {
+    return countryCode;
+  }
+};
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -213,29 +234,87 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
-    if (profileCountry) {
+    if (profileCountryCode) {
       return;
     }
 
     const locale = navigator.languages?.[0] ?? navigator.language;
-    const rawRegionCode = locale.split("-")[1]?.toUpperCase();
-    const regionCode = rawRegionCode === "UK" ? "GB" : rawRegionCode;
+    let cancelled = false;
 
-    if (!regionCode) {
-      setProfileCountry("Unknown");
-      setProfileCountryCode("");
+    const applyCountry = (countryCode: string, countryName?: string) => {
+      if (cancelled) {
+        return;
+      }
+
+      const normalizedCode = normalizeCountryCode(countryCode);
+      if (!normalizedCode) {
+        return;
+      }
+
+      setProfileCountryCode(normalizedCode);
+      setProfileCountry(countryName?.trim() || getCountryNameFromCode(normalizedCode, locale));
+    };
+
+    const fallbackToLocale = () => {
+      const localeCode = normalizeCountryCode(locale.split("-")[1]);
+      if (!localeCode) {
+        if (!cancelled) {
+          setProfileCountry("Unknown");
+          setProfileCountryCode("");
+        }
+        return;
+      }
+
+      applyCountry(localeCode);
+    };
+
+    const detectCountryFromGeolocation = async (latitude: number, longitude: number) => {
+      const response = await fetch(
+        `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
+      );
+
+      if (!response.ok) {
+        throw new Error(`Geocode request failed with status ${response.status}`);
+      }
+
+      const data = (await response.json()) as {
+        countryCode?: string;
+        countryName?: string;
+      };
+
+      const geocodedCode = normalizeCountryCode(data.countryCode);
+      if (!geocodedCode) {
+        throw new Error("Geocoder returned invalid country code");
+      }
+
+      applyCountry(geocodedCode, data.countryName);
+    };
+
+    if (!("geolocation" in navigator)) {
+      fallbackToLocale();
       return;
     }
 
-    setProfileCountryCode(regionCode);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        void detectCountryFromGeolocation(position.coords.latitude, position.coords.longitude).catch(() => {
+          fallbackToLocale();
+        });
+      },
+      () => {
+        fallbackToLocale();
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 8000,
+        maximumAge: 10 * 60 * 1000,
+      },
+    );
 
-    try {
-      const regionName = new Intl.DisplayNames([locale], { type: "region" }).of(regionCode);
-      setProfileCountry(regionName ?? (regionCode === "GB" ? "United Kingdom" : regionCode));
-    } catch {
-      setProfileCountry(regionCode === "GB" ? "United Kingdom" : regionCode);
-    }
-  }, [profileCountry]);
+    return () => {
+      cancelled = true;
+    };
+  }, [profileCountry, profileCountryCode]);
 
   useEffect(() => {
     return () => {
