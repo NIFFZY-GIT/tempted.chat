@@ -374,6 +374,7 @@ export default function Home() {
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
   const hasAttemptedSessionRestoreRef = useRef(false);
+  const [sessionRestoreComplete, setSessionRestoreComplete] = useState(false);
   const disconnectHandledRoomRef = useRef<string | null>(null);
   const roomPrivateKeyRef = useRef<CryptoKey | null>(null);
   const roomPublicJwkRef = useRef<JsonWebKey | null>(null);
@@ -1506,6 +1507,7 @@ export default function Home() {
   useEffect(() => {
     if (!user) {
       hasAttemptedSessionRestoreRef.current = false;
+      setSessionRestoreComplete(false);
       return;
     }
 
@@ -1525,6 +1527,7 @@ export default function Home() {
 
         if (!hasRoom || !modeValid || !filtersValid) {
           window.localStorage.removeItem(getChatSessionStorageKey(user.uid));
+          setSessionRestoreComplete(true);
           return;
         }
 
@@ -1538,6 +1541,7 @@ export default function Home() {
         setIsConnecting(true);
         setConnectingStatus("Reconnecting to your previous chat...");
         setShowNextStrangerPrompt(false);
+        setSessionRestoreComplete(true);
         return;
       } catch {
         window.localStorage.removeItem(getChatSessionStorageKey(user.uid));
@@ -1549,10 +1553,11 @@ export default function Home() {
       setChatMode(savedMode);
       setChatFilters(null);
     }
+    setSessionRestoreComplete(true);
   }, [user]);
 
   useEffect(() => {
-    if (!user || !hasAttemptedSessionRestoreRef.current) {
+    if (!user || !sessionRestoreComplete) {
       return;
     }
 
@@ -1563,10 +1568,10 @@ export default function Home() {
     }
 
     window.localStorage.removeItem(modeKey);
-  }, [chatMode, user]);
+  }, [chatMode, sessionRestoreComplete, user]);
 
   useEffect(() => {
-    if (!user || !hasAttemptedSessionRestoreRef.current) {
+    if (!user || !sessionRestoreComplete) {
       return;
     }
 
@@ -1583,7 +1588,7 @@ export default function Home() {
     }
 
     window.localStorage.removeItem(sessionKey);
-  }, [activeRoomId, chatFilters, chatMode, user]);
+  }, [activeRoomId, chatFilters, chatMode, sessionRestoreComplete, user]);
 
   useEffect(() => {
     if (!user) {
@@ -1620,6 +1625,10 @@ export default function Home() {
       setIsConnecting(false);
       setActiveRoomId(null);
       setMessages([]);
+      return;
+    }
+
+    if (!sessionRestoreComplete) {
       return;
     }
 
@@ -1660,7 +1669,7 @@ export default function Home() {
       waitingUnsubRef.current?.();
       waitingUnsubRef.current = null;
     };
-  }, [activeRoomId, showNextStrangerPrompt, user]);
+  }, [activeRoomId, sessionRestoreComplete, showNextStrangerPrompt, user]);
 
   useEffect(() => {
     if (!user || !activeRoomId) {

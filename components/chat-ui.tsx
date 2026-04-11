@@ -1207,7 +1207,7 @@ export function ChatRoomView({
             if (msg.deletedForEveryone) {
               return (
                 <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
-                  <div className={`flex items-center gap-1.5 rounded-2xl border px-4 py-2.5 ${msg.author === "you" ? "border-pink-500/10 bg-pink-500/[0.04]" : "border-blue-500/10 bg-blue-500/[0.04]"}`}>
+                  <div className={`flex items-center gap-1.5 rounded-2xl border px-4 py-2.5 ${msg.author === "you" ? "border-pink-500/10 bg-pink-500/[0.04]" : "border-blue-500/10 bg-blue-700/[0.04]"}`}>
                     <svg className={`h-3.5 w-3.5 ${msg.author === "you" ? "text-pink-400/30" : "text-blue-400/30"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
                     <span className={`text-[13px] italic ${msg.author === "you" ? "text-pink-300/40" : "text-blue-300/40"}`}>{msg.author === "you" ? "You deleted this message" : "This message was deleted"}</span>
                   </div>
