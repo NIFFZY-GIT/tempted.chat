@@ -48,22 +48,22 @@ export function TopNav({
 	}, [isAuthenticated]);
 
 	return (
-		<nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b border-white/5 bg-black/40 px-3 py-3 backdrop-blur-xl sm:px-6 sm:py-4">
-			<div className="flex items-center gap-3 sm:gap-8">
+		<nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between border-b border-white/[0.06] bg-[#060710]/80 px-4 py-2.5 backdrop-blur-xl sm:px-6 sm:py-3">
+			<div className="flex items-center gap-4 sm:gap-8">
 				<Link href="/" aria-label="Go to home page">
 					<Image
 						src="/asstes/logo/logologoheartandtempetedchat.png"
 						alt="TEMPTED.CHAT"
 						width={160}
 						height={32}
-						className="h-7 w-auto sm:h-8"
+						className="h-6 w-auto sm:h-7"
 						priority
 					/>
 				</Link>
-				<div className="hidden gap-6 text-sm font-medium text-white/50 md:flex">
-					<Link href="/" className="transition hover:text-white">Home</Link>
-					<Link href="/safety" className="transition hover:text-white">Safety</Link>
-					<Link href="/about" className="transition hover:text-white">About</Link>
+				<div className="hidden gap-5 text-[13px] font-medium text-white/40 md:flex">
+					<Link href="/" className="transition hover:text-white/80">Home</Link>
+					<Link href="/safety" className="transition hover:text-white/80">Safety</Link>
+					<Link href="/about" className="transition hover:text-white/80">About</Link>
 				</div>
 			</div>
 			<div className="relative" ref={menuRef}>
@@ -71,34 +71,41 @@ export function TopNav({
 					type="button"
 					onClick={() => setIsMenuOpen((prev) => !prev)}
 					disabled={isWorking}
-					aria-label="Open settings"
-					className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white transition hover:bg-white/20 disabled:opacity-50"
+					aria-label="Open menu"
+					className="inline-flex h-9 w-9 items-center justify-center rounded-full text-white/50 transition hover:bg-white/[0.08] hover:text-white/80 disabled:opacity-50"
 				>
-					<svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-						<circle cx="12" cy="12" r="3" />
-						<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 8.9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.2.61.76 1.03 1.4 1.05H21a2 2 0 0 1 0 4h-.09c-.64.02-1.2.44-1.4 1.05z" />
-					</svg>
+					{isMenuOpen ? (
+						<svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+					) : (
+						<svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+					)}
 				</button>
 
 				{isMenuOpen ? (
-					<div className="absolute right-0 mt-2 min-w-36 rounded-xl border border-white/15 bg-[#121217] p-2 shadow-[0_20px_40px_rgba(0,0,0,0.45)]">
+					<div className="absolute right-0 mt-2 min-w-40 rounded-xl border border-white/10 bg-[#121217] p-1.5 shadow-lg">
+						<div className="grid gap-0.5 md:hidden">
+							<Link href="/" onClick={() => setIsMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white">Home</Link>
+							<Link href="/safety" onClick={() => setIsMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white">Safety</Link>
+							<Link href="/about" onClick={() => setIsMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white">About</Link>
+							<div className="my-1 border-t border-white/[0.06]" />
+						</div>
 						{isAuthenticated ? (
 							<>
 								{isAdmin && onGoToAdmin ? (
 									<button
 										type="button"
-										onClick={onGoToAdmin}
+										onClick={() => { onGoToAdmin(); setIsMenuOpen(false); }}
 										disabled={isWorking}
-										className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-50"
+										className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
 									>
-										Admin Dashboard
+										Admin
 									</button>
 								) : null}
 								<button
 									type="button"
-									onClick={onLogout}
+									onClick={() => { onLogout(); setIsMenuOpen(false); }}
 									disabled={isWorking}
-									className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-50"
+									className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-rose-300/80 transition hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-50"
 								>
 									Log Out
 								</button>
@@ -106,9 +113,9 @@ export function TopNav({
 						) : (
 							<button
 								type="button"
-								onClick={onLogin}
+								onClick={() => { onLogin(); setIsMenuOpen(false); }}
 								disabled={isWorking}
-								className="w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-50"
+								className="w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white disabled:opacity-50"
 							>
 								Sign In
 							</button>

@@ -289,128 +289,137 @@ export function AuthView({
   resetPassword,
 }: AuthViewProps) {
   return (
-    <section className="grid w-full max-w-5xl gap-4 md:grid-cols-[1.05fr_1fr]">
-      <article className="rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a1320] to-[#0e0d14] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] md:p-8">
-        <p className="text-xs font-bold uppercase tracking-[0.26em] text-pink-300/80">Tempted.Chat</p>
-        <h1 className="mt-4 max-w-[12ch] text-4xl font-black leading-[0.95] text-white md:text-6xl">
-          Meet someone new in seconds.
-        </h1>
-        <p className="mt-4 max-w-[34ch] text-sm leading-relaxed text-white/60 md:text-base">
-          Start anonymous, continue with Google, or use email and password. Clean flow, fast matching, image sharing.
-        </p>
+    <section className="w-full max-w-sm animate-fade-in-up px-4">
+      {/* Heading */}
+      <div className="mb-8 text-center">
+        <h1 className="text-4xl font-extrabold tracking-tight text-white">tempted.chat</h1>
+        <p className="mt-2 text-sm leading-relaxed text-white/50">Anonymous. Encrypted. Instant.</p>
+      </div>
 
-        <div className="mt-6 grid gap-2 text-sm text-white/70">
-          <p>Anonymous guest entry</p>
-          <p>Google sign in</p>
-          <p>Email and password</p>
-          <p>Reset password support</p>
-        </div>
-      </article>
+      {/* Auth options */}
+      <div className="space-y-2.5">
+        {/* Guest */}
+        <button
+          onClick={loginAnonymously}
+          disabled={authBusy}
+          className="group flex w-full items-center gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-5 py-4 text-left transition-all hover:border-white/15 hover:bg-white/[0.06] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          </span>
+          <div className="min-w-0">
+            <span className="block text-[15px] font-semibold text-white">Continue as Guest</span>
+            <span className="block text-xs text-white/35">No sign-up needed</span>
+          </div>
+          <svg className="ml-auto h-4 w-4 text-white/20 transition-transform group-hover:translate-x-0.5 group-hover:text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
 
-      <article className="rounded-3xl border border-white/10 bg-black/35 p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] backdrop-blur-md md:p-8">
-        <h2 className="text-xl font-bold text-white">Continue to Chat</h2>
-        <p className="mt-1 text-sm text-white/55">Choose one login method.</p>
-
-        <div className="mt-5 grid gap-3">
-          <button
-            onClick={loginAnonymously}
-            disabled={authBusy}
-            className={`flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 font-semibold transition ${authMethod === "anonymous" ? "border-emerald-300/60 bg-gradient-to-r from-emerald-400/20 to-cyan-400/15 text-white shadow-[0_10px_28px_rgba(52,211,153,0.2)]" : "border-white/20 bg-white/[0.04] text-white/80 hover:border-emerald-200/40 hover:bg-emerald-300/10"}`}
-          >
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/30 bg-white/10 text-[11px] font-black">A</span>
-            <span>Sign in Anonymously</span>
-            <span className="rounded-full bg-emerald-300 px-2 py-0.5 text-[10px] font-extrabold text-black">FAST</span>
-          </button>
-
-          <button
-            onClick={loginWithGoogle}
-            disabled={authBusy}
-            className={`flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 font-bold transition ${authMethod === "google" ? "border-blue-300 bg-white text-slate-900 ring-2 ring-blue-300/60" : "border-white/40 bg-white text-slate-900 hover:border-blue-200 hover:bg-white/95"}`}
-          >
+        {/* Google */}
+        <button
+          onClick={loginWithGoogle}
+          disabled={authBusy}
+          className="group flex w-full items-center gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-5 py-4 text-left transition-all hover:border-white/15 hover:bg-white/[0.06] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/[0.06] ring-1 ring-white/10">
             <svg className="h-5 w-5" viewBox="0 0 24 24" aria-hidden="true">
               <path fill="#EA4335" d="M12 10.2v3.9h5.4c-.2 1.2-.9 2.3-1.9 3l3 2.3c1.8-1.7 2.8-4.1 2.8-7 0-.6-.1-1.2-.2-1.8H12z" />
               <path fill="#34A853" d="M12 21c2.5 0 4.7-.8 6.3-2.2l-3-2.3c-.8.6-1.9 1-3.3 1-2.5 0-4.6-1.7-5.3-4H3.6v2.4C5.2 19 8.3 21 12 21z" />
               <path fill="#FBBC05" d="M6.7 13.5c-.2-.6-.3-1.1-.3-1.7s.1-1.2.3-1.7V7.7H3.6C2.9 9 2.5 10.3 2.5 11.8s.4 2.8 1.1 4.1l3.1-2.4z" />
               <path fill="#4285F4" d="M12 6.1c1.4 0 2.7.5 3.7 1.4l2.8-2.8C16.7 3 14.5 2 12 2 8.3 2 5.2 4 3.6 7.7l3.1 2.4c.7-2.3 2.8-4 5.3-4z" />
             </svg>
-            Continue with Google
-          </button>
+          </span>
+          <div className="min-w-0">
+            <span className="block text-[15px] font-semibold text-white">Continue with Google</span>
+            <span className="block text-xs text-white/35">Fast &amp; secure</span>
+          </div>
+          <svg className="ml-auto h-4 w-4 text-white/20 transition-transform group-hover:translate-x-0.5 group-hover:text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
 
+        {/* Email */}
+        <button
+          onClick={() => {
+            setAuthMethod("email");
+            setAuthError(null);
+            setTimeout(() => emailInputRef.current?.focus(), 100);
+          }}
+          disabled={authBusy}
+          className={`group flex w-full items-center gap-4 rounded-2xl border px-5 py-4 text-left transition-all active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 ${authMethod === "email" ? "border-pink-500/30 bg-pink-500/[0.06]" : "border-white/[0.07] bg-white/[0.03] hover:border-white/15 hover:bg-white/[0.06]"}`}
+        >
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-pink-500/10 text-pink-400 ring-1 ring-pink-500/20">
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+          </span>
+          <div className="min-w-0">
+            <span className="block text-[15px] font-semibold text-white">Use Email</span>
+            <span className="block text-xs text-white/35">Sign in or create account</span>
+          </div>
+          <svg className="ml-auto h-4 w-4 text-white/20 transition-transform group-hover:translate-x-0.5 group-hover:text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
+        </button>
+      </div>
+
+      {/* Email form */}
+      {authMethod === "email" && (
+        <div className="mt-4 animate-fade-in space-y-3 rounded-2xl border border-white/[0.07] bg-white/[0.02] p-4">
+          <input
+            id="email"
+            ref={emailInputRef}
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+            placeholder="Email address"
+            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-[15px] text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/40 focus:bg-white/[0.06]"
+          />
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+            placeholder="Password"
+            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-[15px] text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/40 focus:bg-white/[0.06]"
+          />
           <button
-            onClick={() => {
-              setAuthMethod("email");
-              setAuthError(null);
-              emailInputRef.current?.focus();
-            }}
+            type="button"
+            onClick={loginWithEmail}
             disabled={authBusy}
-            className={`flex w-full items-center justify-center gap-3 rounded-2xl border px-4 py-3 text-sm font-semibold transition ${authMethod === "email" ? "border-fuchsia-300/70 bg-gradient-to-r from-fuchsia-400/20 to-pink-400/15 text-white shadow-[0_10px_26px_rgba(217,70,239,0.2)]" : "border-white/20 bg-white/[0.04] text-white/75 hover:border-fuchsia-200/40 hover:bg-fuchsia-300/10 hover:text-white"}`}
+            className="w-full rounded-xl bg-pink-500 py-3 text-[15px] font-bold text-white transition hover:bg-pink-400 active:scale-[0.98] disabled:opacity-50"
           >
-            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/30 bg-white/10 text-[11px] font-black">@</span>
-            Use Email and Password
+            {authMode === "signup" ? "Create Account" : "Sign In"}
           </button>
-        </div>
-
-        {authMethod === "email" && (
-          <div className="mt-5 grid gap-3">
-            <label htmlFor="email" className="text-xs font-bold uppercase tracking-[0.14em] text-white/60">Email</label>
-            <input
-              id="email"
-              ref={emailInputRef}
-              type="email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              autoComplete="email"
-              placeholder="you@example.com"
-              className="rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-white/35 outline-none transition focus:border-pink-400/70"
-            />
-
-            <label htmlFor="password" className="text-xs font-bold uppercase tracking-[0.14em] text-white/60">Password</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete={authMode === "signup" ? "new-password" : "current-password"}
-              placeholder="At least 6 characters"
-              className="rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-white/35 outline-none transition focus:border-pink-400/70"
-            />
-
+          <div className="flex items-center justify-between pt-1 text-xs">
             <button
               type="button"
-              onClick={loginWithEmail}
+              onClick={resetPassword}
               disabled={authBusy}
-              className="rounded-xl bg-gradient-to-r from-fuchsia-400 to-pink-400 px-4 py-3 font-extrabold text-black transition hover:brightness-110 disabled:opacity-50"
+              className="text-white/30 transition hover:text-white/60"
             >
-              {authMode === "signup" ? "Create Account" : "Login"}
+              Forgot password?
             </button>
-
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <button
-                type="button"
-                onClick={resetPassword}
-                disabled={authBusy}
-                className="font-semibold text-pink-300 transition hover:text-pink-200"
-              >
-                Forgot Password?
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMode(authMode === "signin" ? "signup" : "signin");
-                  setAuthError(null);
-                }}
-                className="font-semibold text-white/75 transition hover:text-white"
-              >
-                {authMode === "signin" ? "New user? Create account" : "Already have an account? Sign in"}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setAuthMode(authMode === "signin" ? "signup" : "signin");
+                setAuthError(null);
+              }}
+              className="font-medium text-pink-400/70 transition hover:text-pink-400"
+            >
+              {authMode === "signin" ? "Create account" : "Sign in instead"}
+            </button>
           </div>
-        )}
+        </div>
+      )}
 
-        {authError && <p className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-200">{authError}</p>}
-        {authNotice && <p className="mt-4 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-200">{authNotice}</p>}
-      </article>
+      {/* Notices */}
+      {authError && (
+        <div className="mt-4 animate-fade-in rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-center text-sm text-red-300">
+          {authError}
+        </div>
+      )}
+      {authNotice && (
+        <div className="mt-4 animate-fade-in rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3 text-center text-sm text-emerald-300">
+          {authNotice}
+        </div>
+      )}
     </section>
   );
 }
@@ -425,6 +434,7 @@ export function ProfileSetupView({
   profileError,
   onBack,
   onContinue,
+  backLabel,
 }: {
   profileGender: ProfileGender | null;
   setProfileGender: (value: ProfileGender) => void;
@@ -435,33 +445,41 @@ export function ProfileSetupView({
   profileError: string | null;
   onBack: () => void;
   onContinue: () => void;
+  backLabel?: string;
 }) {
   const resolvedCountryCode = normalizeCountryCode(profileCountryCode) ?? getCountryCodeFromName(profileCountry);
   const normalizedCountryName = getCountryDisplayName(profileCountry);
 
   return (
-    <section className="w-full max-w-[640px] rounded-3xl border border-white/10 bg-gradient-to-br from-[#1a1320] to-[#0f0d16] p-6 shadow-[0_20px_60px_rgba(0,0,0,0.35)] md:p-8">
-      <p className="text-xs font-bold uppercase tracking-[0.26em] text-pink-300/80">Profile Setup</p>
-      <h2 className="mt-3 text-3xl font-black text-white">Tell us about you</h2>
-      <p className="mt-2 text-sm text-white/60">We use this for better matching. Only basic profile data is shown.</p>
-
-      <div className="mt-6 grid gap-3 sm:grid-cols-3">
-        {(["Male", "Female", "Other"] as ProfileGender[]).map((gender) => (
-          <button
-            key={gender}
-            type="button"
-            className={`flex items-center justify-center rounded-2xl border px-4 py-3 font-semibold transition ${profileGender === gender ? "border-pink-400/70 bg-pink-400/10 text-white ring-2 ring-pink-400/25" : "border-white/15 bg-white/[0.04] text-white/80 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[0.08]"}`}
-            onClick={() => setProfileGender(gender)}
-          >
-            <span className="flex items-center gap-2">
-              <span className={`gender-icon ${gender.toLowerCase()}`}><GenderIcon gender={gender} /></span>
-              <span>{gender}</span>
-            </span>
-          </button>
-        ))}
+    <section className="w-full max-w-sm animate-fade-in-up px-4">
+      <div className="mb-8 text-center">
+        <h2 className="text-2xl font-bold tracking-tight text-white">About you</h2>
+        <p className="mt-1.5 text-sm text-white/40">Helps us match you better</p>
       </div>
 
-      <label htmlFor="profile-age" className="mt-5 block text-xs font-bold uppercase tracking-[0.14em] text-white/60">Age</label>
+      {/* Gender */}
+      <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Gender</p>
+      <div className="grid grid-cols-3 gap-2">
+        {(["Male", "Female", "Other"] as ProfileGender[]).map((gender) => {
+          const selected = profileGender === gender;
+          return (
+            <button
+              key={gender}
+              type="button"
+              className={`flex flex-col items-center gap-2 rounded-2xl border py-5 font-medium transition-all active:scale-[0.97] ${selected ? "border-pink-500/40 bg-pink-500/10 text-white shadow-[0_0_20px_rgba(236,72,153,0.08)]" : "border-white/[0.07] bg-white/[0.03] text-white/50 hover:border-white/15 hover:bg-white/[0.06] hover:text-white/70"}`}
+              onClick={() => setProfileGender(gender)}
+            >
+              <span className={`flex h-10 w-10 items-center justify-center rounded-full ${selected ? "bg-pink-500/15 text-pink-400" : "bg-white/[0.05] text-white/40"}`}>
+                <GenderIcon gender={gender} />
+              </span>
+              <span className="text-sm">{gender}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Age */}
+      <p className="mb-2 mt-5 text-xs font-semibold uppercase tracking-widest text-white/30">Age</p>
       <input
         id="profile-age"
         type="number"
@@ -469,27 +487,37 @@ export function ProfileSetupView({
         max={99}
         value={profileAge}
         onChange={(event) => setProfileAge(event.target.value)}
-        placeholder="Enter your age"
-        className="mt-2 w-full rounded-xl border border-white/15 bg-white/[0.06] px-4 py-3 text-white placeholder:text-white/35 outline-none transition focus:border-pink-400/70"
+        placeholder="Your age"
+        className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-center text-lg font-medium text-white placeholder:text-white/20 outline-none transition focus:border-pink-500/40 focus:bg-white/[0.06]"
       />
 
-      <label htmlFor="profile-country" className="mt-4 block text-xs font-bold uppercase tracking-[0.14em] text-white/60">Country</label>
-      <div
-        id="profile-country"
-        className="mt-2 flex w-full items-center gap-2 rounded-xl border border-white/15 bg-white/[0.04] px-4 py-3 text-white/90"
-      >
-        <CountryFlagIcon countryCode={resolvedCountryCode ?? undefined} className="h-4 w-5 rounded-[2px] object-cover" />
-        <span>{profileCountry ? (normalizedCountryName || "Unknown") : "Detecting..."}</span>
+      {/* Country */}
+      <div className="mt-4 flex items-center justify-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm text-white/50">
+        <CountryFlagIcon countryCode={resolvedCountryCode ?? undefined} className="h-3.5 w-5 rounded-[2px] object-cover" />
+        <span>{profileCountry ? (normalizedCountryName || "Unknown") : "Detecting location..."}</span>
       </div>
-      <p className="mt-1 text-[11px] text-white/45">Auto-detected from your browser locale.</p>
 
-      {profileError && <p className="mt-3 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-200">{profileError}</p>}
+      {/* Error */}
+      {profileError && (
+        <div className="mt-3 rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-center text-sm text-red-300">
+          {profileError}
+        </div>
+      )}
 
-      <div className="mt-5 flex flex-wrap justify-end gap-3">
-        <button type="button" className="rounded-xl border border-white/20 px-4 py-3 font-semibold text-white/80 transition hover:border-white/35 hover:text-white" onClick={onBack}>
-          Back
+      {/* Actions */}
+      <div className="mt-6 grid grid-cols-2 gap-2.5">
+        <button
+          type="button"
+          onClick={onBack}
+          className="rounded-xl border border-white/[0.08] bg-white/[0.03] py-3 text-sm font-semibold text-white/50 transition hover:border-white/15 hover:text-white/80 active:scale-[0.97]"
+        >
+          {backLabel ?? "Back"}
         </button>
-        <button type="button" className="rounded-xl bg-pink-500 px-4 py-3 font-extrabold text-black transition hover:brightness-110" onClick={onContinue}>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="rounded-xl bg-pink-500 py-3 text-sm font-bold text-white transition hover:bg-pink-400 active:scale-[0.97]"
+        >
           Continue
         </button>
       </div>
@@ -497,39 +525,53 @@ export function ProfileSetupView({
   );
 }
 
-export function ModeSelectionView({
-  onChooseMode,
+export function ModeAndFiltersView({
+  onStart,
+  onBack,
 }: {
-  onChooseMode: (mode: ChatMode) => void;
+  onStart: (mode: ChatMode, filters: ChatFilters) => void;
+  onBack: () => void;
 }) {
-  const modeOptions: Array<{
-    id: ChatMode;
-    title: string;
-    sub: string;
-    accent: string;
-    ring: string;
-    icon: ReactNode;
-  }> = [
+  const [selectedMode, setSelectedMode] = useState<ChatMode>("text");
+  const [showFilters, setShowFilters] = useState(false);
+  const [gender, setGender] = useState<GenderFilter>("Any");
+  const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("Any age");
+  const [style, setStyle] = useState<ChatStyleFilter>("Any style");
+  const [country, setCountry] = useState<CountryFilter>("Any");
+  const [countryMenuOpen, setCountryMenuOpen] = useState(false);
+  const countryMenuRef = useRef<HTMLDivElement | null>(null);
+  const selectedCountryCode = country !== "Any" ? country : undefined;
+
+  useEffect(() => {
+    if (!countryMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!countryMenuRef.current?.contains(event.target as Node)) setCountryMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [countryMenuOpen]);
+
+  const modeOptions: Array<{ id: ChatMode; label: string; desc: string; icon: ReactNode; color: string; activeBg: string }> = [
     {
       id: "text",
-      title: "Text",
-      sub: "Fast and low-key conversation",
-      accent: "from-cyan-300 to-blue-400",
-      ring: "hover:border-cyan-200/60 hover:shadow-[0_12px_36px_rgba(34,211,238,0.24)]",
+      label: "Text",
+      desc: "Message chat",
+      color: "text-cyan-400",
+      activeBg: "border-cyan-500/30 bg-cyan-500/[0.08]",
       icon: (
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1">
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-7Z" />
         </svg>
       ),
     },
     {
       id: "video",
-      title: "Video",
-      sub: "Face to face with live presence",
-      accent: "from-rose-300 to-fuchsia-400",
-      ring: "hover:border-fuchsia-200/60 hover:shadow-[0_12px_36px_rgba(232,121,249,0.24)]",
+      label: "Video",
+      desc: "Face to face",
+      color: "text-rose-400",
+      activeBg: "border-rose-500/30 bg-rose-500/[0.08]",
       icon: (
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1">
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <path d="M15 10.5 20 7v10l-5-3.5" />
           <rect x="3" y="6" width="12" height="12" rx="2.5" />
         </svg>
@@ -537,12 +579,12 @@ export function ModeSelectionView({
     },
     {
       id: "group",
-      title: "Groups",
-      sub: "Join a room and meet more people",
-      accent: "from-amber-200 to-orange-400",
-      ring: "hover:border-amber-200/60 hover:shadow-[0_12px_36px_rgba(251,191,36,0.22)]",
+      label: "Groups",
+      desc: "Multi-person",
+      color: "text-amber-400",
+      activeBg: "border-amber-500/30 bg-amber-500/[0.08]",
       icon: (
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1">
+        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
           <circle cx="8" cy="9" r="2.5" />
           <circle cx="16" cy="9" r="2.5" />
           <path d="M4.5 18a3.5 3.5 0 0 1 7 0M12.5 18a3.5 3.5 0 0 1 7 0" />
@@ -551,246 +593,169 @@ export function ModeSelectionView({
     },
   ];
 
-  return (
-    <section className="w-full max-w-5xl rounded-2xl border border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(236,72,153,0.16),transparent_36%),radial-gradient(circle_at_bottom_left,rgba(56,189,248,0.12),transparent_32%),linear-gradient(145deg,#13101a,#0b0a10)] p-4 shadow-[0_20px_60px_rgba(0,0,0,0.35)] sm:rounded-3xl sm:p-6 md:p-8">
-      <p className="text-xs font-bold uppercase tracking-[0.26em] text-pink-300/80">Chat Mode</p>
-      <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
-        <div>
-          <h2 className="text-[1.75rem] font-black leading-tight text-white sm:text-3xl md:text-[2.15rem]">Choose your vibe</h2>
-          <p className="mt-1.5 text-sm text-white/60 sm:mt-2">Pick one mode to start your next conversation.</p>
-        </div>
-        <p className="w-fit rounded-full border border-white/15 bg-white/[0.04] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white/60">
-          Tap a card to continue
-        </p>
-      </div>
-
-      <div className="mt-5 grid gap-3 sm:mt-6 sm:gap-4 md:grid-cols-3">
-        {modeOptions.map((m) => (
-          <button
-            key={m.id}
-            onClick={() => onChooseMode(m.id)}
-            className={`group relative overflow-hidden rounded-2xl border border-white/15 bg-white/[0.03] p-4 text-left transition duration-200 hover:-translate-y-0.5 hover:bg-white/[0.06] sm:rounded-3xl sm:p-5 ${m.ring}`}
-          >
-            <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/5 blur-2xl transition group-hover:scale-110" />
-            <div className="flex items-start gap-3 sm:block">
-              <div className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${m.accent} text-black shadow-[0_8px_24px_rgba(0,0,0,0.25)] sm:mb-4 sm:h-11 sm:w-11 sm:rounded-2xl`}>
-                {m.icon}
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-lg font-extrabold text-white sm:text-xl">{m.title}</h3>
-                <p className="mt-0.5 text-xs text-white/60 sm:mt-1 sm:text-sm sm:text-white/55">{m.sub}</p>
-              </div>
-            </div>
-            <span className="mt-3 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.08em] text-white/50 transition group-hover:text-white/80 sm:mt-4">
-              Enter mode
-              <span aria-hidden="true">→</span>
-            </span>
-          </button>
-        ))}
-      </div>
-
-    </section>
-  );
-}
-
-export function FilterOptionsView({
-  initialFilters,
-  onApply,
-  onBack,
-}: {
-  initialFilters: ChatFilters;
-  onApply: (filters: ChatFilters) => void;
-  onBack: () => void;
-}) {
-  const [gender, setGender] = useState<GenderFilter>(initialFilters.gender);
-  const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>(initialFilters.ageGroup);
-  const [style, setStyle] = useState<ChatStyleFilter>(initialFilters.style);
-  const [country, setCountry] = useState<CountryFilter>(initialFilters.country);
-  const [countryMenuOpen, setCountryMenuOpen] = useState(false);
-  const countryMenuRef = useRef<HTMLDivElement | null>(null);
-  const selectedCountryCode = country !== "Any" ? country : undefined;
-
-  useEffect(() => {
-    if (!countryMenuOpen) {
-      return;
-    }
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!countryMenuRef.current?.contains(event.target as Node)) {
-        setCountryMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [countryMenuOpen]);
-
-  const applyFilters = () => {
-    onApply({ gender, ageGroup, style, country });
+  const handleStart = () => {
+    onStart(selectedMode, { gender, ageGroup, style, country });
   };
 
-  return (
-    <section className="w-full max-w-2xl rounded-[28px] border border-white/10 bg-black/45 p-5 shadow-[0_20px_60px_rgba(0,0,0,0.4)] backdrop-blur-xl md:p-7">
-      <p className="text-xs font-bold uppercase tracking-[0.3em] text-pink-300/80">Filters</p>
-      <h2 className="mt-3 text-3xl font-black text-white">Match preferences</h2>
-      <p className="mt-2 max-w-[34ch] text-sm text-white/60">Choose who you want to see before entering chat.</p>
+  const handleQuickStart = () => {
+    onStart("text", { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any" });
+  };
 
-      <div className="mt-5 flex flex-wrap justify-end gap-3 border-b border-white/10 pb-4">
-        <button
-          type="button"
-          className="rounded-xl border border-white/20 px-4 py-3 font-semibold text-white/80 transition hover:border-white/35 hover:text-white"
-          onClick={onBack}
-        >
-          Back
-        </button>
-        <button
-          type="button"
-          className="rounded-xl bg-pink-500 px-4 py-3 font-extrabold text-black transition hover:brightness-110"
-          onClick={applyFilters}
-        >
-          Start Chat
-        </button>
+  const pillClasses = (active: boolean) =>
+    `rounded-xl py-2.5 text-sm font-medium transition-all active:scale-[0.97] ${active ? "bg-white/[0.1] text-white ring-1 ring-white/20" : "bg-white/[0.03] text-white/40 hover:bg-white/[0.06] hover:text-white/60"}`;
+
+  return (
+    <section className="w-full max-w-sm animate-fade-in-up px-4">
+      <div className="mb-8 text-center">
+        <h2 className="text-2xl font-bold tracking-tight text-white">Ready to chat?</h2>
+        <p className="mt-1.5 text-sm text-white/40">Choose your mode</p>
       </div>
 
-      <div className="mt-6 grid gap-4">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <label className="text-xs font-bold uppercase tracking-[0.14em] text-white/55">Age group</label>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-white/35">Toggle one</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((option) => {
-              const isSelected = ageGroup === option;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setAgeGroup((current) => (current === option ? "Any age" : option))}
-                  aria-pressed={isSelected}
-                  className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${isSelected ? "border-pink-400/70 bg-pink-400/12 text-white shadow-[0_0_0_1px_rgba(255,77,163,0.15)]" : "border-white/10 bg-white/[0.04] text-white/78 hover:border-white/25 hover:bg-white/[0.06] hover:text-white"}`}
-                >
-                  <span>{option}</span>
-                  <span className={`h-2.5 w-2.5 rounded-full ${isSelected ? "bg-pink-400" : "bg-white/15"}`} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <label className="text-xs font-bold uppercase tracking-[0.14em] text-white/55">Chat style</label>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-white/35">Toggle one</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((option) => {
-              const isSelected = style === option;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setStyle((current) => (current === option ? "Any style" : option))}
-                  aria-pressed={isSelected}
-                  className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${isSelected ? "border-pink-400/70 bg-pink-400/12 text-white shadow-[0_0_0_1px_rgba(255,77,163,0.15)]" : "border-white/10 bg-white/[0.04] text-white/78 hover:border-white/25 hover:bg-white/[0.06] hover:text-white"}`}
-                >
-                  <span>{option}</span>
-                  <span className={`h-2.5 w-2.5 rounded-full ${isSelected ? "bg-pink-400" : "bg-white/15"}`} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <label className="text-xs font-bold uppercase tracking-[0.14em] text-white/55">Gender</label>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-white/35">Toggle one</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {(["Any", "Male", "Female", "Other"] as GenderFilter[]).map((option) => {
-              const isSelected = gender === option;
-              return (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => setGender((current) => (current === option ? "Any" : option))}
-                  aria-pressed={isSelected}
-                  className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm font-semibold transition ${isSelected ? "border-pink-400/70 bg-pink-400/12 text-white shadow-[0_0_0_1px_rgba(255,77,163,0.15)]" : "border-white/10 bg-white/[0.04] text-white/78 hover:border-white/25 hover:bg-white/[0.06] hover:text-white"}`}
-                >
-                  <span>{option}</span>
-                  <span className={`h-2.5 w-2.5 rounded-full ${isSelected ? "bg-pink-400" : "bg-white/15"}`} />
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <label className="text-xs font-bold uppercase tracking-[0.14em] text-white/55">Country</label>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-white/35">Any or specific</span>
-          </div>
-          <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1.5 text-xs font-semibold text-white/80">
-            <CountryFlagIcon countryCode={selectedCountryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
-            <span>{country === "Any" ? "Any country" : getCountryLabel(country)}</span>
-          </div>
-          <div className="relative" ref={countryMenuRef}>
+      {/* Mode cards */}
+      <div className="space-y-2">
+        {modeOptions.map((m) => {
+          const active = selectedMode === m.id;
+          return (
             <button
-              type="button"
-              onClick={() => setCountryMenuOpen((current) => !current)}
-              aria-haspopup="listbox"
-              aria-expanded={countryMenuOpen}
-              className="flex w-full items-center justify-between rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-semibold text-white outline-none transition hover:border-white/25 focus:border-pink-400/60"
+              key={m.id}
+              onClick={() => setSelectedMode(m.id)}
+              className={`flex w-full items-center gap-4 rounded-2xl border px-5 py-4 text-left transition-all active:scale-[0.98] ${active ? m.activeBg : "border-white/[0.07] bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.04]"}`}
             >
-              <span className="inline-flex items-center gap-2">
-                <CountryFlagIcon countryCode={selectedCountryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
-                <span>{country === "Any" ? "Any country" : getCountryLabel(country)}</span>
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.05] ${active ? m.color : "text-white/30"}`}>
+                {m.icon}
               </span>
-              <span className={`text-xs transition ${countryMenuOpen ? "rotate-180" : ""}`} aria-hidden="true">▾</span>
+              <div>
+                <span className={`block text-[15px] font-semibold ${active ? "text-white" : "text-white/60"}`}>{m.label}</span>
+                <span className={`block text-xs ${active ? "text-white/50" : "text-white/25"}`}>{m.desc}</span>
+              </div>
+              {active && (
+                <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-white/10">
+                  <svg className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6 9 17l-5-5"/></svg>
+                </span>
+              )}
             </button>
+          );
+        })}
+      </div>
 
-            {countryMenuOpen && (
-              <div
-                role="listbox"
-                className="absolute z-30 mt-2 max-h-56 w-full overflow-y-auto rounded-xl border border-white/15 bg-[#141722] p-1.5 shadow-[0_14px_28px_rgba(0,0,0,0.45)]"
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCountry("Any");
-                    setCountryMenuOpen(false);
-                  }}
-                  className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-semibold transition ${country === "Any" ? "bg-pink-400/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
-                >
-                  <CountryFlagIcon className="h-3.5 w-5 rounded-[2px] object-cover" />
-                  <span>Any country</span>
+      {/* Quick Start */}
+      <button
+        type="button"
+        onClick={handleQuickStart}
+        className="mt-5 w-full rounded-xl bg-pink-500 py-3.5 text-[15px] font-bold text-white transition hover:bg-pink-400 active:scale-[0.98]"
+      >
+        Quick Start
+      </button>
+
+      {/* Filter toggle */}
+      <button
+        type="button"
+        onClick={() => setShowFilters((v) => !v)}
+        className="mt-3 flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-white/30 transition hover:text-white/60"
+      >
+        {showFilters ? "Hide preferences" : "Set preferences"}
+        <svg className={`h-3 w-3 transition-transform ${showFilters ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+
+      {/* Collapsible filters */}
+      {showFilters && (
+        <div className="animate-fade-in space-y-4 pt-2">
+          {/* Age group */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Age</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((option) => (
+                <button key={option} type="button" onClick={() => setAgeGroup((c) => (c === option ? "Any age" : option))} className={pillClasses(ageGroup === option)}>
+                  {option}
                 </button>
+              ))}
+            </div>
+          </div>
 
-                {COUNTRY_OPTIONS.map((option) => {
-                  const isSelected = country === option.code;
-                  return (
+          {/* Style */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Style</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((option) => (
+                <button key={option} type="button" onClick={() => setStyle((c) => (c === option ? "Any style" : option))} className={pillClasses(style === option)}>
+                  {option === "Any style" ? "Any" : option}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Gender */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Gender</p>
+            <div className="grid grid-cols-4 gap-1.5">
+              {(["Any", "Male", "Female", "Other"] as GenderFilter[]).map((option) => (
+                <button key={option} type="button" onClick={() => setGender((c) => (c === option ? "Any" : option))} className={pillClasses(gender === option)}>
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Country */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Country</p>
+            <div className="relative" ref={countryMenuRef}>
+              <button
+                type="button"
+                onClick={() => setCountryMenuOpen((c) => !c)}
+                className="flex w-full items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/[0.06]"
+              >
+                <span className="inline-flex items-center gap-2.5">
+                  <CountryFlagIcon countryCode={selectedCountryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
+                  <span>{country === "Any" ? "Any country" : getCountryLabel(country)}</span>
+                </span>
+                <svg className={`h-3.5 w-3.5 text-white/30 transition-transform ${countryMenuOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+
+              {countryMenuOpen && (
+                <div className="absolute z-30 mt-1.5 max-h-52 w-full overflow-y-auto rounded-xl border border-white/[0.08] bg-[#12121a] p-1 shadow-2xl">
+                  <button
+                    type="button"
+                    onClick={() => { setCountry("Any"); setCountryMenuOpen(false); }}
+                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition ${country === "Any" ? "bg-white/[0.08] text-white" : "text-white/60 hover:bg-white/[0.06]"}`}
+                  >
+                    <CountryFlagIcon className="h-3.5 w-5 rounded-[2px] object-cover" />
+                    Any country
+                  </button>
+                  {COUNTRY_OPTIONS.map((option) => (
                     <button
                       key={option.code}
                       type="button"
-                      onClick={() => {
-                        setCountry(option.code);
-                        setCountryMenuOpen(false);
-                      }}
-                      className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-sm font-semibold transition ${isSelected ? "bg-pink-400/15 text-white" : "text-white/80 hover:bg-white/10 hover:text-white"}`}
+                      onClick={() => { setCountry(option.code); setCountryMenuOpen(false); }}
+                      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition ${country === option.code ? "bg-white/[0.08] text-white" : "text-white/60 hover:bg-white/[0.06]"}`}
                     >
                       <CountryFlagIcon countryCode={option.code} className="h-3.5 w-5 rounded-[2px] object-cover" />
-                      <span>{option.label}</span>
+                      {option.label}
                     </button>
-                  );
-                })}
-              </div>
-            )}
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
 
+          {/* Start with preferences */}
+          <button
+            type="button"
+            onClick={handleStart}
+            className="w-full rounded-xl border border-pink-500/25 bg-pink-500/[0.08] py-3 text-sm font-bold text-pink-300 transition hover:bg-pink-500/15 active:scale-[0.98]"
+          >
+            Start with Preferences
+          </button>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={onBack}
+        className="mt-4 w-full py-2 text-xs font-medium text-white/25 transition hover:text-white/50"
+      >
+        Sign Out
+      </button>
     </section>
   );
 }
@@ -1006,268 +971,182 @@ export function ChatRoomView({
   return (
     <section
       ref={chatContainerRef}
-      className={`${isFullscreen ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(100dvh-7.6rem)] rounded-[22px] md:h-[calc(100dvh-8.75rem)] md:rounded-[28px]"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/10 bg-[linear-gradient(180deg,rgba(16,18,26,0.95),rgba(8,9,14,0.95))] shadow-[0_24px_70px_rgba(0,0,0,0.48)] backdrop-blur-sm`}
+      className={`${isFullscreen ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(100dvh-5.5rem)] rounded-2xl sm:h-[calc(100dvh-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.06] bg-[#0a0a10] shadow-[0_8px_40px_rgba(0,0,0,0.5)]`}
     >
-      <header className="border-b border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(236,72,153,0.12),transparent_42%),linear-gradient(180deg,rgba(18,20,28,0.95),rgba(14,15,21,0.9))] px-3 py-3 md:px-5 md:py-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center gap-2.5 md:gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white ring-1 ring-white/15 md:h-12 md:w-12 md:rounded-2xl">
-              <GenderIcon gender={strangerProfile.gender} />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-bold uppercase tracking-[0.14em] text-white/65 md:text-sm md:tracking-[0.18em]">Stranger</span>
-                <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1">
-                  <CountryFlagIcon countryCode={hasResolvedStrangerProfile ? strangerProfile.countryCode : undefined} className="h-3.5 w-5 rounded-[2px] object-cover" />
-                </span>
-                <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/75">{strangerProfileLabel}</span>
-                <span className="rounded-full border border-pink-400/25 bg-pink-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-pink-200">{modeLabel}</span>
-                {selectedStyle && (
-                  <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-200">
-                    {selectedStyle}
-                  </span>
-                )}
-              </div>
-              <div className="mt-1.5 flex items-center gap-2 text-[11px] font-medium text-white/42">
-                <span className={`h-1.5 w-1.5 rounded-full ${isConnecting ? "bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.8)]" : "bg-emerald-400 shadow-[0_0_12px_rgba(74,222,128,0.8)]"}`} />
-                <span>{isConnecting ? "Connecting" : "Live session"}</span>
-                <span className="text-white/20">•</span>
-                <span>{isConnecting ? connectingStatus : "Matching preferences applied"}</span>
-              </div>
-            </div>
+      {/* ─── Header ─── */}
+      <header className="flex items-center gap-2 border-b border-white/[0.06] bg-[#0d0d14]/90 px-2.5 py-2 backdrop-blur-md sm:px-4 sm:py-2.5">
+        {!showBackConfirm ? (
+          <button
+            onClick={() => setShowBackConfirm(true)}
+            className="flex h-8 items-center gap-1 rounded-lg bg-white/[0.06] px-2.5 text-[11px] font-semibold text-white/50 transition hover:bg-white/[0.08] hover:text-white/70 active:scale-[0.97]"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
+            Back
+          </button>
+        ) : (
+          <div className="flex items-center gap-1.5 animate-fade-in">
+            <span className="text-[11px] font-semibold text-white/40">Sure?</span>
+            <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition hover:bg-pink-400 active:scale-[0.97]">Yes</button>
+            <button onClick={() => setShowBackConfirm(false)} className="h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition hover:bg-white/[0.12] active:scale-[0.97]">No</button>
           </div>
+        )}
 
-          <div className="-mx-1 flex w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2 [scrollbar-width:none] lg:mx-0 lg:w-auto lg:flex-wrap lg:overflow-visible lg:rounded-2xl lg:px-3 lg:py-2.5 lg:justify-end [&::-webkit-scrollbar]:hidden">
-            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/40">Filters</span>
-            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{ageLabel}</span>
-            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{genderLabel}</span>
-            <span className="whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">{styleLabel}</span>
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/70">
-              <CountryFlagIcon countryCode={selectedCountryCode} className="h-3 w-4 rounded-[2px] object-cover" />
-              <span>{countryLabel}</span>
-            </span>
+        <div className="relative flex-shrink-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/60 ring-1 ring-white/[0.08]">
+            <GenderIcon gender={strangerProfile.gender} />
           </div>
+          <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0d0d14] ${isConnecting ? "bg-amber-400" : "bg-emerald-400"}`} style={isConnecting ? { animation: "ripple 1.5s ease-out infinite" } : {}} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm font-semibold text-white/90">Stranger</span>
+            {hasResolvedStrangerProfile && (
+              <span className="flex items-center gap-1 text-[11px] text-white/40">
+                <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-[1px] object-cover" />
+                {strangerProfile.gender}, {strangerProfile.age}
+              </span>
+            )}
+          </div>
+          <p className="truncate text-[11px] text-white/30">
+            {isConnecting ? connectingStatus : `${modeLabel} · ${genderLabel} · ${ageLabel}`}
+          </p>
         </div>
 
-        <div className="mt-3 flex flex-col items-start gap-2 md:mt-4">
-          <div className="flex w-full items-center justify-between gap-2">
-            <div className="flex items-center">
-              <button
-                onClick={() => setShowBackConfirm((current) => !current)}
-                className="rounded-lg border border-white/15 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-white/75 transition hover:border-white/30 hover:text-white"
-                aria-label="Go to match preferences"
-              >
-                Back
-              </button>
-              <div
-                className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-out ${showBackConfirm ? "ml-1 max-w-[9rem] opacity-100 sm:max-w-xs" : "ml-0 max-w-0 opacity-0 pointer-events-none"}`}
-              >
-                <div className="flex items-center gap-1 rounded-lg border border-white/15 bg-black/85 px-2 py-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Sure?</span>
-                  <button
-                    onClick={() => {
-                      setShowBackConfirm(false);
-                      onChangeMode();
-                    }}
-                    className="rounded bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-black transition hover:bg-white/90"
-                  >
-                    Yes
-                  </button>
-                  <button
-                    onClick={() => setShowBackConfirm(false)}
-                    className="rounded border border-white/20 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/75 transition hover:text-white"
-                  >
-                    No
-                  </button>
-                </div>
-              </div>
+        <div className="flex items-center gap-1.5">
+          {showNextStrangerPrompt && (
+            <button
+              onClick={onNextStranger}
+              className="flex h-8 items-center gap-1 rounded-lg bg-emerald-500/15 px-3 text-[11px] font-semibold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-[0.97]"
+            >
+              Next
+              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 6 6 6-6 6"/></svg>
+            </button>
+          )}
+          {!showLeaveConfirm ? (
+            <button
+              onClick={() => setShowLeaveConfirm(true)}
+              className="flex h-8 items-center rounded-lg bg-rose-500 px-3 text-[11px] font-bold text-white transition hover:bg-rose-400 active:scale-[0.97]"
+            >
+              Leave
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5 animate-fade-in">
+              <span className="text-[11px] font-semibold text-white/40">Sure?</span>
+              <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition hover:bg-pink-400 active:scale-[0.97]">Yes</button>
+              <button onClick={() => setShowLeaveConfirm(false)} className="h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition hover:bg-white/[0.12] active:scale-[0.97]">No</button>
             </div>
-            <div className="flex items-center gap-2">
-              {showNextStrangerPrompt && (
-                <button
-                  onClick={onNextStranger}
-                  className="rounded-lg bg-emerald-400 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-black transition hover:bg-emerald-300"
-                >
-                  Next Stranger
-                </button>
-              )}
-              <button
-                onClick={toggleFullscreen}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/15 text-white/75 transition hover:border-white/30 hover:text-white"
-                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-              >
-                {isFullscreen ? (
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M21 16v5h-5" />
-                  </svg>
-                ) : (
-                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
-                  </svg>
-                )}
-              </button>
-              <button
-                onClick={() => setShowLeaveConfirm((current) => !current)}
-                className="rounded-lg bg-rose-500 px-3 py-2 text-[10px] font-extrabold uppercase tracking-[0.08em] text-white transition hover:bg-rose-400"
-              >
-                Leave
-              </button>
-              <div
-                className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-out ${showLeaveConfirm ? "ml-1 max-w-[9rem] opacity-100 sm:max-w-xs" : "ml-0 max-w-0 opacity-0 pointer-events-none"}`}
-              >
-                <div className="flex items-center gap-1 rounded-lg border border-white/15 bg-black/85 px-2 py-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Sure?</span>
-                  <button
-                    onClick={() => {
-                      setShowLeaveConfirm(false);
-                      if (chatFilters) {
-                        onLeaveChat(chatFilters);
-                      }
-                    }}
-                    className="rounded bg-rose-500 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-rose-400"
-                  >
-                    Yes
-                  </button>
-                  <button
-                    onClick={() => setShowLeaveConfirm(false)}
-                    className="rounded border border-white/20 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/75 transition hover:text-white"
-                  >
-                    No
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          )}
+          <button
+            onClick={toggleFullscreen}
+            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white/30 transition hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.95]"
+            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+          >
+            {isFullscreen ? (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+            ) : (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            )}
+          </button>
         </div>
       </header>
 
+      {/* ─── Messages ─── */}
       <div
         ref={messagesViewportRef}
         onScroll={handleMessagesScroll}
-        className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_40%),linear-gradient(180deg,rgba(11,13,19,0.92),rgba(7,8,12,0.96))] px-2.5 py-3 md:px-4 md:py-4"
+        className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-5"
       >
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 md:gap-4">
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
+          {/* Video section */}
           {chatMode === "video" && (
-            <section className="rounded-2xl border border-white/10 bg-[#07080c] p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.45)] sm:p-2">
-              <div className="grid grid-cols-2 gap-1.5">
-                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-black">
+            <section className="overflow-hidden rounded-2xl border border-white/[0.06] bg-black/40">
+              <div className="grid grid-cols-2 gap-px bg-white/[0.04]">
+                <div className="relative bg-black">
                   <video ref={remoteVideoRef} autoPlay playsInline className="aspect-[3/4] h-full w-full object-cover sm:aspect-[4/3]" />
                   {!hasRemoteVideo && (
-                    <div className="absolute inset-0 grid place-items-center bg-black/80 text-center text-xs font-semibold text-white/70">
-                      Stranger camera not ready
+                    <div className="absolute inset-0 grid place-items-center bg-black/70 text-center text-xs font-medium text-white/50">
+                      Waiting for stranger&apos;s camera...
                     </div>
                   )}
-                  <span className="absolute left-2 top-2 rounded bg-black/65 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/85">
-                    Stranger
-                  </span>
-                  <span className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-0.5 text-[9px] font-bold tracking-[0.08em] text-white/80">
-                    TEMPTED.CHAT
-                  </span>
+                  <span className="absolute left-2.5 top-2.5 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/70 backdrop-blur-sm">Stranger</span>
                 </div>
-
-                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-black">
+                <div className="relative bg-black">
                   <video ref={localVideoRef} autoPlay playsInline muted className="aspect-[3/4] h-full w-full object-cover sm:aspect-[4/3]" />
                   {!localVideoEnabled && (
-                    <div className="absolute inset-0 grid place-items-center bg-black/80 text-center text-xs font-semibold text-white/70">
-                      Your camera is off
+                    <div className="absolute inset-0 grid place-items-center bg-black/70 text-center text-xs font-medium text-white/50">
+                      Camera off
                     </div>
                   )}
-                  <span className="absolute left-2 top-2 rounded bg-black/65 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/85">
-                    You
-                  </span>
-                  <span className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-0.5 text-[9px] font-bold tracking-[0.08em] text-white/80">
-                    TEMPTED.CHAT
-                  </span>
+                  <span className="absolute left-2.5 top-2.5 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/70 backdrop-blur-sm">You</span>
                 </div>
               </div>
 
-              <div className="mt-2.5 flex flex-wrap items-center justify-center gap-2">
+              <div className="flex items-center justify-center gap-3 px-3 py-3">
                 <button
                   type="button"
                   onClick={toggleLocalAudio}
                   aria-label={localAudioEnabled ? "Mute microphone" : "Unmute microphone"}
-                  title={localAudioEnabled ? "Mute microphone" : "Unmute microphone"}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${localAudioEnabled ? "border-emerald-300/50 bg-emerald-400/15 text-emerald-200" : "border-rose-300/50 bg-rose-400/15 text-rose-200"}`}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition ${localAudioEnabled ? "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/25" : "bg-rose-500/15 text-rose-400 ring-1 ring-rose-500/25"}`}
                 >
                   {localAudioEnabled ? (
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
-                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                      <path d="M12 19v3" />
-                    </svg>
+                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><path d="M12 19v3" /></svg>
                   ) : (
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="m4 4 16 16" />
-                      <path d="M9 9v3a3 3 0 0 0 5.14 2.14" />
-                      <path d="M15 6a3 3 0 0 0-5.08-2.2" />
-                      <path d="M19 10v2a7 7 0 0 1-1.6 4.49" />
-                      <path d="M5 10v2a7 7 0 0 0 11.98 4.95" />
-                    </svg>
+                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 4 16 16" /><path d="M9 9v3a3 3 0 0 0 5.14 2.14" /><path d="M15 6a3 3 0 0 0-5.08-2.2" /><path d="M19 10v2a7 7 0 0 1-1.6 4.49" /><path d="M5 10v2a7 7 0 0 0 11.98 4.95" /></svg>
                   )}
                 </button>
                 <button
                   type="button"
                   onClick={toggleLocalVideo}
                   aria-label={localVideoEnabled ? "Turn off camera" : "Turn on camera"}
-                  title={localVideoEnabled ? "Turn off camera" : "Turn on camera"}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${localVideoEnabled ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-200" : "border-amber-300/50 bg-amber-400/15 text-amber-200"}`}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition ${localVideoEnabled ? "bg-cyan-500/15 text-cyan-400 ring-1 ring-cyan-500/25" : "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/25"}`}
                 >
                   {localVideoEnabled ? (
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <rect x="3" y="7" width="12" height="10" rx="2" />
-                      <path d="m15 10 6-3v10l-6-3" />
-                    </svg>
+                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg>
                   ) : (
-                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <path d="m2 2 20 20" />
-                      <rect x="3" y="7" width="12" height="10" rx="2" />
-                      <path d="m15 10 6-3v10l-6-3" />
-                    </svg>
+                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m2 2 20 20" /><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg>
                   )}
                 </button>
                 <button
                   type="button"
                   onClick={switchCamera}
                   aria-label="Switch camera"
-                  title="Switch camera"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition hover:bg-white/20"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white/60 ring-1 ring-white/[0.08] transition hover:bg-white/[0.12]"
                 >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M17 4h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-1" />
-                    <path d="M7 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h1" />
-                    <path d="m8 9 3-3 3 3" />
-                    <path d="m16 15-3 3-3-3" />
-                    <path d="M11 6h2v12h-2" />
-                  </svg>
+                  <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 4h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-1" /><path d="M7 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h1" /><path d="m8 9 3-3 3 3" /><path d="m16 15-3 3-3-3" /><path d="M11 6h2v12h-2" /></svg>
                 </button>
               </div>
 
               {videoError && (
-                <p className="mt-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200">
-                  {videoError}
-                </p>
+                <p className="border-t border-rose-500/15 bg-rose-500/[0.06] px-4 py-2.5 text-xs font-medium text-rose-300">{videoError}</p>
               )}
             </section>
           )}
 
+          {/* Connecting state */}
           {isConnecting && (
-            <div className="flex justify-center">
-              <div className="flex items-center gap-3 rounded-2xl border border-amber-300/35 bg-amber-400/10 px-4 py-3 text-amber-100">
-                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-amber-200/70 border-t-transparent" />
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold uppercase tracking-[0.12em]">Connecting stranger...</span>
-                  <span className="text-[11px] text-amber-100/85">{connectingStatus}</span>
+            <div className="animate-fade-in-up flex justify-center py-10">
+              <div className="flex flex-col items-center gap-5">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-pink-400" style={{ animation: "typing-bounce 1.2s ease-in-out infinite" }} />
+                  <span className="h-2 w-2 rounded-full bg-pink-400/70" style={{ animation: "typing-bounce 1.2s ease-in-out 0.15s infinite" }} />
+                  <span className="h-2 w-2 rounded-full bg-pink-400/40" style={{ animation: "typing-bounce 1.2s ease-in-out 0.3s infinite" }} />
+                </div>
+                <div className="text-center">
+                  <p className="text-sm font-medium text-white/70">Finding someone...</p>
+                  <p className="mt-1 text-xs text-white/35">{connectingStatus}</p>
                 </div>
               </div>
             </div>
           )}
+
+          {/* Message bubbles */}
           {messages.map((msg) => {
             const isImageDeletedEvent = msg.imageDeleted || msg.text === IMAGE_DELETED_NOTICE;
 
             if (isImageDeletedEvent) {
               return (
                 <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
-                  <p className="rounded-full border border-amber-300/35 bg-amber-400/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-amber-100">
+                  <p className="rounded-full bg-white/[0.04] px-3.5 py-1.5 text-xs font-medium text-white/40">
                     {IMAGE_DELETED_NOTICE}
                   </p>
                 </div>
@@ -1290,113 +1169,116 @@ export function ChatRoomView({
               msg.imageViewTimerSeconds > 0 &&
               (typeof msg.imageExpiresAtMs === "number" || typeof msg.imageRevealAtMs === "number");
 
+            const isYou = msg.author === "you";
+
             return (
-            <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
-              <div className={`flex max-w-[94%] flex-col gap-1 sm:max-w-[88%] ${msg.author === "you" ? "items-end" : "items-start"}`}>
-                <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm break-words [overflow-wrap:anywhere] sm:px-4 sm:py-3 sm:text-[15px] ${
-                  msg.author === "you"
-                    ? "rounded-br-sm border border-white/10 bg-pink-950 text-white"
-                    : "rounded-bl-sm border border-white/10 bg-white/[0.04] text-white/90"
-                } ${msg.isPending ? "opacity-70" : "opacity-100"}`}>
-                  {msg.text}
-                  {msg.image && msg.author === "you" && !msg.imageDeleted && !senderImageExpired && (
-                    <div className="mt-2 space-y-1">
-                      <ChatMedia src={msg.image} alt="Sent" mimeType={msg.imageMimeType} className="rounded-xl" />
-                      {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && (
-                        <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/80">
-                          {senderImageViewed
-                            ? remainingSeconds !== null
-                              ? `Stranger viewed • ${remainingSeconds}s left`
-                              : "Stranger viewed"
-                            : "Waiting for stranger to view"}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {!msg.image && msg.linkImageUrl && !msg.imageDeleted && (
-                    <div className="mt-2 space-y-1">
-                      <ChatMedia src={msg.linkImageUrl} alt="Linked image" mimeType={msg.linkImageMimeType} className="rounded-xl" />
-                    </div>
-                  )}
-                  {!msg.image && msg.imageUnavailable && (
-                    <p className="mt-2 rounded-lg border border-amber-300/35 bg-amber-400/10 px-2.5 py-2 text-[11px] font-semibold text-amber-100">
-                      Image could not be displayed.
-                    </p>
-                  )}
-                  {!msg.image && msg.imageDecrypting && (
-                    <p className="mt-2 rounded-lg border border-cyan-300/35 bg-cyan-400/10 px-2.5 py-2 text-[11px] font-semibold text-cyan-100">
-                      Decrypting secure image...
-                    </p>
-                  )}
-                  {msg.image && msg.author === "you" && (msg.imageDeleted || senderImageExpired) && null}
-                  {msg.image && msg.author === "stranger" && !msg.imageDeleted && (
-                    msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && !revealedTimedImageIds.has(msg.id) ? (
-                      <div className="group relative mt-2 block w-full overflow-hidden rounded-xl">
-                        <ChatMedia
-                          src={msg.image}
-                          alt="Timed image"
-                          mimeType={msg.imageMimeType}
-                          className="rounded-xl blur-md brightness-75 transition group-hover:scale-[1.01]"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setRevealedTimedImageIds((current) => {
-                              const next = new Set(current);
-                              next.add(msg.id);
-                              return next;
-                            });
-                            onRevealTimedImage(msg.id, msg.imageViewTimerSeconds ?? 0);
-                          }}
-                          className="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs font-extrabold uppercase tracking-[0.08em] text-white"
-                        >
-                          <span>{`Tap to view (${msg.imageViewTimerSeconds}s)`}</span>
-                          <span className="text-[10px] font-semibold text-white/80">
-                            {remainingSeconds !== null ? `Timer running: ${remainingSeconds}s` : "Timer starts after tap"}
-                          </span>
-                        </button>
-                      </div>
-                    ) : (
+              <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
+                <div className={`flex max-w-[82%] flex-col gap-1 sm:max-w-[70%] ${isYou ? "items-end" : "items-start"}`}>
+                  <div className={`rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed break-words [overflow-wrap:anywhere] sm:text-[15px] ${
+                    isYou
+                      ? "rounded-br-sm bg-pink-500 text-white"
+                      : "rounded-bl-sm bg-white/[0.06] text-white/85"
+                  } ${msg.isPending ? "opacity-50" : ""}`}>
+                    {msg.text}
+                    {msg.image && isYou && !msg.imageDeleted && !senderImageExpired && (
                       <div className="mt-2 space-y-1">
-                        <ChatMedia src={msg.image} alt="Sent" mimeType={msg.imageMimeType} className="rounded-xl" />
-                        {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && remainingSeconds !== null && (
-                          <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/80">
-                            {remainingSeconds}s left
+                        <ChatMedia src={msg.image} alt="Sent" mimeType={msg.imageMimeType} className="max-w-full rounded-xl" />
+                        {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && (
+                          <p className="text-[11px] font-medium text-white/70">
+                            {senderImageViewed
+                              ? remainingSeconds !== null
+                                ? `Viewed · ${remainingSeconds}s left`
+                                : "Viewed"
+                              : "Waiting to be viewed"}
                           </p>
                         )}
                       </div>
-                    )
-                  )}
-                  {msg.isPending && (
-                    <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/60">
-                      Sending...
-                    </p>
-                  )}
+                    )}
+                    {!msg.image && msg.linkImageUrl && !msg.imageDeleted && (
+                      <div className="mt-2">
+                        <ChatMedia src={msg.linkImageUrl} alt="Linked image" mimeType={msg.linkImageMimeType} className="max-w-full rounded-xl" />
+                      </div>
+                    )}
+                    {!msg.image && msg.imageUnavailable && (
+                      <p className="mt-2 text-xs font-medium text-white/50">Image unavailable</p>
+                    )}
+                    {!msg.image && msg.imageDecrypting && (
+                      <p className="mt-2 text-xs font-medium text-cyan-300/70">Decrypting image...</p>
+                    )}
+                    {msg.image && isYou && (msg.imageDeleted || senderImageExpired) && null}
+                    {msg.image && msg.author === "stranger" && !msg.imageDeleted && (
+                      msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && !revealedTimedImageIds.has(msg.id) ? (
+                        <div className="group relative mt-2 block w-full overflow-hidden rounded-xl">
+                          <ChatMedia
+                            src={msg.image}
+                            alt="Timed image"
+                            mimeType={msg.imageMimeType}
+                            className="max-w-full rounded-xl blur-lg brightness-50 transition"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRevealedTimedImageIds((current) => {
+                                const next = new Set(current);
+                                next.add(msg.id);
+                                return next;
+                              });
+                              onRevealTimedImage(msg.id, msg.imageViewTimerSeconds ?? 0);
+                            }}
+                            className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-white"
+                          >
+                            <svg className="h-8 w-8 opacity-80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /><circle cx="12" cy="12" r="3" /></svg>
+                            <span className="text-xs font-bold">{`Tap to view · ${msg.imageViewTimerSeconds}s`}</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="mt-2 space-y-1">
+                          <ChatMedia src={msg.image} alt="Sent" mimeType={msg.imageMimeType} className="max-w-full rounded-xl" />
+                          {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && remainingSeconds !== null && (
+                            <p className="text-[11px] font-medium text-white/60">{remainingSeconds}s left</p>
+                          )}
+                        </div>
+                      )
+                    )}
+                    {msg.isPending && (
+                      <p className="mt-1 text-[11px] font-medium text-white/50">Sending...</p>
+                    )}
+                  </div>
+                  <span className="px-1 text-[11px] text-white/20">{msg.sentAt}</span>
                 </div>
-                <span className="px-1 text-[10px] text-white/25">{msg.sentAt}</span>
               </div>
-            </div>
-          );})}
+            );
+          })}
+
+          {/* Typing indicator */}
           {!isConnecting && strangerIsTyping && (
-            <div className="flex justify-start">
-              <div className="rounded-2xl rounded-bl-sm border border-white/15 bg-white/[0.05] px-3 py-2 text-xs font-semibold text-white/65">
-                Stranger is typing...
+            <div className="flex justify-start animate-fade-in">
+              <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-sm bg-white/[0.06] px-4 py-3">
+                <span className="h-1.5 w-1.5 rounded-full bg-white/40" style={{ animation: "typing-bounce 1.2s ease-in-out infinite" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-white/30" style={{ animation: "typing-bounce 1.2s ease-in-out 0.15s infinite" }} />
+                <span className="h-1.5 w-1.5 rounded-full bg-white/20" style={{ animation: "typing-bounce 1.2s ease-in-out 0.3s infinite" }} />
               </div>
             </div>
           )}
 
+          {/* Scroll to latest */}
           {showScrollToLatestBubble && (
-            <div className="pointer-events-none sticky bottom-3 z-10 flex justify-end pr-1">
+            <div className="pointer-events-none sticky bottom-3 z-10 flex justify-center">
               <button
                 type="button"
                 onClick={scrollToLatestMessage}
-                className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-cyan-300/45 bg-cyan-400/20 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-cyan-100 shadow-[0_8px_24px_rgba(34,211,238,0.25)] transition hover:bg-cyan-300/25"
+                className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-4 py-2 text-xs font-medium text-white/60 shadow-lg backdrop-blur-md transition hover:bg-white/[0.12] hover:text-white/80"
                 aria-label="Scroll to latest message"
               >
-                <span>{unreadReceivedCount > 0 ? `${unreadReceivedCount} New` : "No New"}</span>
-                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="m6 9 6 6 6-6" />
-                </svg>
+                {unreadReceivedCount > 0 ? (
+                  <span className="flex items-center gap-1.5">
+                    <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-pink-500 px-1 text-[10px] font-bold text-white">{unreadReceivedCount}</span>
+                    new
+                  </span>
+                ) : (
+                  "Latest"
+                )}
+                <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6" /></svg>
               </button>
             </div>
           )}
@@ -1405,15 +1287,17 @@ export function ChatRoomView({
         </div>
       </div>
 
-      <footer className="border-t border-white/10 bg-[linear-gradient(180deg,rgba(10,11,15,0.92),rgba(6,7,10,0.98))] px-2.5 pb-[max(env(safe-area-inset-bottom),0.6rem)] pt-2.5 md:p-4">
-        <div className="mx-auto w-full max-w-3xl space-y-3">
+      {/* ─── Footer ─── */}
+      <footer className="border-t border-white/[0.06] bg-[#0a0a10] px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 md:px-4 md:pt-2.5">
+        <div className="mx-auto w-full max-w-2xl space-y-2">
+          {/* Image preview */}
           {chatMode !== "video" && imagePreview && (
-            <div className="relative grid w-full grid-cols-[52px_1fr] gap-2 rounded-2xl border border-pink-300/35 bg-gradient-to-r from-pink-500/12 via-fuchsia-500/8 to-transparent p-2.5 shadow-[0_10px_26px_rgba(236,72,153,0.14)] sm:grid-cols-[56px_1fr_auto] sm:items-center sm:gap-3">
+            <div className="animate-fade-in relative flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
               {isGifFilename(selectedFileName) ? (
                 <img
                   src={imagePreview}
                   alt="Attachment preview"
-                  className="h-[52px] w-[52px] rounded-lg border border-white/10 object-cover sm:h-14 sm:w-14"
+                  className="h-12 w-12 flex-shrink-0 rounded-lg border border-white/[0.06] object-cover"
                   loading="lazy"
                   decoding="async"
                 />
@@ -1421,38 +1305,24 @@ export function ChatRoomView({
                 <Image
                   src={imagePreview}
                   alt="Attachment preview"
-                  width={56}
-                  height={56}
-                  className="h-[52px] w-[52px] rounded-lg border border-white/10 object-cover sm:h-14 sm:w-14"
+                  width={48}
+                  height={48}
+                  className="h-12 w-12 flex-shrink-0 rounded-lg border border-white/[0.06] object-cover"
                   unoptimized
                 />
               )}
 
-              <div className="min-w-0 space-y-1.5">
-                <p className="truncate text-xs font-semibold text-pink-100 sm:text-sm" title={selectedFileName ?? "Selected image"}>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-white/60" title={selectedFileName ?? "Selected image"}>
                   {selectedFileName ?? "Selected image"}
                 </p>
-                {isSendingMessage && (
-                  <div className="w-full max-w-[280px] space-y-1">
-                    <div className="flex items-center gap-1.5 text-[11px] font-semibold text-pink-100/90">
-                      <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-pink-100/70 border-t-transparent" />
-                      <span>
-                        {imageUploadProgress !== null ? `Uploading ${imageUploadProgress}%` : "Sending..."}
-                      </span>
-                    </div>
-                    {imageUploadProgress !== null && (
-                      <div className="h-1.5 overflow-hidden rounded-full bg-black/25">
-                        <div
-                          className="h-full rounded-full bg-pink-200 transition-all duration-200"
-                          style={{ width: `${imageUploadProgress}%` }}
-                        />
-                      </div>
-                    )}
+                {isSendingMessage && imageUploadProgress !== null && (
+                  <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/[0.06]">
+                    <div className="h-full rounded-full bg-pink-500 transition-all duration-200" style={{ width: `${imageUploadProgress}%` }} />
                   </div>
                 )}
-
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.08em] text-pink-100/85">Timer</span>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                  <span className="text-[11px] text-white/30">Timer:</span>
                   {[0, 3, 5, 10, 15].map((seconds) => {
                     const isActive = imageTimerSeconds === seconds;
                     return (
@@ -1461,87 +1331,73 @@ export function ChatRoomView({
                         type="button"
                         onClick={() => setImageTimerSeconds?.(seconds)}
                         disabled={isSendingMessage}
-                        className={`rounded-md border px-2 py-1 text-[10px] font-bold transition ${isActive ? "border-pink-100/75 bg-pink-200 text-black" : "border-pink-200/30 bg-black/25 text-pink-100 hover:border-pink-100/55"} disabled:opacity-45`}
+                        className={`rounded-md px-2 py-0.5 text-[11px] font-medium transition ${isActive ? "bg-pink-500 text-white" : "bg-white/[0.04] text-white/40 hover:text-white/60"} disabled:opacity-30`}
                       >
                         {seconds === 0 ? "Off" : `${seconds}s`}
                       </button>
                     );
                   })}
                 </div>
-
-                <button
-                  onClick={clearAttachment}
-                  disabled={isSendingMessage}
-                  className="text-left text-[11px] font-bold text-pink-200 transition hover:text-pink-100 disabled:opacity-45"
-                >
-                  Remove image
-                </button>
               </div>
 
-              <div className="col-span-2 flex justify-end sm:col-span-1 sm:block sm:justify-self-end">
-                <span className="rounded-full border border-pink-200/30 bg-black/20 px-2 py-0.5 text-[9px] font-extrabold uppercase tracking-[0.08em] text-pink-100/85">
-                  Attachment
-                </span>
-              </div>
+              <button
+                onClick={clearAttachment}
+                disabled={isSendingMessage}
+                className="flex-shrink-0 rounded-lg p-2 text-white/30 transition hover:bg-white/[0.06] hover:text-white/60 disabled:opacity-30"
+                aria-label="Remove image"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
             </div>
           )}
 
-          <div className={`grid items-center gap-2 rounded-2xl border border-white/12 bg-white/[0.04] p-2 transition focus-within:border-white/30 focus-within:bg-white/[0.055] ${chatMode === "video" ? "grid-cols-[1fr_auto]" : "grid-cols-[auto_1fr_auto]"}`}>
+          {/* Input bar */}
+          <div className="flex items-end gap-2">
             {chatMode !== "video" && (
               <button
                 disabled={isSendingMessage}
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl border border-white/15 px-3 text-[12px] font-bold text-white/75 transition hover:border-white/30 hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-30"
+                className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl text-white/30 transition hover:bg-white/[0.05] hover:text-white/60 active:scale-[0.95] disabled:opacity-20"
                 aria-label="Upload image"
               >
-                <svg className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4" /></svg>
-                <span className="hidden sm:inline">Image</span>
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M12 5v14m7-7H5" /></svg>
               </button>
             )}
 
-            <input
-              ref={messageInputRef}
-              type="text"
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key !== "Enter" || isSendingMessage || e.nativeEvent.isComposing) {
-                  return;
-                }
-
-                e.preventDefault();
-                sendMessage();
-              }}
-              placeholder={isConnecting ? "Finding an available stranger..." : chatMode === "video" ? "Type to stranger..." : "Write a message..."}
-              disabled={isSendingMessage}
-              className="min-h-[46px] w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-[15px] text-white outline-none placeholder:text-white/30 focus:border-white/25"
-            />
+            <div className="relative flex min-h-[44px] flex-1 items-center rounded-xl border border-white/[0.06] bg-white/[0.03] transition-colors focus-within:border-white/15 focus-within:bg-white/[0.05]">
+              <input
+                ref={messageInputRef}
+                type="text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || isSendingMessage || e.nativeEvent.isComposing) {
+                    return;
+                  }
+                  e.preventDefault();
+                  sendMessage();
+                }}
+                placeholder={isConnecting ? "Finding someone..." : "Message..."}
+                disabled={isSendingMessage}
+                className="h-full w-full bg-transparent px-4 py-3 text-sm text-white outline-none placeholder:text-white/20"
+              />
+            </div>
 
             <button
               onClick={sendMessage}
               disabled={isSendingMessage || (!text.trim() && (chatMode === "video" || !imagePreview))}
-              className={`inline-flex min-h-[46px] items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-extrabold transition disabled:cursor-not-allowed disabled:opacity-20 ${isSendingMessage ? "bg-pink-200 text-black" : "bg-white text-black hover:bg-white/90"}`}
+              className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-pink-500 text-white transition hover:bg-pink-400 active:scale-[0.95] disabled:opacity-15"
             >
               {isSendingMessage ? (
-                <>
-                  <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-black/60 border-t-transparent" />
-                  <span className="animate-pulse">Sending</span>
-                </>
+                <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white/50 border-t-transparent" />
               ) : (
-                "Send"
+                <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               )}
             </button>
           </div>
 
-          {isSendingMessage && (
-            <div className="flex items-center gap-2 px-1 text-xs font-semibold text-white/65">
-              <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/60 border-t-transparent" />
-              <span className="animate-pulse">Sending message...</span>
-            </div>
-          )}
-
           {sendError && (
-            <p className="px-1 text-xs font-semibold text-rose-300">{sendError}</p>
+            <p className="animate-fade-in px-1 text-xs font-medium text-rose-400/80">{sendError}</p>
           )}
         </div>
       </footer>

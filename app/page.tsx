@@ -19,8 +19,7 @@ import {
   ChatFilters,
   ChatMode,
   ChatRoomView,
-  FilterOptionsView,
-  ModeSelectionView,
+  ModeAndFiltersView,
   ProfileGender,
   ProfileSetupView,
   type ChatMessage,
@@ -38,6 +37,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  getDocsFromServer,
   limit,
   onSnapshot,
   orderBy,
@@ -1977,7 +1977,20 @@ export default function Home() {
             }
           }
 
-          setMessages(nextMessages);
+          // Deduplicate: remove optimistic (pending) messages whose clientMessageId
+          // now appears in the real Firestore snapshot.
+          const realClientIds = new Set(
+            nextMessages.filter((m) => m.clientMessageId).map((m) => m.clientMessageId),
+          );
+
+          setMessages((prev) => {
+            // Keep only non-pending messages from prev (shouldn't be any after first snapshot),
+            // then append all nextMessages — but first strip pending ones that are now confirmed.
+            const survivingPending = prev.filter(
+              (m) => m.isPending && m.clientMessageId && !realClientIds.has(m.clientMessageId),
+            );
+            return [...nextMessages, ...survivingPending];
+          });
           setIsConnecting(false);
           setConnectingStatus("Connected");
           setShowNextStrangerPrompt(false);
@@ -2183,6 +2196,10 @@ export default function Home() {
     currentUser: User,
     currentProfile: UserProfile,
   ) => {
+    if (activeRoomIdRef.current) {
+      return;
+    }
+
     try {
       setConnectingStatus("Checking availability...");
 
@@ -2193,7 +2210,13 @@ export default function Home() {
         where("mode", "==", mode),
         limit(100),
       );
-      const searchSnapshot = await getDocs(searchingQuery);
+      const searchSnapshot = await getDocsFromServer(searchingQuery);
+
+      if (activeRoomIdRef.current) {
+        return;
+      }
+
+      console.log("[matchmaking] query returned", searchSnapshot.docs.length, "docs, my uid:", currentUser.uid);
 
       const me: WaitingUser = {
         uid: currentUser.uid,
@@ -2207,9 +2230,38 @@ export default function Home() {
         },
       };
 
-      const staleThresholdMs = Date.now() - WAITING_STALE_THRESHOLD_MS;
-      const compatibleCandidates = searchSnapshot.docs
-        .filter((candidateDoc) => candidateDoc.id !== currentUser.uid)
+      const now = Date.now();
+      const staleThresholdMs = now - WAITING_STALE_THRESHOLD_MS;
+      const allOtherDocs = searchSnapshot.docs.filter((d) => d.id !== currentUser.uid);
+
+      console.log("[matchmaking] other candidates:", allOtherDocs.length);
+
+      for (const candidateDoc of allOtherDocs) {
+        const raw = candidateDoc.data();
+        const valid = isValidWaitingUser(raw);
+        const lastSeenMs = toTimestampMillis(raw.lastSeenAt);
+        const createdAtMs = toTimestampMillis((raw as { createdAt?: unknown }).createdAt);
+        const activityMs = lastSeenMs ?? createdAtMs;
+        const isFresh = typeof activityMs === "number" && activityMs >= staleThresholdMs;
+        const compat = valid ? areUsersCompatible(me, raw as WaitingUser) : false;
+        console.log("[matchmaking] candidate", candidateDoc.id, {
+          valid,
+          status: raw.status,
+          mode: raw.mode,
+          lastSeenMs,
+          createdAtMs,
+          activityMs,
+          ageMs: typeof activityMs === "number" ? now - activityMs : "N/A",
+          isFresh,
+          compatible: compat,
+          rawLastSeenAt: raw.lastSeenAt,
+          rawCreatedAt: (raw as Record<string, unknown>).createdAt,
+          profile: raw.profile,
+          filters: raw.filters,
+        });
+      }
+
+      const compatibleCandidates = allOtherDocs
         .map((candidateDoc) => {
           const candidateData = candidateDoc.data();
           if (!isValidWaitingUser(candidateData)) {
@@ -2231,6 +2283,8 @@ export default function Home() {
         return typeof activityMs === "number" && activityMs >= staleThresholdMs;
       });
 
+      console.log("[matchmaking] compatible:", compatibleCandidates.length, "active:", activeCompatibleCandidates.length);
+
       if (activeCompatibleCandidates.length === 0) {
         setConnectingStatus("Waiting for a compatible stranger...");
         return;
@@ -2240,6 +2294,7 @@ export default function Home() {
 
       for (const candidate of shuffledCandidates) {
         try {
+          console.log("[matchmaking] trying transaction with candidate", candidate.uid);
           const matchedRoomId = await runTransaction(db, async (transaction) => {
             const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
             const candidateWaitingRef = doc(db, "waitingUsers", candidate.uid);
@@ -2315,25 +2370,24 @@ export default function Home() {
           });
 
           setConnectingStatus("Stranger found. Connecting...");
+          console.log("[matchmaking] SUCCESS! matched with", candidate.uid, "room:", matchedRoomId);
           setActiveRoomId(matchedRoomId);
           return;
-        } catch {
-          // Candidate became unavailable, try the next one.
+        } catch (txError) {
+          console.warn("[matchmaking] transaction failed for candidate", candidate.uid, txError instanceof Error ? txError.message : txError);
         }
       }
 
       setConnectingStatus("Retrying match...");
     } catch (error) {
-      console.error("Match lookup failed", {
-        uid: currentUser.uid,
-        error: formatFirebaseError(error),
-      });
+      console.error("[matchmaking] match lookup failed for", currentUser.uid, formatFirebaseError(error), error);
       setConnectingStatus("Matching service is busy. Retrying...");
     }
   };
 
-  const startSearching = async (filters: ChatFilters) => {
-    if (!user || !profile || !chatMode) {
+  const startSearching = async (filters: ChatFilters, modeOverride?: ChatMode) => {
+    const effectiveMode = modeOverride ?? chatMode;
+    if (!user || !profile || !effectiveMode) {
       return;
     }
 
@@ -2349,25 +2403,23 @@ export default function Home() {
 
     const waitingRef = doc(db, "waitingUsers", user.uid);
     try {
-      await setDoc(
-        waitingRef,
-        {
-          uid: user.uid,
-          status: "searching",
-          mode: chatMode,
-          filters,
-          profile: {
-            gender: profile.gender,
-            age: profile.age,
-            countryCode: profile.countryCode ?? null,
-          },
-          createdAt: serverTimestamp(),
-          lastSeenAt: serverTimestamp(),
+      await setDoc(waitingRef, {
+        uid: user.uid,
+        status: "searching",
+        mode: effectiveMode,
+        filters,
+        profile: {
+          gender: profile.gender,
+          age: profile.age,
+          countryCode: profile.countryCode ?? null,
         },
-        { merge: true },
-      );
+        createdAt: serverTimestamp(),
+        lastSeenAt: Date.now(),
+      });
 
-      await tryMatchWithAvailableUser(filters, chatMode, user, profile);
+      console.log("[matchmaking] queue entry written for", user.uid, "mode:", effectiveMode, "filters:", filters);
+
+      await tryMatchWithAvailableUser(filters, effectiveMode, user, profile);
     } catch (error) {
       console.error("Failed to enter matchmaking queue", {
         uid: user.uid,
@@ -2377,13 +2429,13 @@ export default function Home() {
     }
 
     retryMatchIntervalRef.current = window.setInterval(() => {
-      void tryMatchWithAvailableUser(filters, chatMode, user, profile);
+      void tryMatchWithAvailableUser(filters, effectiveMode, user, profile);
     }, 2500);
 
     heartbeatIntervalRef.current = window.setInterval(() => {
       void (async () => {
         try {
-          await updateDoc(waitingRef, { lastSeenAt: serverTimestamp() });
+          await updateDoc(waitingRef, { lastSeenAt: Date.now() });
         } catch (error) {
           const firebaseCode =
             typeof error === "object" && error !== null && "code" in error
@@ -2474,7 +2526,12 @@ export default function Home() {
       return;
     }
 
-    if (!user || !activeRoomId || isSendingMessage || (!text.trim() && !selectedImageFile)) {
+    if (!user || !activeRoomId || (!text.trim() && !selectedImageFile)) {
+      return;
+    }
+
+    // If already sending an image upload, block duplicate sends
+    if (isSendingMessage && selectedImageFile) {
       return;
     }
 
@@ -2516,6 +2573,29 @@ export default function Home() {
     clearPendingSendRetry();
     setSendError(null);
     const outgoingText = text.trim() || null;
+    const hasImage = Boolean(selectedImageFile);
+    const clientMsgId = `${user.uid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    // ─── Optimistic UI for text-only messages ───
+    if (outgoingText && !hasImage) {
+      const now = new Date();
+      const optimisticMsg: ChatMessage = {
+        id: clientMsgId,
+        clientMessageId: clientMsgId,
+        author: "you",
+        text: outgoingText,
+        isPending: true,
+        sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+      };
+      setMessages((prev) => [...prev, optimisticMsg]);
+      setText("");
+    }
+
+    // For image sends, block further sends and show progress
+    if (hasImage) {
+      setIsSendingMessage(true);
+      setImageUploadProgress(0);
+    }
 
     let imageUrl: string | undefined;
     let imagePath: string | null = null;
@@ -2525,8 +2605,6 @@ export default function Home() {
     let imageViewTimer: number | null = null;
     let textCiphertext: string | null = null;
     let textIv: string | null = null;
-    setIsSendingMessage(true);
-    setImageUploadProgress(selectedImageFile ? 0 : null);
 
     try {
       if (outgoingText) {
@@ -2586,6 +2664,7 @@ export default function Home() {
 
       const messagePayload: {
         senderId: string;
+        clientMessageId: string;
         text: string | null;
         textCiphertext?: string;
         textIv?: string;
@@ -2601,6 +2680,7 @@ export default function Home() {
         imageDeleted?: boolean;
       } = {
         senderId: user.uid,
+        clientMessageId: clientMsgId,
         text: null,
         createdAt: serverTimestamp(),
       };
@@ -2634,7 +2714,10 @@ export default function Home() {
       }
 
       await setTypingStatus(false);
-      setText("");
+      // Text already cleared for text-only (optimistic); clear for image sends too
+      if (hasImage) {
+        setText("");
+      }
       clearAttachment();
     } catch (error) {
       const detailedError = formatFirebaseError(error);
@@ -2644,14 +2727,20 @@ export default function Home() {
         hasImage: Boolean(selectedImageFile),
         error: detailedError,
       });
+      // Remove optimistic message on failure
+      if (!hasImage && clientMsgId) {
+        setMessages((prev) => prev.filter((m) => m.id !== clientMsgId));
+      }
       setSendError(
         selectedImageFile
           ? `Send failed. Image upload or message write was blocked (${detailedError}).`
           : `Send failed. Message write was blocked (${detailedError}).`,
       );
     } finally {
-      setIsSendingMessage(false);
-      setImageUploadProgress(null);
+      if (hasImage) {
+        setIsSendingMessage(false);
+        setImageUploadProgress(null);
+      }
     }
   };
 
@@ -2952,6 +3041,7 @@ export default function Home() {
             profileError={profileError}
             onBack={logout}
             onContinue={saveProfile}
+            backLabel="Sign Out"
           />
         </main>
         <SiteFooter />
@@ -2959,7 +3049,7 @@ export default function Home() {
     );
   }
 
-  if (!chatMode) {
+  if (!chatMode || !chatFilters) {
     return (
       <>
         <main className="screen">
@@ -2974,48 +3064,13 @@ export default function Home() {
             isAdmin={isAdmin}
             onGoToAdmin={() => router.push("/admin")}
           />
-          <ModeSelectionView
-            onChooseMode={(mode) => {
+          <ModeAndFiltersView
+            onStart={(mode, filters) => {
               setChatMode(mode);
-              setChatFilters(null);
-            }}
-          />
-        </main>
-        <SiteFooter />
-      </>
-    );
-  }
-
-  if (!chatFilters) {
-    return (
-      <>
-        <main className="screen">
-          <TopNav
-            isAuthenticated={isAuthenticated}
-            onLogin={() => {
-              setAuthMethod("email");
-              emailInputRef.current?.focus();
-            }}
-            onLogout={logout}
-            isWorking={authBusy}
-            isAdmin={isAdmin}
-            onGoToAdmin={() => router.push("/admin")}
-          />
-          <FilterOptionsView
-            initialFilters={{
-              gender: "Any",
-              ageGroup: "Any age",
-              style: "Any style",
-              country: "Any",
-            }}
-            onApply={(filters) => {
               setChatFilters(filters);
-              void startSearching(filters);
+              void startSearching(filters, mode);
             }}
-            onBack={async () => {
-              await stopSearching();
-              setChatMode(null);
-            }}
+            onBack={logout}
           />
         </main>
         <SiteFooter />
