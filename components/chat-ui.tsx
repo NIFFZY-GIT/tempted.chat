@@ -19,6 +19,10 @@ export type ChatMessage = {
   imageRevealAtMs?: number;
   imageExpiresAtMs?: number;
   imageDeleted?: boolean;
+  replyToId?: string;
+  replyToText?: string;
+  replyToAuthor?: "you" | "stranger";
+  reactions?: Record<string, string[]>; // emoji -> list of senderIds
   sentAt: string;
 };
 
@@ -811,6 +815,11 @@ export function ChatRoomView({
   text,
   setText,
   sendMessage,
+  onReplyToMessage,
+  onReactToMessage,
+  replyingTo,
+  clearReply,
+  currentUserId,
   onRevealTimedImage,
   onLeaveChat,
   onChangeMode,
@@ -846,6 +855,11 @@ export function ChatRoomView({
   text: string;
   setText: (value: string) => void;
   sendMessage: () => void;
+  onReplyToMessage: (messageId: string) => void;
+  onReactToMessage: (messageId: string, emoji: string) => void;
+  replyingTo: ChatMessage | null;
+  clearReply: () => void;
+  currentUserId: string;
   onRevealTimedImage: (messageId: string, timerSeconds: number) => void;
   onLeaveChat: (filters: ChatFilters) => void;
   onChangeMode: () => void;
@@ -883,6 +897,8 @@ export function ChatRoomView({
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [revealedTimedImageIds, setRevealedTimedImageIds] = useState<Set<string>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [activeEmojiPickerMsgId, setActiveEmojiPickerMsgId] = useState<string | null>(null);
+  const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
 
   const modeLabel = chatMode === "text" ? "Text" : chatMode === "video" ? "Video" : "Group";
   const ageLabel = chatFilters?.ageGroup ?? "Any age";
@@ -1212,11 +1228,39 @@ export function ChatRoomView({
               (typeof msg.imageExpiresAtMs === "number" || typeof msg.imageRevealAtMs === "number");
 
             const isYou = msg.author === "you";
+            const hasReactions = msg.reactions && Object.keys(msg.reactions).length > 0;
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
-                <div className={`flex max-w-[82%] flex-col gap-1 sm:max-w-[70%] ${isYou ? "items-end" : "items-start"}`}>
-                  <div className={`rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed break-words [overflow-wrap:anywhere] sm:text-[15px] ${
+                <div className={`group/msg relative flex max-w-[82%] flex-col gap-1 sm:max-w-[70%] ${isYou ? "items-end" : "items-start"}`}>
+                  {/* Reply quote */}
+                  {msg.replyToId && msg.replyToText && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById(`msg-${msg.replyToId}`);
+                        if (el) {
+                          el.scrollIntoView({ behavior: "smooth", block: "center" });
+                          el.classList.add("ring-2", "ring-pink-500/40");
+                          setTimeout(() => el.classList.remove("ring-2", "ring-pink-500/40"), 1500);
+                        }
+                      }}
+                      className={`max-w-full truncate rounded-xl px-3 py-1.5 text-[12px] leading-snug ${
+                        isYou
+                          ? "bg-pink-400/20 text-white/60 text-right"
+                          : "bg-white/[0.04] text-white/50 text-left"
+                      }`}
+                    >
+                      <span className="block text-[10px] font-semibold">{msg.replyToAuthor === "you" ? "You" : "Stranger"}</span>
+                      <span className="block truncate">{msg.replyToText}</span>
+                    </button>
+                  )}
+
+                  {/* Message bubble */}
+                  <div
+                    id={`msg-${msg.id}`}
+                    onDoubleClick={() => setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id)}
+                    className={`relative rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed break-words transition-all [overflow-wrap:anywhere] sm:text-[15px] ${
                     isYou
                       ? "rounded-br-sm bg-pink-500 text-white"
                       : "rounded-bl-sm bg-white/[0.06] text-white/85"
@@ -1285,7 +1329,71 @@ export function ChatRoomView({
                     {msg.isPending && (
                       <p className="mt-1 text-[11px] font-medium text-white/50">Sending...</p>
                     )}
+
+                    {/* Reply button — shows on hover */}
+                    {!msg.isPending && (
+                      <button
+                        type="button"
+                        onClick={() => onReplyToMessage(msg.id)}
+                        className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white/[0.08] p-1.5 text-white/30 opacity-0 transition hover:bg-white/[0.15] hover:text-white/60 group-hover/msg:opacity-100 ${
+                          isYou ? "-left-9" : "-right-9"
+                        }`}
+                        aria-label="Reply"
+                      >
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
+                      </button>
+                    )}
                   </div>
+
+                  {/* Emoji picker */}
+                  {activeEmojiPickerMsgId === msg.id && (
+                    <div className={`animate-pop-in flex gap-1 rounded-full border border-white/[0.08] bg-[#1a1a25] px-2 py-1.5 shadow-2xl ${isYou ? "self-end" : "self-start"}`}>
+                      {QUICK_REACTIONS.map((emoji) => {
+                        const reacted = msg.reactions?.[emoji]?.includes(currentUserId);
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => {
+                              onReactToMessage(msg.id, emoji);
+                              setActiveEmojiPickerMsgId(null);
+                            }}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full text-base transition hover:scale-110 active:scale-95 ${
+                              reacted ? "bg-white/[0.1]" : "hover:bg-white/[0.06]"
+                            }`}
+                          >
+                            {emoji}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Reaction pills */}
+                  {hasReactions && (
+                    <div className={`flex flex-wrap gap-1 ${isYou ? "justify-end" : "justify-start"}`}>
+                      {Object.entries(msg.reactions!).map(([emoji, senderIds]) => {
+                        if (!senderIds || senderIds.length === 0) return null;
+                        const didReact = senderIds.includes(currentUserId);
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => onReactToMessage(msg.id, emoji)}
+                            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition active:scale-95 ${
+                              didReact
+                                ? "border border-pink-500/30 bg-pink-500/[0.1] text-white/80"
+                                : "border border-white/[0.06] bg-white/[0.04] text-white/50 hover:bg-white/[0.08]"
+                            }`}
+                          >
+                            <span>{emoji}</span>
+                            {senderIds.length > 1 && <span className="text-[10px]">{senderIds.length}</span>}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <span className="px-1 text-[11px] text-white/20">{msg.sentAt}</span>
                 </div>
               </div>
@@ -1332,6 +1440,24 @@ export function ChatRoomView({
       {/* ─── Footer ─── */}
       <footer className="border-t border-white/[0.06] bg-[#0a0a10] px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 md:px-4 md:pt-2.5">
         <div className="mx-auto w-full max-w-2xl space-y-2">
+          {/* Reply preview */}
+          {replyingTo && (
+            <div className="animate-fade-in flex items-center gap-3 rounded-xl border border-pink-500/15 bg-pink-500/[0.04] px-3 py-2">
+              <div className="min-w-0 flex-1 border-l-2 border-pink-500/40 pl-3">
+                <p className="text-[11px] font-semibold text-pink-400/80">{replyingTo.author === "you" ? "You" : "Stranger"}</p>
+                <p className="truncate text-xs text-white/50">{replyingTo.text || (replyingTo.image ? "Photo" : "Message")}</p>
+              </div>
+              <button
+                type="button"
+                onClick={clearReply}
+                className="flex-shrink-0 rounded-lg p-1.5 text-white/30 transition hover:bg-white/[0.06] hover:text-white/60"
+                aria-label="Cancel reply"
+              >
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+          )}
+
           {/* Image preview */}
           {chatMode !== "video" && imagePreview && (
             <div className="animate-fade-in relative flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">

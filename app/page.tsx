@@ -341,6 +341,7 @@ export default function Home() {
   const [isSendingMessage, setIsSendingMessage] = useState(false);
   const [imageUploadProgress, setImageUploadProgress] = useState<number | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectingStatus, setConnectingStatus] = useState("Checking availability...");
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
@@ -1849,6 +1850,10 @@ export default function Home() {
                 imageRevealAtMs?: number | null;
                 imageExpiresAtMs?: number | null;
                 imageDeleted?: boolean;
+                replyToId?: string;
+                replyToText?: string;
+                replyToAuthor?: string;
+                reactions?: Record<string, string[]>;
                 createdAt?: { toDate?: () => Date };
               };
 
@@ -1971,6 +1976,14 @@ export default function Home() {
                     ? data.imageExpiresAtMs
                     : undefined,
                 imageDeleted: Boolean(data.imageDeleted),
+                replyToId: data.replyToId,
+                replyToText: data.replyToText,
+                replyToAuthor: data.replyToAuthor
+                  ? data.replyToAuthor === user.uid
+                    ? "you" as const
+                    : "stranger" as const
+                  : undefined,
+                reactions: data.reactions,
                 sentAt: `${String(createdAtDate.getHours()).padStart(2, "0")}:${String(createdAtDate.getMinutes()).padStart(2, "0")}`,
               };
             }),
@@ -2533,6 +2546,40 @@ export default function Home() {
     }
   };
 
+  const onReplyToMessage = (messageId: string) => {
+    const msg = messages.find((m) => m.id === messageId);
+    if (msg) setReplyingTo(msg);
+  };
+
+  const clearReply = () => setReplyingTo(null);
+
+  const onReactToMessage = async (messageId: string, emoji: string) => {
+    if (!user || !activeRoomId) return;
+    const msgRef = doc(db, "rooms", activeRoomId, "messages", messageId);
+    try {
+      const msgSnap = await getDoc(msgRef);
+      if (!msgSnap.exists()) return;
+      const data = msgSnap.data() as { reactions?: Record<string, string[]> };
+      const current = data.reactions ?? {};
+      const senders = current[emoji] ?? [];
+      if (senders.includes(user.uid)) {
+        // Remove reaction
+        const updated = senders.filter((id: string) => id !== user.uid);
+        if (updated.length === 0) {
+          const { [emoji]: _, ...rest } = current;
+          await updateDoc(msgRef, { reactions: rest });
+        } else {
+          await updateDoc(msgRef, { [`reactions.${emoji}`]: updated });
+        }
+      } else {
+        // Add reaction
+        await updateDoc(msgRef, { [`reactions.${emoji}`]: arrayUnion(user.uid) });
+      }
+    } catch {
+      // Silently fail — reaction is non-critical
+    }
+  };
+
   const sendMessage = async () => {
     if (!hasSecureCryptoContext()) {
       setSendError("Secure chat needs HTTPS (or localhost). Open this site securely and try again.");
@@ -2588,6 +2635,8 @@ export default function Home() {
     const outgoingText = text.trim() || null;
     const hasImage = Boolean(selectedImageFile);
     const clientMsgId = `${user.uid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const currentReply = replyingTo;
+    setReplyingTo(null);
 
     // ─── Optimistic UI for text-only messages ───
     if (outgoingText && !hasImage) {
@@ -2598,6 +2647,11 @@ export default function Home() {
         author: "you",
         text: outgoingText,
         isPending: true,
+        ...(currentReply && {
+          replyToId: currentReply.id,
+          replyToText: currentReply.text || (currentReply.image ? "Photo" : "Message"),
+          replyToAuthor: currentReply.author,
+        }),
         sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
       };
       setMessages((prev) => [...prev, optimisticMsg]);
@@ -2691,12 +2745,21 @@ export default function Home() {
         imageRevealAtMs?: null;
         imageExpiresAtMs?: null;
         imageDeleted?: boolean;
+        replyToId?: string;
+        replyToText?: string;
+        replyToAuthor?: string;
       } = {
         senderId: user.uid,
         clientMessageId: clientMsgId,
         text: null,
         createdAt: serverTimestamp(),
       };
+
+      if (currentReply) {
+        messagePayload.replyToId = currentReply.id;
+        messagePayload.replyToText = currentReply.text || (currentReply.image ? "Photo" : "Message");
+        messagePayload.replyToAuthor = currentReply.author === "you" ? user.uid : "stranger";
+      }
 
       if (textCiphertext && textIv) {
         messagePayload.textCiphertext = textCiphertext;
@@ -3153,6 +3216,11 @@ export default function Home() {
           text={text}
           setText={handleTextChange}
           sendMessage={sendMessage}
+          onReplyToMessage={onReplyToMessage}
+          onReactToMessage={onReactToMessage}
+          replyingTo={replyingTo}
+          clearReply={clearReply}
+          currentUserId={user?.uid ?? ""}
           onRevealTimedImage={onRevealTimedImage}
           fileInputRef={fileInputRef}
           onSelectImage={onSelectImage}
