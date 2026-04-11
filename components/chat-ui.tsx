@@ -1050,10 +1050,10 @@ export function ChatRoomView({
       <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_40%),linear-gradient(180deg,rgba(11,13,19,0.92),rgba(7,8,12,0.96))] px-2.5 py-3 md:px-4 md:py-4">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 md:gap-4">
           {chatMode === "video" && (
-            <section className="rounded-2xl border border-white/10 bg-[#0a0a0d] p-2.5 shadow-[0_14px_40px_rgba(0,0,0,0.45)] sm:p-3">
-              <div className="grid gap-2 sm:grid-cols-2">
-                <div className="relative overflow-hidden rounded-xl border border-white/15 bg-black">
-                  <video ref={remoteVideoRef} autoPlay playsInline className="aspect-[4/3] h-full w-full object-cover" />
+            <section className="rounded-2xl border border-white/10 bg-[#07080c] p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.45)] sm:p-2">
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-black">
+                  <video ref={remoteVideoRef} autoPlay playsInline className="aspect-[3/4] h-full w-full object-cover sm:aspect-[4/3]" />
                   {!hasRemoteVideo && (
                     <div className="absolute inset-0 grid place-items-center bg-black/80 text-center text-xs font-semibold text-white/70">
                       Stranger camera not ready
@@ -1062,10 +1062,13 @@ export function ChatRoomView({
                   <span className="absolute left-2 top-2 rounded bg-black/65 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/85">
                     Stranger
                   </span>
+                  <span className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-0.5 text-[9px] font-bold tracking-[0.08em] text-white/80">
+                    TEMPTED.CHAT
+                  </span>
                 </div>
 
-                <div className="relative overflow-hidden rounded-xl border border-white/15 bg-black">
-                  <video ref={localVideoRef} autoPlay playsInline muted className="aspect-[4/3] h-full w-full object-cover" />
+                <div className="relative overflow-hidden rounded-lg border border-white/15 bg-black">
+                  <video ref={localVideoRef} autoPlay playsInline muted className="aspect-[3/4] h-full w-full object-cover sm:aspect-[4/3]" />
                   {!localVideoEnabled && (
                     <div className="absolute inset-0 grid place-items-center bg-black/80 text-center text-xs font-semibold text-white/70">
                       Your camera is off
@@ -1074,6 +1077,9 @@ export function ChatRoomView({
                   <span className="absolute left-2 top-2 rounded bg-black/65 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/85">
                     You
                   </span>
+                  <span className="absolute bottom-2 right-2 rounded bg-black/60 px-2 py-0.5 text-[9px] font-bold tracking-[0.08em] text-white/80">
+                    TEMPTED.CHAT
+                  </span>
                 </div>
               </div>
 
@@ -1081,23 +1087,60 @@ export function ChatRoomView({
                 <button
                   type="button"
                   onClick={toggleLocalAudio}
-                  className={`rounded-full border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] transition ${localAudioEnabled ? "border-emerald-300/50 bg-emerald-400/15 text-emerald-200" : "border-rose-300/50 bg-rose-400/15 text-rose-200"}`}
+                  aria-label={localAudioEnabled ? "Mute microphone" : "Unmute microphone"}
+                  title={localAudioEnabled ? "Mute microphone" : "Unmute microphone"}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${localAudioEnabled ? "border-emerald-300/50 bg-emerald-400/15 text-emerald-200" : "border-rose-300/50 bg-rose-400/15 text-rose-200"}`}
                 >
-                  {localAudioEnabled ? "Mic On" : "Mic Off"}
+                  {localAudioEnabled ? (
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" />
+                      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                      <path d="M12 19v3" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="m4 4 16 16" />
+                      <path d="M9 9v3a3 3 0 0 0 5.14 2.14" />
+                      <path d="M15 6a3 3 0 0 0-5.08-2.2" />
+                      <path d="M19 10v2a7 7 0 0 1-1.6 4.49" />
+                      <path d="M5 10v2a7 7 0 0 0 11.98 4.95" />
+                    </svg>
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={toggleLocalVideo}
-                  className={`rounded-full border px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] transition ${localVideoEnabled ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-200" : "border-amber-300/50 bg-amber-400/15 text-amber-200"}`}
+                  aria-label={localVideoEnabled ? "Turn off camera" : "Turn on camera"}
+                  title={localVideoEnabled ? "Turn off camera" : "Turn on camera"}
+                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full border transition ${localVideoEnabled ? "border-cyan-300/50 bg-cyan-400/15 text-cyan-200" : "border-amber-300/50 bg-amber-400/15 text-amber-200"}`}
                 >
-                  {localVideoEnabled ? "Video On" : "Video Off"}
+                  {localVideoEnabled ? (
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <rect x="3" y="7" width="12" height="10" rx="2" />
+                      <path d="m15 10 6-3v10l-6-3" />
+                    </svg>
+                  ) : (
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="m2 2 20 20" />
+                      <rect x="3" y="7" width="12" height="10" rx="2" />
+                      <path d="m15 10 6-3v10l-6-3" />
+                    </svg>
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={switchCamera}
-                  className="rounded-full border border-white/30 bg-white/10 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-white/20"
+                  aria-label="Switch camera"
+                  title="Switch camera"
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/30 bg-white/10 text-white transition hover:bg-white/20"
                 >
-                  Switch Camera
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M17 4h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-1" />
+                    <path d="M7 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h1" />
+                    <path d="m8 9 3-3 3 3" />
+                    <path d="m16 15-3 3-3-3" />
+                    <path d="M11 6h2v12h-2" />
+                  </svg>
                 </button>
               </div>
 

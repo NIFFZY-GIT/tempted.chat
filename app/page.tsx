@@ -123,7 +123,7 @@ const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
 
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
-const ROOM_PRESENCE_TIMEOUT_MS = 15000;
+const ROOM_PRESENCE_TIMEOUT_MS = 45000;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 type PersistedChatSession = {
@@ -398,6 +398,37 @@ export default function Home() {
       setVideoError(null);
     } catch {
       setVideoError("Camera switch is not available on this device/browser.");
+    }
+  };
+
+  const getPreferredLocalMediaStream = async (
+    facingMode: "user" | "environment",
+  ): Promise<MediaStream> => {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+    } catch {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode } },
+          audio: true,
+        });
+      } catch {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: facingMode } },
+          audio: false,
+        });
+      }
     }
   };
 
@@ -921,10 +952,7 @@ export default function Home() {
 
     const setupVideo = async () => {
       try {
-        const localStream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: true,
-        });
+        const localStream = await getPreferredLocalMediaStream(cameraFacingMode);
 
         if (cancelled) {
           localStream.getTracks().forEach((track) => track.stop());
@@ -943,8 +971,17 @@ export default function Home() {
         setLocalVideoEnabled(true);
         setLocalAudioEnabled(localStream.getAudioTracks().some((track) => track.enabled));
 
+        const currentFacingMode = localStream.getVideoTracks()[0]?.getSettings().facingMode;
+        if (currentFacingMode === "environment" || currentFacingMode === "user") {
+          setCameraFacingMode(currentFacingMode);
+        }
+
         const peerConnection = new RTCPeerConnection({
-          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+          ],
         });
         peerConnectionRef.current = peerConnection;
 
@@ -996,6 +1033,35 @@ export default function Home() {
         };
 
         peerConnection.onconnectionstatechange = () => {
+          if (peerConnection.connectionState === "connected") {
+            setVideoError(null);
+            return;
+          }
+
+          if (peerConnection.connectionState === "disconnected") {
+            setVideoError("Connection unstable. Reconnecting video...");
+
+            if (isOfferer) {
+              void (async () => {
+                try {
+                  peerConnection.restartIce();
+                  const restartOffer = await peerConnection.createOffer({ iceRestart: true });
+                  await peerConnection.setLocalDescription(restartOffer);
+                  await updateDoc(roomRef, {
+                    [`webrtc.offerBy.${user.uid}`]: {
+                      type: restartOffer.type,
+                      sdp: restartOffer.sdp,
+                    },
+                    webrtcUpdatedAt: serverTimestamp(),
+                  });
+                } catch {
+                  // Ignore restart races.
+                }
+              })();
+            }
+            return;
+          }
+
           if (peerConnection.connectionState === "failed") {
             setVideoError("Video connection failed. Try reconnecting.");
           }
