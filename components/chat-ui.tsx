@@ -787,6 +787,15 @@ export function ChatRoomView({
   isSendingMessage,
   imageUploadProgress,
   sendError,
+  videoError,
+  localVideoRef,
+  remoteVideoRef,
+  hasRemoteVideo,
+  localVideoEnabled,
+  localAudioEnabled,
+  toggleLocalVideo,
+  toggleLocalAudio,
+  switchCamera,
   fileInputRef,
   onSelectImage,
   clearAttachment,
@@ -813,6 +822,15 @@ export function ChatRoomView({
   isSendingMessage: boolean;
   imageUploadProgress: number | null;
   sendError: string | null;
+  videoError: string | null;
+  localVideoRef: RefObject<HTMLVideoElement | null>;
+  remoteVideoRef: RefObject<HTMLVideoElement | null>;
+  hasRemoteVideo: boolean;
+  localVideoEnabled: boolean;
+  localAudioEnabled: boolean;
+  toggleLocalVideo: () => void;
+  toggleLocalAudio: () => void;
+  switchCamera: () => void;
   fileInputRef: RefObject<HTMLInputElement | null>;
   onSelectImage: (event: ChangeEvent<HTMLInputElement>) => void;
   clearAttachment: () => void;
@@ -1031,6 +1049,63 @@ export function ChatRoomView({
 
       <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_40%),linear-gradient(180deg,rgba(11,13,19,0.92),rgba(7,8,12,0.96))] px-2.5 py-3 md:px-4 md:py-4">
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 md:gap-4">
+          {chatMode === "video" && (
+            <div className="grid gap-2 rounded-2xl border border-white/10 bg-black/35 p-2.5 md:grid-cols-2">
+              <div className="relative overflow-hidden rounded-xl border border-white/15 bg-black">
+                <video ref={remoteVideoRef} autoPlay playsInline className="aspect-video h-full w-full object-cover" />
+                {!hasRemoteVideo && (
+                  <div className="absolute inset-0 grid place-items-center bg-black/70 text-center text-xs font-semibold text-white/70">
+                    Waiting for stranger video...
+                  </div>
+                )}
+                <span className="absolute left-2 top-2 rounded-md bg-black/55 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/80">
+                  Stranger
+                </span>
+              </div>
+
+              <div className="relative overflow-hidden rounded-xl border border-white/15 bg-black">
+                <video ref={localVideoRef} autoPlay playsInline muted className="aspect-video h-full w-full object-cover" />
+                {!localVideoEnabled && (
+                  <div className="absolute inset-0 grid place-items-center bg-black/70 text-center text-xs font-semibold text-white/70">
+                    Camera is off
+                  </div>
+                )}
+                <div className="absolute right-2 top-2 flex gap-1">
+                  <button
+                    type="button"
+                    onClick={toggleLocalVideo}
+                    className="rounded-md bg-black/60 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-black/75"
+                  >
+                    {localVideoEnabled ? "Video On" : "Video Off"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={toggleLocalAudio}
+                    className="rounded-md bg-black/60 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-black/75"
+                  >
+                    {localAudioEnabled ? "Mic On" : "Mic Off"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={switchCamera}
+                    className="rounded-md bg-black/60 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white transition hover:bg-black/75"
+                  >
+                    Switch Cam
+                  </button>
+                </div>
+                <span className="absolute left-2 top-2 rounded-md bg-black/55 px-2 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-white/80">
+                  You
+                </span>
+              </div>
+
+              {videoError && (
+                <p className="md:col-span-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-200">
+                  {videoError}
+                </p>
+              )}
+            </div>
+          )}
+
           {isConnecting && (
             <div className="flex justify-center">
               <div className="flex items-center gap-3 rounded-2xl border border-amber-300/35 bg-amber-400/10 px-4 py-3 text-amber-100">

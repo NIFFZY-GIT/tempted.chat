@@ -212,16 +212,26 @@ export default function Home() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectingStatus, setConnectingStatus] = useState("Checking availability...");
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
+  const [roomParticipants, setRoomParticipants] = useState<string[]>([]);
   const [strangerIsTyping, setStrangerIsTyping] = useState(false);
   const [showNextStrangerPrompt, setShowNextStrangerPrompt] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
+  const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
+  const [localAudioEnabled, setLocalAudioEnabled] = useState(true);
+  const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("user");
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminRoleLoading, setAdminRoleLoading] = useState(false);
   const [e2eeReadyVersion, setE2eeReadyVersion] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const roomUnsubRef = useRef<(() => void) | null>(null);
   const roomMessagesUnsubRef = useRef<(() => void) | null>(null);
   const waitingUnsubRef = useRef<(() => void) | null>(null);
+  const videoRoomUnsubRef = useRef<(() => void) | null>(null);
+  const videoCandidatesUnsubRef = useRef<(() => void) | null>(null);
   const retryMatchIntervalRef = useRef<number | null>(null);
   const heartbeatIntervalRef = useRef<number | null>(null);
   const roomPresenceIntervalRef = useRef<number | null>(null);
@@ -235,6 +245,12 @@ export default function Home() {
   const roomPrivateKeyRef = useRef<CryptoKey | null>(null);
   const roomPublicJwkRef = useRef<JsonWebKey | null>(null);
   const roomCipherKeyRef = useRef<CryptoKey | null>(null);
+  const localMediaStreamRef = useRef<MediaStream | null>(null);
+  const remoteMediaStreamRef = useRef<MediaStream | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const videoOfferSentRef = useRef(false);
+  const videoAnswerSentRef = useRef(false);
+  const processedCandidateIdsRef = useRef<Set<string>>(new Set());
   const decryptedTextCacheRef = useRef<Map<string, { ciphertext: string; iv: string; text: string }>>(new Map());
   const decryptedImageUrlCacheRef = useRef<Map<string, { sourceUrl: string; objectUrl: string }>>(new Map());
 
@@ -247,6 +263,132 @@ export default function Home() {
     roomPrivateKeyRef.current = null;
     roomPublicJwkRef.current = null;
     roomCipherKeyRef.current = null;
+  };
+
+  const cleanupVideoSession = () => {
+    videoRoomUnsubRef.current?.();
+    videoRoomUnsubRef.current = null;
+    videoCandidatesUnsubRef.current?.();
+    videoCandidatesUnsubRef.current = null;
+    processedCandidateIdsRef.current.clear();
+    videoOfferSentRef.current = false;
+    videoAnswerSentRef.current = false;
+
+    if (peerConnectionRef.current) {
+      peerConnectionRef.current.onicecandidate = null;
+      peerConnectionRef.current.ontrack = null;
+      peerConnectionRef.current.close();
+      peerConnectionRef.current = null;
+    }
+
+    if (localMediaStreamRef.current) {
+      localMediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      localMediaStreamRef.current = null;
+    }
+
+    if (remoteMediaStreamRef.current) {
+      remoteMediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      remoteMediaStreamRef.current = null;
+    }
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+
+    setHasRemoteVideo(false);
+    setLocalVideoEnabled(true);
+    setLocalAudioEnabled(true);
+    setCameraFacingMode("user");
+    setVideoError(null);
+  };
+
+  const toggleLocalVideo = () => {
+    const localStream = localMediaStreamRef.current;
+    if (!localStream) {
+      return;
+    }
+
+    const videoTracks = localStream.getVideoTracks();
+    if (videoTracks.length === 0) {
+      return;
+    }
+
+    const shouldEnable = !videoTracks[0].enabled;
+    videoTracks.forEach((track) => {
+      track.enabled = shouldEnable;
+    });
+    setLocalVideoEnabled(shouldEnable);
+  };
+
+  const toggleLocalAudio = () => {
+    const localStream = localMediaStreamRef.current;
+    if (!localStream) {
+      return;
+    }
+
+    const audioTracks = localStream.getAudioTracks();
+    if (audioTracks.length === 0) {
+      return;
+    }
+
+    const shouldEnable = !audioTracks[0].enabled;
+    audioTracks.forEach((track) => {
+      track.enabled = shouldEnable;
+    });
+    setLocalAudioEnabled(shouldEnable);
+  };
+
+  const switchCamera = async () => {
+    const localStream = localMediaStreamRef.current;
+    if (!localStream) {
+      return;
+    }
+
+    const targetFacingMode: "user" | "environment" = cameraFacingMode === "user" ? "environment" : "user";
+
+    try {
+      const switchedStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: targetFacingMode } },
+        audio: false,
+      });
+
+      const newVideoTrack = switchedStream.getVideoTracks()[0];
+      if (!newVideoTrack) {
+        setVideoError("Could not switch camera.");
+        return;
+      }
+
+      const existingVideoTracks = localStream.getVideoTracks();
+      existingVideoTracks.forEach((track) => {
+        localStream.removeTrack(track);
+        track.stop();
+      });
+
+      localStream.addTrack(newVideoTrack);
+      newVideoTrack.enabled = localVideoEnabled;
+
+      const peerConnection = peerConnectionRef.current;
+      const videoSender = peerConnection?.getSenders().find((sender) => sender.track?.kind === "video");
+      if (videoSender) {
+        await videoSender.replaceTrack(newVideoTrack);
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = localStream;
+        void localVideoRef.current.play().catch(() => {
+          // Ignore autoplay restrictions.
+        });
+      }
+
+      setCameraFacingMode(targetFacingMode);
+      setVideoError(null);
+    } catch {
+      setVideoError("Camera switch is not available on this device/browser.");
+    }
   };
 
   const deleteStorageFolderRecursively = async (folderRef: StorageReference): Promise<void> => {
@@ -720,6 +862,7 @@ export default function Home() {
       if (imageCleanupIntervalRef.current) {
         window.clearInterval(imageCleanupIntervalRef.current);
       }
+      cleanupVideoSession();
       clearPendingSendRetry();
 
       clearE2EECaches();
@@ -744,9 +887,205 @@ export default function Home() {
     }
 
     clearPendingSendRetry();
+    setRoomParticipants([]);
+    cleanupVideoSession();
 
     clearE2EECaches();
   }, [activeRoomId]);
+
+  useEffect(() => {
+    if (chatMode !== "video" || !activeRoomId || !user) {
+      cleanupVideoSession();
+      return;
+    }
+
+    const otherUid = roomParticipants.find((participantUid) => participantUid !== user.uid);
+    if (!otherUid) {
+      return;
+    }
+
+    let cancelled = false;
+    const roomRef = doc(db, "rooms", activeRoomId);
+    const candidatesCollectionRef = collection(db, "rooms", activeRoomId, "webrtcCandidates");
+    const isOfferer = user.uid < otherUid;
+
+    const setupVideo = async () => {
+      try {
+        const localStream = await navigator.mediaDevices.getUserMedia({
+          video: true,
+          audio: true,
+        });
+
+        if (cancelled) {
+          localStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        localMediaStreamRef.current = localStream;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = localStream;
+          localVideoRef.current.muted = true;
+          void localVideoRef.current.play().catch(() => {
+            // Ignore autoplay restrictions.
+          });
+        }
+
+        setLocalVideoEnabled(true);
+        setLocalAudioEnabled(localStream.getAudioTracks().some((track) => track.enabled));
+
+        const peerConnection = new RTCPeerConnection({
+          iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+        });
+        peerConnectionRef.current = peerConnection;
+
+        const remoteStream = new MediaStream();
+        remoteMediaStreamRef.current = remoteStream;
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = remoteStream;
+        }
+
+        localStream.getTracks().forEach((track) => {
+          peerConnection.addTrack(track, localStream);
+        });
+
+        peerConnection.ontrack = (event) => {
+          const stream = event.streams[0];
+          if (!stream) {
+            return;
+          }
+
+          stream.getTracks().forEach((track) => {
+            const exists = remoteStream.getTracks().some((existingTrack) => existingTrack.id === track.id);
+            if (!exists) {
+              remoteStream.addTrack(track);
+            }
+          });
+
+          setHasRemoteVideo(remoteStream.getVideoTracks().length > 0);
+          if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+            void remoteVideoRef.current.play().catch(() => {
+              // Ignore autoplay restrictions.
+            });
+          }
+        };
+
+        peerConnection.onicecandidate = (event) => {
+          if (!event.candidate) {
+            return;
+          }
+
+          void addDoc(candidatesCollectionRef, {
+            fromUid: user.uid,
+            toUid: otherUid,
+            candidate: event.candidate.toJSON(),
+            createdAt: serverTimestamp(),
+          }).catch(() => {
+            // Ignore candidate signaling races.
+          });
+        };
+
+        peerConnection.onconnectionstatechange = () => {
+          if (peerConnection.connectionState === "failed") {
+            setVideoError("Video connection failed. Try reconnecting.");
+          }
+        };
+
+        videoCandidatesUnsubRef.current?.();
+        videoCandidatesUnsubRef.current = onSnapshot(
+          query(candidatesCollectionRef, where("toUid", "==", user.uid), limit(200)),
+          (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type !== "added") {
+                return;
+              }
+
+              if (processedCandidateIdsRef.current.has(change.doc.id)) {
+                return;
+              }
+
+              processedCandidateIdsRef.current.add(change.doc.id);
+              const data = change.doc.data() as {
+                candidate?: RTCIceCandidateInit;
+              };
+
+              if (data.candidate) {
+                void peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {
+                  // Ignore out-of-order candidate application.
+                });
+              }
+            });
+          },
+        );
+
+        videoRoomUnsubRef.current?.();
+        videoRoomUnsubRef.current = onSnapshot(roomRef, (snapshot) => {
+          if (!snapshot.exists()) {
+            return;
+          }
+
+          const roomData = snapshot.data() as {
+            webrtc?: {
+              offerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
+              answerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
+            };
+          };
+
+          const remoteOffer = roomData.webrtc?.offerBy?.[otherUid];
+          const remoteAnswer = roomData.webrtc?.answerBy?.[otherUid];
+
+          if (!isOfferer && remoteOffer && !peerConnection.currentRemoteDescription && !videoAnswerSentRef.current) {
+            void (async () => {
+              try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(remoteOffer));
+                const createdAnswer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(createdAnswer);
+                videoAnswerSentRef.current = true;
+                await updateDoc(roomRef, {
+                  [`webrtc.answerBy.${user.uid}`]: {
+                    type: createdAnswer.type,
+                    sdp: createdAnswer.sdp,
+                  },
+                  webrtcUpdatedAt: serverTimestamp(),
+                });
+              } catch {
+                setVideoError("Could not establish video answer.");
+              }
+            })();
+          }
+
+          if (isOfferer && remoteAnswer && !peerConnection.currentRemoteDescription) {
+            void peerConnection.setRemoteDescription(new RTCSessionDescription(remoteAnswer)).catch(() => {
+              setVideoError("Could not finalize video connection.");
+            });
+          }
+        });
+
+        if (isOfferer && !videoOfferSentRef.current) {
+          const createdOffer = await peerConnection.createOffer();
+          await peerConnection.setLocalDescription(createdOffer);
+          videoOfferSentRef.current = true;
+
+          await updateDoc(roomRef, {
+            [`webrtc.offerBy.${user.uid}`]: {
+              type: createdOffer.type,
+              sdp: createdOffer.sdp,
+            },
+            webrtcUpdatedAt: serverTimestamp(),
+          });
+        }
+      } catch {
+        setVideoError("Camera or microphone permission is required for video mode.");
+      }
+    };
+
+    void setupVideo();
+
+    return () => {
+      cancelled = true;
+      cleanupVideoSession();
+    };
+  }, [activeRoomId, chatMode, roomParticipants, user]);
 
   useEffect(() => {
     if (!activeRoomId || !user) {
@@ -930,6 +1269,7 @@ export default function Home() {
       roomUnsubRef.current = null;
       roomMessagesUnsubRef.current?.();
       roomMessagesUnsubRef.current = null;
+      setRoomParticipants([]);
       setStrangerIsTyping(false);
       selfTypingRef.current = false;
       return;
@@ -946,6 +1286,7 @@ export default function Home() {
         if (!snapshot.exists()) {
           setIsConnecting(false);
           setConnectingStatus("Previous chat ended.");
+          setRoomParticipants([]);
           setActiveRoomId(null);
           return;
         }
@@ -968,6 +1309,8 @@ export default function Home() {
         }).catch(() => {
           // Ignore key negotiation races.
         });
+
+        setRoomParticipants(Array.isArray(roomData.participants) ? roomData.participants : []);
 
         const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
         if (stranger) {
@@ -2250,6 +2593,15 @@ export default function Home() {
           isSendingMessage={isSendingMessage}
           imageUploadProgress={imageUploadProgress}
           sendError={sendError}
+          videoError={videoError}
+          localVideoRef={localVideoRef}
+          remoteVideoRef={remoteVideoRef}
+          hasRemoteVideo={hasRemoteVideo}
+          localVideoEnabled={localVideoEnabled}
+          localAudioEnabled={localAudioEnabled}
+          toggleLocalVideo={toggleLocalVideo}
+          toggleLocalAudio={toggleLocalAudio}
+          switchCamera={switchCamera}
           onLeaveChat={(filters) => {
             void (async () => {
               await markRoomEnded();
