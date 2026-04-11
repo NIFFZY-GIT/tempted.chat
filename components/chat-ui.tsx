@@ -23,6 +23,8 @@ export type ChatMessage = {
   replyToText?: string;
   replyToAuthor?: "you" | "stranger";
   reactions?: Record<string, string[]>; // emoji -> list of senderIds
+  deletedForEveryone?: boolean;
+  createdAtMs?: number;
   sentAt: string;
 };
 
@@ -820,6 +822,7 @@ export function ChatRoomView({
   replyingTo,
   clearReply,
   currentUserId,
+  onDeleteMessage,
   onRevealTimedImage,
   onLeaveChat,
   onChangeMode,
@@ -860,6 +863,7 @@ export function ChatRoomView({
   replyingTo: ChatMessage | null;
   clearReply: () => void;
   currentUserId: string;
+  onDeleteMessage: (messageId: string) => void;
   onRevealTimedImage: (messageId: string, timerSeconds: number) => void;
   onLeaveChat: (filters: ChatFilters) => void;
   onChangeMode: () => void;
@@ -1199,6 +1203,18 @@ export function ChatRoomView({
 
           {/* Message bubbles */}
           {messages.map((msg) => {
+            // Deleted for everyone
+            if (msg.deletedForEveryone) {
+              return (
+                <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
+                  <div className={`flex items-center gap-1.5 rounded-2xl border border-white/[0.04] px-4 py-2.5 ${msg.author === "you" ? "bg-pink-500/[0.04]" : "bg-white/[0.02]"}`}>
+                    <svg className="h-3.5 w-3.5 text-white/25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
+                    <span className="text-[13px] italic text-white/30">{msg.author === "you" ? "You deleted this message" : "This message was deleted"}</span>
+                  </div>
+                </div>
+              );
+            }
+
             const isImageDeletedEvent = msg.imageDeleted || msg.text === IMAGE_DELETED_NOTICE;
 
             if (isImageDeletedEvent) {
@@ -1330,18 +1346,28 @@ export function ChatRoomView({
                       <p className="mt-1 text-[11px] font-medium text-white/50">Sending...</p>
                     )}
 
-                    {/* Reply button — shows on hover */}
+                    {/* Action buttons — shows on hover */}
                     {!msg.isPending && (
-                      <button
-                        type="button"
-                        onClick={() => onReplyToMessage(msg.id)}
-                        className={`absolute top-1/2 -translate-y-1/2 rounded-full bg-white/[0.08] p-1.5 text-white/30 opacity-0 transition hover:bg-white/[0.15] hover:text-white/60 group-hover/msg:opacity-100 ${
-                          isYou ? "-left-9" : "-right-9"
-                        }`}
-                        aria-label="Reply"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
-                      </button>
+                      <div className={`absolute top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 transition group-hover/msg:opacity-100 ${isYou ? "-left-[4.5rem]" : "-right-[4.5rem]"}`}>
+                        <button
+                          type="button"
+                          onClick={() => onReplyToMessage(msg.id)}
+                          className="rounded-full bg-white/[0.08] p-1.5 text-white/30 transition hover:bg-white/[0.15] hover:text-white/60"
+                          aria-label="Reply"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
+                        </button>
+                        {isYou && typeof msg.createdAtMs === "number" && (nowMs - msg.createdAtMs) < 30000 && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteMessage(msg.id)}
+                            className="rounded-full bg-white/[0.08] p-1.5 text-white/30 transition hover:bg-rose-500/20 hover:text-rose-400"
+                            aria-label="Delete for everyone"
+                          >
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 

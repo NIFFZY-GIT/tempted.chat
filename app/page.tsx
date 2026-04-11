@@ -1854,6 +1854,7 @@ export default function Home() {
                 replyToText?: string;
                 replyToAuthor?: string;
                 reactions?: Record<string, string[]>;
+                deletedForEveryone?: boolean;
                 createdAt?: { toDate?: () => Date };
               };
 
@@ -1984,6 +1985,8 @@ export default function Home() {
                     : "stranger" as const
                   : undefined,
                 reactions: data.reactions,
+                deletedForEveryone: Boolean(data.deletedForEveryone),
+                createdAtMs: createdAtDate.getTime(),
                 sentAt: `${String(createdAtDate.getHours()).padStart(2, "0")}:${String(createdAtDate.getMinutes()).padStart(2, "0")}`,
               };
             }),
@@ -2552,6 +2555,32 @@ export default function Home() {
   };
 
   const clearReply = () => setReplyingTo(null);
+
+  const onDeleteMessage = async (messageId: string) => {
+    if (!user || !activeRoomId) return;
+    const msgRef = doc(db, "rooms", activeRoomId, "messages", messageId);
+    try {
+      const msgSnap = await getDoc(msgRef);
+      if (!msgSnap.exists()) return;
+      const data = msgSnap.data() as { senderId?: string; createdAt?: { toDate?: () => Date } };
+      // Only allow deleting own messages
+      if (data.senderId !== user.uid) return;
+      // Only allow within 30 seconds
+      const createdAt = data.createdAt?.toDate?.();
+      if (createdAt && Date.now() - createdAt.getTime() > 30000) return;
+      await updateDoc(msgRef, {
+        deletedForEveryone: true,
+        text: null,
+        textCiphertext: deleteField(),
+        textIv: deleteField(),
+        imageUrl: deleteField(),
+        imagePath: deleteField(),
+        imageIv: deleteField(),
+      });
+    } catch {
+      // Silently fail
+    }
+  };
 
   const onReactToMessage = async (messageId: string, emoji: string) => {
     if (!user || !activeRoomId) return;
@@ -3221,6 +3250,7 @@ export default function Home() {
           replyingTo={replyingTo}
           clearReply={clearReply}
           currentUserId={user?.uid ?? ""}
+          onDeleteMessage={onDeleteMessage}
           onRevealTimedImage={onRevealTimedImage}
           fileInputRef={fileInputRef}
           onSelectImage={onSelectImage}
