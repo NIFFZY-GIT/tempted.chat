@@ -31,6 +31,23 @@ const INITIAL_STATS: DashboardStats = {
   usersVideo: 0,
 };
 
+const ROOM_PRESENCE_FRESH_MS = 20 * 1000;
+
+const countFreshRoomParticipants = (
+  participants: string[] | undefined,
+  presenceBy: Record<string, number> | undefined,
+): number => {
+  if (!Array.isArray(participants) || participants.length === 0) {
+    return 0;
+  }
+
+  const thresholdMs = Date.now() - ROOM_PRESENCE_FRESH_MS;
+  return participants.reduce((count, uid) => {
+    const seenAt = presenceBy?.[uid];
+    return typeof seenAt === "number" && seenAt >= thresholdMs ? count + 1 : count;
+  }, 0);
+};
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -179,8 +196,11 @@ export default function AdminDashboardPage() {
       let usersInChats = 0;
 
       snapshot.docs.forEach((roomDoc) => {
-        const data = roomDoc.data() as { participants?: unknown[] };
-        usersInChats += Array.isArray(data.participants) ? data.participants.length : 0;
+        const data = roomDoc.data() as { participants?: string[]; presenceBy?: Record<string, number> };
+        const freshParticipants = countFreshRoomParticipants(data.participants, data.presenceBy);
+        if (freshParticipants >= 2) {
+          usersInChats += freshParticipants;
+        }
       });
 
       nextStats = {
@@ -194,8 +214,11 @@ export default function AdminDashboardPage() {
       let usersTexting = 0;
 
       snapshot.docs.forEach((roomDoc) => {
-        const data = roomDoc.data() as { participants?: unknown[] };
-        usersTexting += Array.isArray(data.participants) ? data.participants.length : 0;
+        const data = roomDoc.data() as { participants?: string[]; presenceBy?: Record<string, number> };
+        const freshParticipants = countFreshRoomParticipants(data.participants, data.presenceBy);
+        if (freshParticipants >= 2) {
+          usersTexting += freshParticipants;
+        }
       });
 
       nextStats = {
@@ -209,8 +232,11 @@ export default function AdminDashboardPage() {
       let usersVideo = 0;
 
       snapshot.docs.forEach((roomDoc) => {
-        const data = roomDoc.data() as { participants?: unknown[] };
-        usersVideo += Array.isArray(data.participants) ? data.participants.length : 0;
+        const data = roomDoc.data() as { participants?: string[]; presenceBy?: Record<string, number> };
+        const freshParticipants = countFreshRoomParticipants(data.participants, data.presenceBy);
+        if (freshParticipants >= 2) {
+          usersVideo += freshParticipants;
+        }
       });
 
       nextStats = {

@@ -277,6 +277,52 @@ export default function Home() {
     }
   };
 
+  const deleteRoomStorageFilesForParticipants = async (roomId: string, participantUids: string[]): Promise<void> => {
+    const uniqueParticipantUids = Array.from(new Set(participantUids.filter(Boolean)));
+
+    await Promise.all(
+      uniqueParticipantUids.map(async (uid) => {
+        await deleteRoomStorageFiles(roomId, uid);
+      }),
+    );
+  };
+
+  const deleteRoomFirestoreData = async (roomId: string): Promise<void> => {
+    const messagesCollectionRef = collection(db, "rooms", roomId, "messages");
+
+    while (true) {
+      const snapshot = await getDocs(query(messagesCollectionRef, limit(200)));
+      if (snapshot.empty) {
+        break;
+      }
+
+      await Promise.all(
+        snapshot.docs.map(async (messageDoc) => {
+          try {
+            await deleteDoc(messageDoc.ref);
+          } catch {
+            // Ignore already-deleted message docs.
+          }
+        }),
+      );
+
+      if (snapshot.size < 200) {
+        break;
+      }
+    }
+
+    try {
+      await deleteDoc(doc(db, "rooms", roomId));
+    } catch {
+      // Ignore already-deleted room docs.
+    }
+  };
+
+  const deleteAllRoomData = async (roomId: string, participantUids: string[]): Promise<void> => {
+    await deleteRoomStorageFilesForParticipants(roomId, participantUids);
+    await deleteRoomFirestoreData(roomId);
+  };
+
   const getOrCreateRoomKeyPair = async (roomId: string, uid: string): Promise<RoomE2EEKeys> => {
     const storageKey = getRoomE2EEKeyStorageKey(roomId, uid);
     const existingRaw = window.sessionStorage.getItem(storageKey);
@@ -956,7 +1002,7 @@ export default function Home() {
               ];
             });
             setActiveRoomId(null);
-            void deleteRoomStorageFiles(activeRoomId, user.uid);
+            void deleteAllRoomData(activeRoomId, roomData.participants ?? [user.uid]);
             return;
           }
         }
@@ -997,7 +1043,7 @@ export default function Home() {
           });
           setActiveRoomId(null);
 
-          void deleteRoomStorageFiles(activeRoomId, user.uid);
+          void deleteAllRoomData(activeRoomId, roomData.participants ?? [user.uid]);
 
           void updateDoc(roomRef, {
             status: "ended",
@@ -1338,6 +1384,19 @@ export default function Home() {
       return;
     }
 
+    let participantUids: string[] = [user.uid];
+    try {
+      const roomSnapshot = await getDoc(doc(db, "rooms", activeRoomId));
+      if (roomSnapshot.exists()) {
+        const roomData = roomSnapshot.data() as { participants?: string[] };
+        if (Array.isArray(roomData.participants) && roomData.participants.length > 0) {
+          participantUids = roomData.participants;
+        }
+      }
+    } catch {
+      // Ignore participant fetch failures and fall back to current user.
+    }
+
     setShowNextStrangerPrompt(false);
     await setTypingStatus(false);
 
@@ -1351,7 +1410,7 @@ export default function Home() {
       // Ignore room end race conditions.
     }
 
-    await deleteRoomStorageFiles(activeRoomId, user.uid);
+    await deleteAllRoomData(activeRoomId, participantUids);
 
     setActiveRoomId(null);
     setMessages([]);
@@ -1387,17 +1446,23 @@ export default function Home() {
     };
 
     const staleThresholdMs = Date.now() - 2 * 60 * 1000;
-    const candidates = searchSnapshot.docs
+    const compatibleCandidates = searchSnapshot.docs
       .filter((candidateDoc) => candidateDoc.id !== currentUser.uid)
       .map((candidateDoc) => candidateDoc.data() as WaitingUser)
+      .filter((candidate) => areUsersCompatible(me, candidate));
+
+    const activeCompatibleCandidates = compatibleCandidates
       .filter((candidate) => {
         const lastSeenMs =
           typeof candidate.lastSeenAt === "number"
             ? candidate.lastSeenAt
             : candidate.lastSeenAt?.toMillis?.() ?? 0;
         return lastSeenMs >= staleThresholdMs;
-      })
-      .filter((candidate) => areUsersCompatible(me, candidate));
+      });
+
+    // Fall back to compatible candidates when heartbeat metadata is missing.
+    const candidates =
+      activeCompatibleCandidates.length > 0 ? activeCompatibleCandidates : compatibleCandidates;
 
     if (candidates.length === 0) {
       setConnectingStatus("Waiting for a compatible stranger...");
