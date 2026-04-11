@@ -887,6 +887,10 @@ export function ChatRoomView({
   const countryLabel = getCountryLabel(chatFilters?.country ?? "Any");
   const selectedStyle = chatFilters?.style && chatFilters.style !== "Any style" ? chatFilters.style : null;
   const selectedCountryCode = chatFilters?.country && chatFilters.country !== "Any" ? chatFilters.country : undefined;
+  const hasResolvedStrangerProfile = !isConnecting && strangerProfile.age > 0;
+  const strangerProfileLabel = hasResolvedStrangerProfile
+    ? `${strangerProfile.gender}, ${strangerProfile.age}`
+    : "Searching...";
 
   const isNearBottom = (viewport: HTMLDivElement): boolean => {
     const distanceFromBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
@@ -1014,9 +1018,9 @@ export function ChatRoomView({
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-[0.14em] text-white/65 md:text-sm md:tracking-[0.18em]">Stranger</span>
                 <span className="rounded-full border border-white/15 bg-white/5 px-2 py-1">
-                  <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
+                  <CountryFlagIcon countryCode={hasResolvedStrangerProfile ? strangerProfile.countryCode : undefined} className="h-3.5 w-5 rounded-[2px] object-cover" />
                 </span>
-                <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/75">{`${strangerProfile.gender}, ${strangerProfile.age}`}</span>
+                <span className="rounded-full border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-white/75">{strangerProfileLabel}</span>
                 <span className="rounded-full border border-pink-400/25 bg-pink-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-pink-200">{modeLabel}</span>
                 {selectedStyle && (
                   <span className="rounded-full border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.12em] text-emerald-200">

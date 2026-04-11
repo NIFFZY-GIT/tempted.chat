@@ -20,7 +20,6 @@ import {
   ChatMode,
   ChatRoomView,
   FilterOptionsView,
-  generateRandomStrangerProfile,
   ModeSelectionView,
   ProfileGender,
   ProfileSetupView,
@@ -121,6 +120,24 @@ const isValidWaitingUser = (value: unknown): value is WaitingUser => {
   );
 };
 
+const toTimestampMillis = (value: unknown): number | null => {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "object" && value !== null && "toMillis" in value) {
+    try {
+      const maybeToMillis = (value as { toMillis?: () => number }).toMillis;
+      const millis = typeof maybeToMillis === "function" ? maybeToMillis() : NaN;
+      return Number.isFinite(millis) ? millis : null;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+};
+
 const ageGroupMatches = (ageGroup: ChatFilters["ageGroup"], age: number): boolean => {
   if (ageGroup === "Any age") {
     return true;
@@ -168,6 +185,10 @@ const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
 const ROOM_PRESENCE_TIMEOUT_MS = 45000;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
+const PENDING_STRANGER_PROFILE: UserProfile = {
+  gender: "Other",
+  age: 0,
+};
 
 const inferImageMimeTypeFromName = (fileName: string): string | null => {
   const lowerName = fileName.trim().toLowerCase();
@@ -290,7 +311,7 @@ export default function Home() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [chatMode, setChatMode] = useState<ChatMode | null>(null);
   const [chatFilters, setChatFilters] = useState<ChatFilters | null>(null);
-  const [strangerProfile, setStrangerProfile] = useState<UserProfile>(generateRandomStrangerProfile());
+  const [strangerProfile, setStrangerProfile] = useState<UserProfile>(PENDING_STRANGER_PROFILE);
   const [profileGender, setProfileGender] = useState<ProfileGender | null>(null);
   const [profileAge, setProfileAge] = useState("");
   const [profileCountry, setProfileCountry] = useState("");
@@ -1055,6 +1076,7 @@ export default function Home() {
     clearPendingSendRetry();
     updateRoomParticipants([]);
     cleanupVideoSession();
+    setStrangerProfile(PENDING_STRANGER_PROFILE);
 
     clearE2EECaches();
   }, [activeRoomId]);
@@ -2083,100 +2105,117 @@ export default function Home() {
       const staleThresholdMs = Date.now() - 2 * 60 * 1000;
       const compatibleCandidates = searchSnapshot.docs
         .filter((candidateDoc) => candidateDoc.id !== currentUser.uid)
-        .map((candidateDoc) => candidateDoc.data())
-        .filter((candidateData): candidateData is WaitingUser => isValidWaitingUser(candidateData))
-        .filter((candidate) => areUsersCompatible(me, candidate));
+        .map((candidateDoc) => {
+          const candidateData = candidateDoc.data();
+          if (!isValidWaitingUser(candidateData)) {
+            return null;
+          }
 
-      const activeCompatibleCandidates = compatibleCandidates
-        .filter((candidate) => {
-          const lastSeenMs =
-            typeof candidate.lastSeenAt === "number"
-              ? candidate.lastSeenAt
-              : candidate.lastSeenAt?.toMillis?.() ?? 0;
-          return lastSeenMs >= staleThresholdMs;
-        });
+          return {
+            uid: candidateDoc.id,
+            data: candidateData,
+            lastSeenMs: toTimestampMillis(candidateData.lastSeenAt),
+            createdAtMs: toTimestampMillis((candidateDoc.data() as { createdAt?: unknown }).createdAt),
+          };
+        })
+        .filter((candidate): candidate is { uid: string; data: WaitingUser; lastSeenMs: number | null; createdAtMs: number | null } => Boolean(candidate))
+        .filter((candidate) => areUsersCompatible(me, candidate.data));
 
-      // Fall back to compatible candidates when heartbeat metadata is missing.
+      const activeCompatibleCandidates = compatibleCandidates.filter((candidate) => {
+        const activityMs = candidate.lastSeenMs ?? candidate.createdAtMs;
+        return typeof activityMs === "number" && activityMs >= staleThresholdMs;
+      });
+
+      // Candidates without timestamps can still be fresh due to local/server timestamp sync lag.
+      const unknownActivityCandidates = compatibleCandidates.filter(
+        (candidate) => candidate.lastSeenMs === null && candidate.createdAtMs === null,
+      );
+
       const candidates =
-        activeCompatibleCandidates.length > 0 ? activeCompatibleCandidates : compatibleCandidates;
+        activeCompatibleCandidates.length > 0 ? activeCompatibleCandidates : unknownActivityCandidates;
 
       if (candidates.length === 0) {
         setConnectingStatus("Waiting for a compatible stranger...");
         return;
       }
 
-      const candidate = candidates[Math.floor(Math.random() * candidates.length)];
+      const shuffledCandidates = [...candidates].sort(() => Math.random() - 0.5);
 
-      try {
-        const matchedRoomId = await runTransaction(db, async (transaction) => {
-          const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
-          const candidateWaitingRef = doc(db, "waitingUsers", candidate.uid);
+      for (const candidate of shuffledCandidates) {
+        try {
+          const matchedRoomId = await runTransaction(db, async (transaction) => {
+            const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
+            const candidateWaitingRef = doc(db, "waitingUsers", candidate.uid);
 
-          const [mySnapshot, candidateSnapshot] = await Promise.all([
-            transaction.get(myWaitingRef),
-            transaction.get(candidateWaitingRef),
-          ]);
+            const [mySnapshot, candidateSnapshot] = await Promise.all([
+              transaction.get(myWaitingRef),
+              transaction.get(candidateWaitingRef),
+            ]);
 
-          if (!mySnapshot.exists() || !candidateSnapshot.exists()) {
-            throw new Error("Queue entry expired");
-          }
+            if (!mySnapshot.exists() || !candidateSnapshot.exists()) {
+              throw new Error("Queue entry expired");
+            }
 
-          const myData = mySnapshot.data() as WaitingUser;
-          const candidateData = candidateSnapshot.data() as WaitingUser;
+            const myData = mySnapshot.data() as WaitingUser;
+            const candidateData = candidateSnapshot.data() as WaitingUser;
 
-          if (
-            myData.status !== "searching" ||
-            candidateData.status !== "searching" ||
-            myData.mode !== mode ||
-            candidateData.mode !== mode ||
-            !areUsersCompatible(myData, candidateData)
-          ) {
-            throw new Error("Candidate no longer available");
-          }
+            if (
+              myData.status !== "searching" ||
+              candidateData.status !== "searching" ||
+              myData.mode !== mode ||
+              candidateData.mode !== mode ||
+              !areUsersCompatible(myData, candidateData)
+            ) {
+              throw new Error("Candidate no longer available");
+            }
 
-          const roomRef = doc(collection(db, "rooms"));
+            const roomRef = doc(collection(db, "rooms"));
 
-          transaction.set(roomRef, {
-            status: "active",
-            mode,
-            participants: [currentUser.uid, candidate.uid],
-            participantProfiles: [
-              {
-                uid: currentUser.uid,
-                gender: myData.profile.gender,
-                age: myData.profile.age,
-                countryCode: myData.profile.countryCode ?? null,
-              },
-              {
-                uid: candidate.uid,
-                gender: candidateData.profile.gender,
-                age: candidateData.profile.age,
-                countryCode: candidateData.profile.countryCode ?? null,
-              },
-            ],
-            createdAt: serverTimestamp(),
+            transaction.set(roomRef, {
+              status: "active",
+              mode,
+              participants: [currentUser.uid, candidate.uid],
+              participantProfiles: [
+                {
+                  uid: currentUser.uid,
+                  gender: myData.profile.gender,
+                  age: myData.profile.age,
+                  countryCode: myData.profile.countryCode ?? null,
+                },
+                {
+                  uid: candidate.uid,
+                  gender: candidateData.profile.gender,
+                  age: candidateData.profile.age,
+                  countryCode: candidateData.profile.countryCode ?? null,
+                },
+              ],
+              createdAt: serverTimestamp(),
+            });
+
+            transaction.update(myWaitingRef, {
+              status: "matched",
+              roomId: roomRef.id,
+              matchedAt: serverTimestamp(),
+            });
+
+            transaction.update(candidateWaitingRef, {
+              status: "matched",
+              roomId: roomRef.id,
+              matchedAt: serverTimestamp(),
+            });
+
+            return roomRef.id;
           });
 
-          transaction.update(myWaitingRef, {
-            status: "matched",
-            roomId: roomRef.id,
-            matchedAt: serverTimestamp(),
-          });
-
-          transaction.update(candidateWaitingRef, {
-            status: "matched",
-            roomId: roomRef.id,
-            matchedAt: serverTimestamp(),
-          });
-
-          return roomRef.id;
-        });
-
-        setConnectingStatus("Stranger found. Connecting...");
-        setActiveRoomId(matchedRoomId);
-      } catch {
-        setConnectingStatus("Retrying match...");
+          setConnectingStatus("Stranger found. Connecting...");
+          setActiveRoomId(matchedRoomId);
+          return;
+        } catch {
+          // Candidate became unavailable, try the next one.
+        }
       }
+
+      setConnectingStatus("Retrying match...");
     } catch (error) {
       console.error("Match lookup failed", {
         uid: currentUser.uid,
@@ -2195,6 +2234,7 @@ export default function Home() {
     setIsConnecting(true);
     setConnectingStatus("Checking availability...");
     setShowNextStrangerPrompt(false);
+    setStrangerProfile(PENDING_STRANGER_PROFILE);
     setMessages([]);
     setText("");
     clearAttachment();
