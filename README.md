@@ -34,6 +34,27 @@ Example document:
 
 When a signed-in user has `users/{uid}.role = "admin"`, they are redirected to `/admin`.
 
+## Scheduled Room Cleanup (Server-Side)
+
+This project now includes a Cloud Function that automatically removes stale/orphaned chat rooms:
+
+- Function: `cleanupOrphanRooms`
+- Schedule: every 10 minutes
+- Deletes:
+	- ended rooms older than 10 minutes
+	- active rooms with no presence activity for 30 minutes
+	- related `waitingUsers` entries for the room
+	- related Storage files under `chatUploads/{roomId}/`
+
+Deploy steps:
+
+```bash
+cd functions
+npm install
+cd ..
+firebase deploy --only functions
+```
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

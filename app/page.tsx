@@ -107,7 +107,7 @@ const isValidWaitingUser = (value: unknown): value is WaitingUser => {
   if (
     (profile.gender !== "Male" && profile.gender !== "Female" && profile.gender !== "Other") ||
     typeof profile.age !== "number" ||
-    (typeof profile.countryCode !== "undefined" && typeof profile.countryCode !== "string")
+    (typeof profile.countryCode !== "undefined" && profile.countryCode !== null && typeof profile.countryCode !== "string")
   ) {
     return false;
   }
