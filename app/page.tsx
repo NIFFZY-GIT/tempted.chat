@@ -265,6 +265,16 @@ export default function Home() {
     roomCipherKeyRef.current = null;
   };
 
+  const updateRoomParticipants = (nextParticipants: string[]) => {
+    const normalized = Array.from(new Set(nextParticipants));
+    setRoomParticipants((current) => {
+      if (current.length === normalized.length && current.every((uid, index) => uid === normalized[index])) {
+        return current;
+      }
+      return normalized;
+    });
+  };
+
   const cleanupVideoSession = () => {
     videoRoomUnsubRef.current?.();
     videoRoomUnsubRef.current = null;
@@ -887,7 +897,7 @@ export default function Home() {
     }
 
     clearPendingSendRetry();
-    setRoomParticipants([]);
+    updateRoomParticipants([]);
     cleanupVideoSession();
 
     clearE2EECaches();
@@ -1269,7 +1279,7 @@ export default function Home() {
       roomUnsubRef.current = null;
       roomMessagesUnsubRef.current?.();
       roomMessagesUnsubRef.current = null;
-      setRoomParticipants([]);
+      updateRoomParticipants([]);
       setStrangerIsTyping(false);
       selfTypingRef.current = false;
       return;
@@ -1286,7 +1296,7 @@ export default function Home() {
         if (!snapshot.exists()) {
           setIsConnecting(false);
           setConnectingStatus("Previous chat ended.");
-          setRoomParticipants([]);
+          updateRoomParticipants([]);
           setActiveRoomId(null);
           return;
         }
@@ -1310,7 +1320,7 @@ export default function Home() {
           // Ignore key negotiation races.
         });
 
-        setRoomParticipants(Array.isArray(roomData.participants) ? roomData.participants : []);
+        updateRoomParticipants(Array.isArray(roomData.participants) ? roomData.participants : []);
 
         const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
         if (stranger) {
