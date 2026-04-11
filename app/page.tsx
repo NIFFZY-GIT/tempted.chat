@@ -251,6 +251,7 @@ export default function Home() {
   const videoOfferSentRef = useRef(false);
   const videoAnswerSentRef = useRef(false);
   const processedCandidateIdsRef = useRef<Set<string>>(new Set());
+  const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const decryptedTextCacheRef = useRef<Map<string, { ciphertext: string; iv: string; text: string }>>(new Map());
   const decryptedImageUrlCacheRef = useRef<Map<string, { sourceUrl: string; objectUrl: string }>>(new Map());
 
@@ -281,6 +282,7 @@ export default function Home() {
     videoCandidatesUnsubRef.current?.();
     videoCandidatesUnsubRef.current = null;
     processedCandidateIdsRef.current.clear();
+    pendingRemoteCandidatesRef.current = [];
     videoOfferSentRef.current = false;
     videoAnswerSentRef.current = false;
 
@@ -398,6 +400,23 @@ export default function Home() {
       setVideoError(null);
     } catch {
       setVideoError("Camera switch is not available on this device/browser.");
+    }
+  };
+
+  const flushPendingRemoteCandidates = async (peerConnection: RTCPeerConnection) => {
+    if (!peerConnection.remoteDescription || pendingRemoteCandidatesRef.current.length === 0) {
+      return;
+    }
+
+    const pending = [...pendingRemoteCandidatesRef.current];
+    pendingRemoteCandidatesRef.current = [];
+
+    for (const candidateInit of pending) {
+      try {
+        await peerConnection.addIceCandidate(new RTCIceCandidate(candidateInit));
+      } catch {
+        // Ignore transient addIceCandidate failures during renegotiation.
+      }
     }
   };
 
@@ -981,6 +1000,21 @@ export default function Home() {
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
             { urls: "stun:stun2.l.google.com:19302" },
+            {
+              urls: "turn:openrelay.metered.ca:80",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
+            {
+              urls: "turn:openrelay.metered.ca:443?transport=tcp",
+              username: "openrelayproject",
+              credential: "openrelayproject",
+            },
           ],
         });
         peerConnectionRef.current = peerConnection;
@@ -1028,7 +1062,7 @@ export default function Home() {
             candidate: event.candidate.toJSON(),
             createdAt: serverTimestamp(),
           }).catch(() => {
-            // Ignore candidate signaling races.
+            setVideoError("Video signaling failed while exchanging network candidates.");
           });
         };
 
@@ -1086,69 +1120,94 @@ export default function Home() {
               };
 
               if (data.candidate) {
+                if (!peerConnection.remoteDescription) {
+                  pendingRemoteCandidatesRef.current.push(data.candidate);
+                  return;
+                }
+
                 void peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {
-                  // Ignore out-of-order candidate application.
+                  // Queue again and retry after next remote description update.
+                  pendingRemoteCandidatesRef.current.push(data.candidate as RTCIceCandidateInit);
                 });
               }
             });
           },
+          () => {
+            setVideoError("Video signaling read failed for network candidates.");
+          },
         );
 
         videoRoomUnsubRef.current?.();
-        videoRoomUnsubRef.current = onSnapshot(roomRef, (snapshot) => {
-          if (!snapshot.exists()) {
-            return;
-          }
+        videoRoomUnsubRef.current = onSnapshot(
+          roomRef,
+          (snapshot) => {
+            if (!snapshot.exists()) {
+              return;
+            }
 
-          const roomData = snapshot.data() as {
-            webrtc?: {
-              offerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
-              answerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
+            const roomData = snapshot.data() as {
+              webrtc?: {
+                offerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
+                answerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
+              };
             };
-          };
 
-          const remoteOffer = roomData.webrtc?.offerBy?.[otherUid];
-          const remoteAnswer = roomData.webrtc?.answerBy?.[otherUid];
+            const remoteOffer = roomData.webrtc?.offerBy?.[otherUid];
+            const remoteAnswer = roomData.webrtc?.answerBy?.[otherUid];
 
-          if (!isOfferer && remoteOffer && !peerConnection.currentRemoteDescription && !videoAnswerSentRef.current) {
-            void (async () => {
-              try {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(remoteOffer));
-                const createdAnswer = await peerConnection.createAnswer();
-                await peerConnection.setLocalDescription(createdAnswer);
-                videoAnswerSentRef.current = true;
-                await updateDoc(roomRef, {
-                  [`webrtc.answerBy.${user.uid}`]: {
-                    type: createdAnswer.type,
-                    sdp: createdAnswer.sdp,
-                  },
-                  webrtcUpdatedAt: serverTimestamp(),
-                });
-              } catch {
-                setVideoError("Could not establish video answer.");
-              }
-            })();
-          }
+            if (!isOfferer && remoteOffer && !peerConnection.currentRemoteDescription && !videoAnswerSentRef.current) {
+              void (async () => {
+                try {
+                  await peerConnection.setRemoteDescription(new RTCSessionDescription(remoteOffer));
+                  await flushPendingRemoteCandidates(peerConnection);
+                  const createdAnswer = await peerConnection.createAnswer();
+                  await peerConnection.setLocalDescription(createdAnswer);
+                  videoAnswerSentRef.current = true;
+                  await updateDoc(roomRef, {
+                    [`webrtc.answerBy.${user.uid}`]: {
+                      type: createdAnswer.type,
+                      sdp: createdAnswer.sdp,
+                    },
+                    webrtcUpdatedAt: serverTimestamp(),
+                  });
+                } catch {
+                  setVideoError("Could not establish video answer.");
+                }
+              })();
+            }
 
-          if (isOfferer && remoteAnswer && !peerConnection.currentRemoteDescription) {
-            void peerConnection.setRemoteDescription(new RTCSessionDescription(remoteAnswer)).catch(() => {
-              setVideoError("Could not finalize video connection.");
-            });
-          }
-        });
+            if (isOfferer && remoteAnswer && !peerConnection.currentRemoteDescription) {
+              void (async () => {
+                try {
+                  await peerConnection.setRemoteDescription(new RTCSessionDescription(remoteAnswer));
+                  await flushPendingRemoteCandidates(peerConnection);
+                } catch {
+                  setVideoError("Could not finalize video connection.");
+                }
+              })();
+            }
+          },
+          () => {
+            setVideoError("Video signaling read failed for offer/answer sync.");
+          },
+        );
 
         if (isOfferer && !videoOfferSentRef.current) {
           const createdOffer = await peerConnection.createOffer();
           await peerConnection.setLocalDescription(createdOffer);
           videoOfferSentRef.current = true;
 
-          await updateDoc(roomRef, {
-            [`webrtc.offerBy.${user.uid}`]: {
-              type: createdOffer.type,
-              sdp: createdOffer.sdp,
-            },
-            webrtcUpdatedAt: serverTimestamp(),
-          });
+          try {
+            await updateDoc(roomRef, {
+              [`webrtc.offerBy.${user.uid}`]: {
+                type: createdOffer.type,
+                sdp: createdOffer.sdp,
+              },
+              webrtcUpdatedAt: serverTimestamp(),
+            });
+          } catch {
+            setVideoError("Video signaling failed while sending offer.");
+          }
         }
       } catch {
         setVideoError("Camera or microphone permission is required for video mode.");
