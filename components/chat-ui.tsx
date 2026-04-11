@@ -1207,9 +1207,9 @@ export function ChatRoomView({
             if (msg.deletedForEveryone) {
               return (
                 <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
-                  <div className={`flex items-center gap-1.5 rounded-2xl border border-white/[0.04] px-4 py-2.5 ${msg.author === "you" ? "bg-pink-500/[0.04]" : "bg-white/[0.02]"}`}>
-                    <svg className="h-3.5 w-3.5 text-white/25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
-                    <span className="text-[13px] italic text-white/30">{msg.author === "you" ? "You deleted this message" : "This message was deleted"}</span>
+                  <div className={`flex items-center gap-1.5 rounded-2xl border px-4 py-2.5 ${msg.author === "you" ? "border-pink-500/10 bg-pink-500/[0.04]" : "border-blue-500/10 bg-blue-500/[0.04]"}`}>
+                    <svg className={`h-3.5 w-3.5 ${msg.author === "you" ? "text-pink-400/30" : "text-blue-400/30"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
+                    <span className={`text-[13px] italic ${msg.author === "you" ? "text-pink-300/40" : "text-blue-300/40"}`}>{msg.author === "you" ? "You deleted this message" : "This message was deleted"}</span>
                   </div>
                 </div>
               );
@@ -1257,17 +1257,17 @@ export function ChatRoomView({
                         const el = document.getElementById(`msg-${msg.replyToId}`);
                         if (el) {
                           el.scrollIntoView({ behavior: "smooth", block: "center" });
-                          el.classList.add("ring-2", "ring-pink-500/40");
-                          setTimeout(() => el.classList.remove("ring-2", "ring-pink-500/40"), 1500);
+                          el.classList.add("ring-2", isYou ? "ring-pink-400/50" : "ring-blue-400/50");
+                          setTimeout(() => { el.classList.remove("ring-2", "ring-pink-400/50", "ring-blue-400/50"); }, 1500);
                         }
                       }}
                       className={`max-w-full truncate rounded-xl px-3 py-1.5 text-[12px] leading-snug ${
                         isYou
-                          ? "bg-pink-400/20 text-white/60 text-right"
-                          : "bg-white/[0.04] text-white/50 text-left"
+                          ? "bg-pink-400/20 text-white/70 text-right"
+                          : "bg-blue-400/20 text-white/70 text-left"
                       }`}
                     >
-                      <span className="block text-[10px] font-semibold">{msg.replyToAuthor === "you" ? "You" : "Stranger"}</span>
+                      <span className={`block text-[10px] font-semibold ${isYou ? "text-pink-300/80" : "text-blue-300/80"}`}>{msg.replyToAuthor === "you" ? "You" : "Stranger"}</span>
                       <span className="block truncate">{msg.replyToText}</span>
                     </button>
                   )}
@@ -1408,7 +1408,9 @@ export function ChatRoomView({
                             onClick={() => onReactToMessage(msg.id, emoji)}
                             className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition active:scale-95 ${
                               didReact
-                                ? "border border-pink-500/30 bg-pink-500/[0.1] text-white/80"
+                                ? isYou
+                                  ? "border border-pink-500/30 bg-pink-500/[0.1] text-white/80"
+                                  : "border border-blue-500/30 bg-blue-500/[0.1] text-white/80"
                                 : "border border-white/[0.06] bg-white/[0.04] text-white/50 hover:bg-white/[0.08]"
                             }`}
                           >
@@ -1468,9 +1470,9 @@ export function ChatRoomView({
         <div className="mx-auto w-full max-w-2xl space-y-2">
           {/* Reply preview */}
           {replyingTo && (
-            <div className="animate-fade-in flex items-center gap-3 rounded-xl border border-pink-500/15 bg-pink-500/[0.04] px-3 py-2">
-              <div className="min-w-0 flex-1 border-l-2 border-pink-500/40 pl-3">
-                <p className="text-[11px] font-semibold text-pink-400/80">{replyingTo.author === "you" ? "You" : "Stranger"}</p>
+            <div className={`animate-fade-in flex items-center gap-3 rounded-xl border px-3 py-2 ${replyingTo.author === "you" ? "border-pink-500/15 bg-pink-500/[0.04]" : "border-blue-500/15 bg-blue-500/[0.04]"}`}>
+              <div className={`min-w-0 flex-1 border-l-2 pl-3 ${replyingTo.author === "you" ? "border-pink-500/40" : "border-blue-500/40"}`}>
+                <p className={`text-[11px] font-semibold ${replyingTo.author === "you" ? "text-pink-400/80" : "text-blue-400/80"}`}>{replyingTo.author === "you" ? "You" : "Stranger"}</p>
                 <p className="truncate text-xs text-white/50">{replyingTo.text || (replyingTo.image ? "Photo" : "Message")}</p>
               </div>
               <button
