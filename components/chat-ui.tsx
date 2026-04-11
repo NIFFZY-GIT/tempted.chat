@@ -1279,7 +1279,7 @@ export function ChatRoomView({
                     className={`relative rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed break-words transition-all [overflow-wrap:anywhere] sm:text-[15px] ${
                     isYou
                       ? "rounded-br-sm bg-pink-950 text-white"
-                      : "rounded-bl-sm bg-blue-800 text-white"
+                      : "rounded-bl-sm bg-blue-950 text-white"
                   } ${msg.isPending ? "opacity-50" : ""}`}>
                     {msg.text}
                     {msg.image && isYou && !msg.imageDeleted && !senderImageExpired && (
