@@ -1099,6 +1099,67 @@ export default function Home() {
     clearE2EECaches();
   }, [activeRoomId]);
 
+  // Start local camera preview as soon as video mode is entered (before matching).
+  useEffect(() => {
+    if (chatMode !== "video") {
+      // Stop preview when leaving video mode, but only if no peer connection is active.
+      if (!peerConnectionRef.current && localMediaStreamRef.current) {
+        localMediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        localMediaStreamRef.current = null;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = null;
+        }
+        setLocalVideoEnabled(true);
+        setLocalAudioEnabled(true);
+        setVideoError(null);
+      }
+      return;
+    }
+
+    // If a stream already exists (e.g. from WebRTC setup), skip.
+    if (localMediaStreamRef.current) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const startPreview = async () => {
+      try {
+        const localStream = await getPreferredLocalMediaStream(cameraFacingMode);
+
+        if (cancelled) {
+          localStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        localMediaStreamRef.current = localStream;
+        if (localVideoRef.current) {
+          localVideoRef.current.srcObject = localStream;
+          localVideoRef.current.muted = true;
+          void localVideoRef.current.play().catch(() => {
+            // Ignore autoplay restrictions.
+          });
+        }
+
+        setLocalVideoEnabled(true);
+        setLocalAudioEnabled(localStream.getAudioTracks().some((track) => track.enabled));
+
+        const currentFacingMode = localStream.getVideoTracks()[0]?.getSettings().facingMode;
+        if (currentFacingMode === "environment" || currentFacingMode === "user") {
+          setCameraFacingMode(currentFacingMode);
+        }
+      } catch {
+        setVideoError("Camera or microphone permission is required for video mode.");
+      }
+    };
+
+    void startPreview();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [chatMode]);
+
   useEffect(() => {
     if (chatMode !== "video" || !activeRoomId || !user) {
       cleanupVideoSession();
@@ -1117,10 +1178,13 @@ export default function Home() {
 
     const setupVideo = async () => {
       try {
-        const localStream = await getPreferredLocalMediaStream(cameraFacingMode);
+        // Reuse preview stream if already started, otherwise request a new one.
+        const localStream = localMediaStreamRef.current ?? await getPreferredLocalMediaStream(cameraFacingMode);
 
         if (cancelled) {
-          localStream.getTracks().forEach((track) => track.stop());
+          if (!localMediaStreamRef.current) {
+            localStream.getTracks().forEach((track) => track.stop());
+          }
           return;
         }
 

@@ -643,7 +643,7 @@ export function ModeAndFiltersView({
   };
 
   const handleQuickStart = () => {
-    onStart("text", { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any" });
+    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any" });
   };
 
   const pillClasses = (active: boolean) =>
@@ -899,6 +899,7 @@ export function ChatRoomView({
   const [unreadReceivedCount, setUnreadReceivedCount] = useState(0);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
+  const [showVideoChatOverlay, setShowVideoChatOverlay] = useState(false);
   const [revealedTimedImageIds, setRevealedTimedImageIds] = useState<Set<string>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [activeEmojiPickerMsgId, setActiveEmojiPickerMsgId] = useState<string | null>(null);
@@ -1027,6 +1028,262 @@ export function ChatRoomView({
     }
   }, [isConnecting, isSendingMessage]);
 
+  /* ─── Video‑mode: full‑screen layout ─── */
+  if (chatMode === "video") {
+    return (
+      <section
+        ref={chatContainerRef}
+        className="fixed inset-0 z-50 flex flex-col bg-black"
+      >
+        {/* Split-screen: col on mobile (stranger top / you bottom), row on desktop (stranger left / you right) */}
+        <div className="flex flex-1 flex-col sm:flex-row">
+          {/* Stranger video panel */}
+          <div className="relative flex-1 overflow-hidden border-b border-white/10 sm:border-b-0 sm:border-r">
+            <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+            {!hasRemoteVideo && (
+              <div className="absolute inset-0 grid place-items-center bg-black/90 text-center">
+                <div className="flex flex-col items-center gap-4">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/[0.05]">
+                    <svg className="h-9 w-9 text-white/25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.5-1.632Z" /></svg>
+                  </div>
+                  {isConnecting ? (
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-pink-400" style={{ animation: "typing-bounce 1.2s ease-in-out infinite" }} />
+                        <span className="h-2 w-2 rounded-full bg-pink-400/70" style={{ animation: "typing-bounce 1.2s ease-in-out 0.15s infinite" }} />
+                        <span className="h-2 w-2 rounded-full bg-pink-400/40" style={{ animation: "typing-bounce 1.2s ease-in-out 0.3s infinite" }} />
+                      </div>
+                      <p className="text-sm font-medium text-white/50">Finding someone...</p>
+                      <p className="text-xs text-white/30">{connectingStatus}</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm font-medium text-white/35">Waiting for stranger&apos;s camera...</p>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Your video panel */}
+          <div className="relative flex-1 overflow-hidden">
+            <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            {!localVideoEnabled && (
+              <div className="absolute inset-0 grid place-items-center bg-black/85">
+                <svg className="h-8 w-8 text-white/25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m2 2 20 20" /><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg>
+              </div>
+            )}
+            <span className="absolute left-3 top-3 rounded-full bg-black/50 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/60 backdrop-blur-md sm:top-auto sm:bottom-3">You</span>
+          </div>
+        </div>
+
+        {/* ── Overlays (all absolute, outside overflow-hidden panels) ── */}
+
+        {/* Top bar */}
+        <header className="absolute inset-x-0 top-0 z-20 flex items-center gap-3 bg-gradient-to-b from-black/80 via-black/50 to-transparent px-3 pb-4 pt-[max(env(safe-area-inset-top),0.75rem)] sm:px-4">
+          {!showBackConfirm ? (
+            <button
+              onClick={() => setShowBackConfirm(true)}
+              className="flex h-10 min-w-[4rem] items-center justify-center gap-1.5 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md transition hover:bg-black/60 active:scale-[0.96]"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
+              Back
+            </button>
+          ) : (
+            <div className="flex items-center gap-2 animate-pop-in">
+              <span className="text-xs font-semibold text-white/60">Leave?</span>
+              <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="h-10 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md active:scale-[0.96]">Yes</button>
+              <button onClick={() => setShowBackConfirm(false)} className="h-10 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md active:scale-[0.96]">No</button>
+            </div>
+          )}
+
+          <div className="relative flex-shrink-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white/80 backdrop-blur-md">
+              <GenderIcon gender={strangerProfile.gender} />
+            </div>
+            <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-black ${isConnecting ? "bg-amber-400" : "bg-emerald-400"}`} style={isConnecting ? { animation: "ripple 1.5s ease-out infinite" } : {}} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-white/90 drop-shadow-md">Stranger</p>
+            {hasResolvedStrangerProfile && (
+              <p className="flex items-center gap-1 text-[11px] text-white/55 drop-shadow-md">
+                <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-[1px] object-cover" />
+                {strangerProfile.gender}, {strangerProfile.age}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {showNextStrangerPrompt ? (
+              <button
+                onClick={onNextStranger}
+                className="animate-pop-in flex h-10 items-center gap-1.5 rounded-full bg-emerald-500 px-5 text-xs font-bold text-white shadow-[0_0_12px_rgba(16,185,129,0.4)] active:scale-[0.96]"
+              >
+                Next
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 6 6 6-6 6"/></svg>
+              </button>
+            ) : (
+              <>
+                {!showLeaveConfirm ? (
+                  <button
+                    onClick={() => setShowLeaveConfirm(true)}
+                    className="flex h-10 items-center rounded-full bg-rose-500/90 px-5 text-xs font-bold text-white backdrop-blur-md active:scale-[0.96]"
+                  >
+                    Leave
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-2 animate-pop-in">
+                    <span className="text-xs font-semibold text-white/60">Sure?</span>
+                    <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="h-10 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md active:scale-[0.96]">Yes</button>
+                    <button onClick={() => setShowLeaveConfirm(false)} className="h-10 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md active:scale-[0.96]">No</button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </header>
+
+        {/* Chat overlay — full-width across both videos */}
+        {showVideoChatOverlay && (
+          <div className="absolute inset-x-0 bottom-20 z-20 mx-2 flex max-h-[55%] flex-col overflow-hidden rounded-2xl border border-white/[0.08] bg-black/70 backdrop-blur-xl sm:mx-4 sm:max-h-[60%]">
+            <div
+              ref={messagesViewportRef}
+              onScroll={handleMessagesScroll}
+              className="flex-1 overflow-y-auto px-3 py-3"
+            >
+              <div className="flex flex-col gap-2">
+                {messages.map((msg) => {
+                  if (msg.deletedForEveryone) {
+                    return (
+                      <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
+                        <span className={`text-[12px] italic ${msg.author === "you" ? "text-pink-300/40" : "text-blue-300/40"}`}>{msg.author === "you" ? "You deleted this" : "Deleted"}</span>
+                      </div>
+                    );
+                  }
+                  const isYou = msg.author === "you";
+                  return (
+                    <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"}`}>
+                      <div className={`max-w-[70%] rounded-2xl px-3 py-1.5 text-[13px] leading-relaxed break-words [overflow-wrap:anywhere] ${isYou ? "rounded-br-sm bg-pink-500/80 text-white" : "rounded-bl-sm bg-blue-800/80 text-white"}`}>
+                        {msg.text}
+                      </div>
+                    </div>
+                  );
+                })}
+                <div ref={messagesEndRef} />
+              </div>
+            </div>
+            {replyingTo && (
+              <div className={`flex items-center gap-2 border-t border-white/[0.06] px-3 py-1.5 ${replyingTo.author === "you" ? "bg-pink-500/[0.06]" : "bg-blue-500/[0.06]"}`}>
+                <div className="min-w-0 flex-1 truncate text-[11px] text-white/50">
+                  <span className="font-semibold">{replyingTo.author === "you" ? "You" : "Stranger"}: </span>
+                  {replyingTo.text || "Photo"}
+                </div>
+                <button type="button" onClick={clearReply} className="text-white/30 hover:text-white/60"><svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+              </div>
+            )}
+            <div className="flex items-center gap-2 border-t border-white/[0.06] px-3 py-2">
+              <input
+                ref={messageInputRef}
+                type="text"
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter" || isSendingMessage || e.nativeEvent.isComposing) return;
+                  e.preventDefault();
+                  sendMessage();
+                }}
+                placeholder="Message..."
+                disabled={isSendingMessage}
+                className="h-9 flex-1 rounded-lg bg-white/[0.06] px-3 text-sm text-white outline-none placeholder:text-white/25"
+              />
+              <button
+                onClick={sendMessage}
+                disabled={isSendingMessage || !text.trim()}
+                className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-pink-500 text-white transition active:scale-[0.95] disabled:opacity-20"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Floating incoming message toasts — visible when chat overlay is closed */}
+        {!showVideoChatOverlay && (() => {
+          const recentStrangerMsgs = messages
+            .filter((m) => m.author === "stranger" && !m.deletedForEveryone && m.text)
+            .slice(-3);
+          if (recentStrangerMsgs.length === 0) return null;
+          return (
+            <div className="pointer-events-none absolute bottom-20 left-2 z-20 flex max-w-[60%] flex-col gap-1.5 sm:left-4 sm:max-w-[40%]">
+              {recentStrangerMsgs.map((msg) => (
+                <div
+                  key={msg.id}
+                  className="pointer-events-auto animate-pop-in rounded-2xl rounded-bl-sm bg-blue-800/80 px-3 py-1.5 text-[13px] leading-relaxed text-white shadow-lg backdrop-blur-md break-words [overflow-wrap:anywhere]"
+                >
+                  {msg.text}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* Bottom controls — overlay */}
+        <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-center gap-4 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-6">
+          {/* Chat toggle */}
+          <button
+            type="button"
+            onClick={() => setShowVideoChatOverlay((v) => !v)}
+            className={`inline-flex h-12 w-12 items-center justify-center rounded-full backdrop-blur-md transition ${showVideoChatOverlay ? "bg-white/25 text-white ring-1 ring-white/30" : "bg-white/15 text-white/80 ring-1 ring-white/20"}`}
+            aria-label="Toggle chat"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-7Z" /></svg>
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleLocalAudio}
+            aria-label={localAudioEnabled ? "Mute microphone" : "Unmute microphone"}
+            className={`inline-flex h-14 w-14 items-center justify-center rounded-full backdrop-blur-md transition ${localAudioEnabled ? "bg-white/15 text-white ring-1 ring-white/20" : "bg-rose-500/90 text-white ring-1 ring-rose-400/40"}`}
+          >
+            {localAudioEnabled ? (
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><path d="M12 19v3" /></svg>
+            ) : (
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 4 16 16" /><path d="M9 9v3a3 3 0 0 0 5.14 2.14" /><path d="M15 6a3 3 0 0 0-5.08-2.2" /><path d="M19 10v2a7 7 0 0 1-1.6 4.49" /><path d="M5 10v2a7 7 0 0 0 11.98 4.95" /></svg>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleLocalVideo}
+            aria-label={localVideoEnabled ? "Turn off camera" : "Turn on camera"}
+            className={`inline-flex h-14 w-14 items-center justify-center rounded-full backdrop-blur-md transition ${localVideoEnabled ? "bg-white/15 text-white ring-1 ring-white/20" : "bg-amber-500/90 text-white ring-1 ring-amber-400/40"}`}
+          >
+            {localVideoEnabled ? (
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg>
+            ) : (
+              <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m2 2 20 20" /><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={switchCamera}
+            aria-label="Switch camera"
+            className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/20 backdrop-blur-md transition hover:bg-white/25"
+          >
+            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 4h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-1" /><path d="M7 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h1" /><path d="m8 9 3-3 3 3" /><path d="m16 15-3 3-3-3" /><path d="M11 6h2v12h-2" /></svg>
+          </button>
+        </div>
+
+        {videoError && (
+          <div className="absolute inset-x-0 bottom-24 z-20 mx-auto max-w-sm px-4">
+            <p className="rounded-xl bg-rose-500/20 px-4 py-2.5 text-center text-xs font-medium text-rose-300 backdrop-blur-md">{videoError}</p>
+          </div>
+        )}
+      </section>
+    );
+  }
+
+  /* ─── Text / Group mode: standard layout ─── */
   return (
     <section
       ref={chatContainerRef}
@@ -1119,71 +1376,6 @@ export function ChatRoomView({
         className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-5"
       >
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
-          {/* Video section */}
-          {chatMode === "video" && (
-            <section className="overflow-hidden rounded-2xl border border-white/[0.06] bg-black/40">
-              <div className="grid grid-cols-2 gap-px bg-white/[0.04]">
-                <div className="relative bg-black">
-                  <video ref={remoteVideoRef} autoPlay playsInline className="aspect-[3/4] h-full w-full object-cover sm:aspect-[4/3]" />
-                  {!hasRemoteVideo && (
-                    <div className="absolute inset-0 grid place-items-center bg-black/70 text-center text-xs font-medium text-white/50">
-                      Waiting for stranger&apos;s camera...
-                    </div>
-                  )}
-                  <span className="absolute left-2.5 top-2.5 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/70 backdrop-blur-sm">Stranger</span>
-                </div>
-                <div className="relative bg-black">
-                  <video ref={localVideoRef} autoPlay playsInline muted className="aspect-[3/4] h-full w-full object-cover sm:aspect-[4/3]" />
-                  {!localVideoEnabled && (
-                    <div className="absolute inset-0 grid place-items-center bg-black/70 text-center text-xs font-medium text-white/50">
-                      Camera off
-                    </div>
-                  )}
-                  <span className="absolute left-2.5 top-2.5 rounded-md bg-black/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-white/70 backdrop-blur-sm">You</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-center gap-3 px-3 py-3">
-                <button
-                  type="button"
-                  onClick={toggleLocalAudio}
-                  aria-label={localAudioEnabled ? "Mute microphone" : "Unmute microphone"}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition ${localAudioEnabled ? "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/25" : "bg-rose-500/15 text-rose-400 ring-1 ring-rose-500/25"}`}
-                >
-                  {localAudioEnabled ? (
-                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 3a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><path d="M12 19v3" /></svg>
-                  ) : (
-                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 4 16 16" /><path d="M9 9v3a3 3 0 0 0 5.14 2.14" /><path d="M15 6a3 3 0 0 0-5.08-2.2" /><path d="M19 10v2a7 7 0 0 1-1.6 4.49" /><path d="M5 10v2a7 7 0 0 0 11.98 4.95" /></svg>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={toggleLocalVideo}
-                  aria-label={localVideoEnabled ? "Turn off camera" : "Turn on camera"}
-                  className={`inline-flex h-10 w-10 items-center justify-center rounded-full transition ${localVideoEnabled ? "bg-cyan-500/15 text-cyan-400 ring-1 ring-cyan-500/25" : "bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/25"}`}
-                >
-                  {localVideoEnabled ? (
-                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg>
-                  ) : (
-                    <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m2 2 20 20" /><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg>
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={switchCamera}
-                  aria-label="Switch camera"
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.08] text-white/60 ring-1 ring-white/[0.08] transition hover:bg-white/[0.12]"
-                >
-                  <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 4h1a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-1" /><path d="M7 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h1" /><path d="m8 9 3-3 3 3" /><path d="m16 15-3 3-3-3" /><path d="M11 6h2v12h-2" /></svg>
-                </button>
-              </div>
-
-              {videoError && (
-                <p className="border-t border-rose-500/15 bg-rose-500/[0.06] px-4 py-2.5 text-xs font-medium text-rose-300">{videoError}</p>
-              )}
-            </section>
-          )}
-
           {/* Connecting state */}
           {isConnecting && (
             <div className="animate-fade-in-up flex justify-center py-10">
@@ -1487,7 +1679,7 @@ export function ChatRoomView({
           )}
 
           {/* Image preview */}
-          {chatMode !== "video" && imagePreview && (
+          {imagePreview && (
             <div className="animate-fade-in relative flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] p-3">
               {isGifFilename(selectedFileName) ? (
                 <img
@@ -1549,7 +1741,6 @@ export function ChatRoomView({
 
           {/* Input bar */}
           <div className="flex items-end gap-2">
-            {chatMode !== "video" && (
               <button
                 disabled={isSendingMessage}
                 onClick={() => fileInputRef.current?.click()}
@@ -1558,7 +1749,6 @@ export function ChatRoomView({
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6" viewBox="0 0 24 24"><path d="M12 5v14m7-7H5" /></svg>
               </button>
-            )}
 
             <div className="relative flex min-h-[44px] flex-1 items-center rounded-xl border border-white/[0.06] bg-white/[0.03] transition-colors focus-within:border-white/15 focus-within:bg-white/[0.05]">
               <input
@@ -1581,7 +1771,7 @@ export function ChatRoomView({
 
             <button
               onClick={sendMessage}
-              disabled={isSendingMessage || (!text.trim() && (chatMode === "video" || !imagePreview))}
+              disabled={isSendingMessage || (!text.trim() && !imagePreview)}
               className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-pink-500 text-white transition hover:bg-pink-400 active:scale-[0.95] disabled:opacity-15"
             >
               {isSendingMessage ? (
