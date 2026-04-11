@@ -10,6 +10,9 @@ export type ChatMessage = {
   isPending?: boolean;
   text?: string;
   image?: string;
+  imageMimeType?: string;
+  linkImageUrl?: string;
+  linkImageMimeType?: string;
   imageUnavailable?: boolean;
   imageDecrypting?: boolean;
   imageViewTimerSeconds?: number;
@@ -39,6 +42,34 @@ export const starterMessages: ChatMessage[] = [
 ];
 
 const IMAGE_DELETED_NOTICE = "Timer ran out. Image deleted.";
+
+const isGifMimeType = (mimeType?: string): boolean => mimeType?.toLowerCase() === "image/gif";
+
+const isGifFilename = (fileName?: string | null): boolean => {
+  if (!fileName) {
+    return false;
+  }
+
+  return fileName.trim().toLowerCase().endsWith(".gif");
+};
+
+function ChatMedia({
+  src,
+  alt,
+  className,
+  mimeType,
+}: {
+  src: string;
+  alt: string;
+  className: string;
+  mimeType?: string;
+}) {
+  if (isGifMimeType(mimeType)) {
+    return <img src={src} alt={alt} className={className} loading="lazy" decoding="async" />;
+  }
+
+  return <Image src={src} alt={alt} width={300} height={200} className={className} unoptimized />;
+}
 
 const pickRandomGender = (): ProfileGender => {
   const genders: ProfileGender[] = ["Male", "Female", "Other"];
@@ -836,9 +867,14 @@ export function ChatRoomView({
   clearAttachment: () => void;
 }) {
   const chatContainerRef = useRef<HTMLElement | null>(null);
+  const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
+  const knownMessageIdsRef = useRef<Set<string>>(new Set());
+  const shouldAutoScrollRef = useRef(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showScrollToLatestBubble, setShowScrollToLatestBubble] = useState(false);
+  const [unreadReceivedCount, setUnreadReceivedCount] = useState(0);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [revealedTimedImageIds, setRevealedTimedImageIds] = useState<Set<string>>(new Set());
@@ -851,6 +887,11 @@ export function ChatRoomView({
   const countryLabel = getCountryLabel(chatFilters?.country ?? "Any");
   const selectedStyle = chatFilters?.style && chatFilters.style !== "Any style" ? chatFilters.style : null;
   const selectedCountryCode = chatFilters?.country && chatFilters.country !== "Any" ? chatFilters.country : undefined;
+
+  const isNearBottom = (viewport: HTMLDivElement): boolean => {
+    const distanceFromBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
+    return distanceFromBottom <= 72;
+  };
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -873,8 +914,57 @@ export function ChatRoomView({
   };
 
   useEffect(() => {
+    if (!shouldAutoScrollRef.current) {
+      return;
+    }
+
     messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    setShowScrollToLatestBubble(false);
+    setUnreadReceivedCount(0);
   }, [messages, strangerProfile]);
+
+  useEffect(() => {
+    const previousKnownIds = knownMessageIdsRef.current;
+    const nextKnownIds = new Set(messages.map((message) => message.id));
+    knownMessageIdsRef.current = nextKnownIds;
+
+    if (previousKnownIds.size === 0) {
+      return;
+    }
+
+    const newlyReceivedCount = messages.reduce((count, message) => {
+      if (previousKnownIds.has(message.id)) {
+        return count;
+      }
+
+      return message.author === "stranger" ? count + 1 : count;
+    }, 0);
+
+    if (newlyReceivedCount > 0 && !shouldAutoScrollRef.current) {
+      setUnreadReceivedCount((current) => current + newlyReceivedCount);
+    }
+  }, [messages]);
+
+  const handleMessagesScroll = () => {
+    const viewport = messagesViewportRef.current;
+    if (!viewport) {
+      return;
+    }
+
+    const nearBottom = isNearBottom(viewport);
+    shouldAutoScrollRef.current = nearBottom;
+    setShowScrollToLatestBubble(!nearBottom);
+    if (nearBottom) {
+      setUnreadReceivedCount(0);
+    }
+  };
+
+  const scrollToLatestMessage = () => {
+    shouldAutoScrollRef.current = true;
+    setShowScrollToLatestBubble(false);
+    setUnreadReceivedCount(0);
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  };
 
   useEffect(() => {
     const timerId = window.setInterval(() => {
@@ -1047,7 +1137,11 @@ export function ChatRoomView({
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_40%),linear-gradient(180deg,rgba(11,13,19,0.92),rgba(7,8,12,0.96))] px-2.5 py-3 md:px-4 md:py-4">
+      <div
+        ref={messagesViewportRef}
+        onScroll={handleMessagesScroll}
+        className="relative min-h-0 flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.04),transparent_40%),linear-gradient(180deg,rgba(11,13,19,0.92),rgba(7,8,12,0.96))] px-2.5 py-3 md:px-4 md:py-4"
+      >
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-3 md:gap-4">
           {chatMode === "video" && (
             <section className="rounded-2xl border border-white/10 bg-[#07080c] p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.45)] sm:p-2">
@@ -1195,7 +1289,7 @@ export function ChatRoomView({
             return (
             <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
               <div className={`flex max-w-[94%] flex-col gap-1 sm:max-w-[88%] ${msg.author === "you" ? "items-end" : "items-start"}`}>
-                <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm sm:px-4 sm:py-3 sm:text-[15px] ${
+                <div className={`rounded-2xl px-3.5 py-2.5 text-[14px] leading-relaxed shadow-sm break-words [overflow-wrap:anywhere] sm:px-4 sm:py-3 sm:text-[15px] ${
                   msg.author === "you"
                     ? "rounded-br-sm border border-white/10 bg-pink-950 text-white"
                     : "rounded-bl-sm border border-white/10 bg-white/[0.04] text-white/90"
@@ -1203,7 +1297,7 @@ export function ChatRoomView({
                   {msg.text}
                   {msg.image && msg.author === "you" && !msg.imageDeleted && !senderImageExpired && (
                     <div className="mt-2 space-y-1">
-                      <Image src={msg.image} alt="Sent" width={300} height={200} className="rounded-xl" unoptimized />
+                      <ChatMedia src={msg.image} alt="Sent" mimeType={msg.imageMimeType} className="rounded-xl" />
                       {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && (
                         <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/80">
                           {senderImageViewed
@@ -1213,6 +1307,11 @@ export function ChatRoomView({
                             : "Waiting for stranger to view"}
                         </p>
                       )}
+                    </div>
+                  )}
+                  {!msg.image && msg.linkImageUrl && !msg.imageDeleted && (
+                    <div className="mt-2 space-y-1">
+                      <ChatMedia src={msg.linkImageUrl} alt="Linked image" mimeType={msg.linkImageMimeType} className="rounded-xl" />
                     </div>
                   )}
                   {!msg.image && msg.imageUnavailable && (
@@ -1229,7 +1328,12 @@ export function ChatRoomView({
                   {msg.image && msg.author === "stranger" && !msg.imageDeleted && (
                     msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && !revealedTimedImageIds.has(msg.id) ? (
                       <div className="group relative mt-2 block w-full overflow-hidden rounded-xl">
-                        <Image src={msg.image} alt="Timed image" width={300} height={200} className="rounded-xl blur-md brightness-75 transition group-hover:scale-[1.01]" unoptimized />
+                        <ChatMedia
+                          src={msg.image}
+                          alt="Timed image"
+                          mimeType={msg.imageMimeType}
+                          className="rounded-xl blur-md brightness-75 transition group-hover:scale-[1.01]"
+                        />
                         <button
                           type="button"
                           onClick={() => {
@@ -1250,7 +1354,7 @@ export function ChatRoomView({
                       </div>
                     ) : (
                       <div className="mt-2 space-y-1">
-                        <Image src={msg.image} alt="Sent" width={300} height={200} className="rounded-xl" unoptimized />
+                        <ChatMedia src={msg.image} alt="Sent" mimeType={msg.imageMimeType} className="rounded-xl" />
                         {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && remainingSeconds !== null && (
                           <p className="text-[10px] font-semibold uppercase tracking-[0.06em] text-white/80">
                             {remainingSeconds}s left
@@ -1276,6 +1380,23 @@ export function ChatRoomView({
               </div>
             </div>
           )}
+
+          {showScrollToLatestBubble && (
+            <div className="pointer-events-none sticky bottom-3 z-10 flex justify-end pr-1">
+              <button
+                type="button"
+                onClick={scrollToLatestMessage}
+                className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full border border-cyan-300/45 bg-cyan-400/20 px-3 py-1.5 text-[11px] font-extrabold uppercase tracking-[0.08em] text-cyan-100 shadow-[0_8px_24px_rgba(34,211,238,0.25)] transition hover:bg-cyan-300/25"
+                aria-label="Scroll to latest message"
+              >
+                <span>{unreadReceivedCount > 0 ? `${unreadReceivedCount} New` : "No New"}</span>
+                <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            </div>
+          )}
+
           <div ref={messagesEndRef} />
         </div>
       </div>
@@ -1284,14 +1405,24 @@ export function ChatRoomView({
         <div className="mx-auto w-full max-w-3xl space-y-3">
           {chatMode !== "video" && imagePreview && (
             <div className="relative grid w-full grid-cols-[52px_1fr] gap-2 rounded-2xl border border-pink-300/35 bg-gradient-to-r from-pink-500/12 via-fuchsia-500/8 to-transparent p-2.5 shadow-[0_10px_26px_rgba(236,72,153,0.14)] sm:grid-cols-[56px_1fr_auto] sm:items-center sm:gap-3">
-              <Image
-                src={imagePreview}
-                alt="Attachment preview"
-                width={56}
-                height={56}
-                className="h-[52px] w-[52px] rounded-lg border border-white/10 object-cover sm:h-14 sm:w-14"
-                unoptimized
-              />
+              {isGifFilename(selectedFileName) ? (
+                <img
+                  src={imagePreview}
+                  alt="Attachment preview"
+                  className="h-[52px] w-[52px] rounded-lg border border-white/10 object-cover sm:h-14 sm:w-14"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <Image
+                  src={imagePreview}
+                  alt="Attachment preview"
+                  width={56}
+                  height={56}
+                  className="h-[52px] w-[52px] rounded-lg border border-white/10 object-cover sm:h-14 sm:w-14"
+                  unoptimized
+                />
+              )}
 
               <div className="min-w-0 space-y-1.5">
                 <p className="truncate text-xs font-semibold text-pink-100 sm:text-sm" title={selectedFileName ?? "Selected image"}>

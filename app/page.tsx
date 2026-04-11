@@ -79,6 +79,48 @@ type WaitingUser = {
   };
 };
 
+const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === "object" && value !== null;
+};
+
+const isValidWaitingUser = (value: unknown): value is WaitingUser => {
+  if (!isObjectRecord(value)) {
+    return false;
+  }
+
+  const status = value.status;
+  const mode = value.mode;
+  const profile = value.profile;
+  const filters = value.filters;
+
+  if (
+    typeof value.uid !== "string" ||
+    (status !== "searching" && status !== "matched") ||
+    (mode !== "text" && mode !== "video" && mode !== "group")
+  ) {
+    return false;
+  }
+
+  if (!isObjectRecord(profile) || !isObjectRecord(filters)) {
+    return false;
+  }
+
+  if (
+    (profile.gender !== "Male" && profile.gender !== "Female" && profile.gender !== "Other") ||
+    typeof profile.age !== "number" ||
+    (typeof profile.countryCode !== "undefined" && typeof profile.countryCode !== "string")
+  ) {
+    return false;
+  }
+
+  return (
+    (filters.gender === "Any" || filters.gender === "Male" || filters.gender === "Female" || filters.gender === "Other") &&
+    (filters.ageGroup === "Any age" || filters.ageGroup === "Under 18" || filters.ageGroup === "18-25" || filters.ageGroup === "25+") &&
+    (filters.style === "Any style" || filters.style === "Casual" || filters.style === "Intimate") &&
+    (typeof filters.country === "string")
+  );
+};
+
 const ageGroupMatches = (ageGroup: ChatFilters["ageGroup"], age: number): boolean => {
   if (ageGroup === "Any age") {
     return true;
@@ -126,6 +168,59 @@ const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
 const ROOM_PRESENCE_TIMEOUT_MS = 45000;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+const inferImageMimeTypeFromName = (fileName: string): string | null => {
+  const lowerName = fileName.trim().toLowerCase();
+  if (lowerName.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (lowerName.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lowerName.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+
+  return null;
+};
+
+const findEmbeddableImageUrlInText = (value?: string): { url: string; mimeType: string; matchedText: string } | null => {
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/https?:\/\/\S+/i);
+  if (!match) {
+    return null;
+  }
+
+  const rawUrl = match[0].replace(/[),.;!?]+$/, "");
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+
+  if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+    return null;
+  }
+
+  const inferredMimeType = inferImageMimeTypeFromName(parsedUrl.pathname);
+  if (!inferredMimeType) {
+    return null;
+  }
+
+  return {
+    url: parsedUrl.toString(),
+    mimeType: inferredMimeType,
+    matchedText: match[0],
+  };
+};
 
 type PersistedChatSession = {
   roomId: string;
@@ -256,6 +351,10 @@ export default function Home() {
   const processedFallbackCandidateSignaturesRef = useRef<Set<string>>(new Set());
   const decryptedTextCacheRef = useRef<Map<string, { ciphertext: string; iv: string; text: string }>>(new Map());
   const decryptedImageUrlCacheRef = useRef<Map<string, { sourceUrl: string; objectUrl: string }>>(new Map());
+
+  const hasSecureCryptoContext = (): boolean => {
+    return typeof window !== "undefined" && window.isSecureContext && Boolean(window.crypto?.subtle);
+  };
 
   const clearE2EECaches = () => {
     decryptedTextCacheRef.current.clear();
@@ -529,6 +628,10 @@ export default function Home() {
   };
 
   const getOrCreateRoomKeyPair = async (roomId: string, uid: string): Promise<RoomE2EEKeys> => {
+    if (!hasSecureCryptoContext()) {
+      throw new Error("Secure context unavailable. Use HTTPS (or localhost) to enable encrypted chat.");
+    }
+
     const storageKey = getRoomE2EEKeyStorageKey(roomId, uid);
     const existingRaw = window.sessionStorage.getItem(storageKey);
 
@@ -1688,10 +1791,21 @@ export default function Home() {
                 imageDecrypting = true;
               }
 
+              const linkedImage = !displayImageUrl
+                ? findEmbeddableImageUrlInText(typeof decryptedText === "string" ? decryptedText : undefined)
+                : null;
+
+              const cleanedText =
+                typeof decryptedText === "string" && linkedImage
+                  ? decryptedText.replace(linkedImage.matchedText, "").replace(/\s{2,}/g, " ").trim()
+                  : typeof decryptedText === "string"
+                    ? decryptedText
+                    : undefined;
+
               const fallbackText =
-                typeof decryptedText === "string" && decryptedText.trim().length > 0
-                  ? decryptedText
-                  : !displayImageUrl && !imageUnavailable && !imageDecrypting
+                typeof cleanedText === "string" && cleanedText.length > 0
+                  ? cleanedText
+                  : !displayImageUrl && !linkedImage && !imageUnavailable && !imageDecrypting
                     ? "Message unavailable"
                     : undefined;
 
@@ -1701,6 +1815,12 @@ export default function Home() {
                 clientMessageId: data.clientMessageId,
                 text: fallbackText,
                 image: displayImageUrl,
+                imageMimeType:
+                  typeof data.imageMimeType === "string" && data.imageMimeType.startsWith("image/")
+                    ? data.imageMimeType
+                    : undefined,
+                linkImageUrl: linkedImage?.url,
+                linkImageMimeType: linkedImage?.mimeType,
                 imageUnavailable,
                 imageDecrypting,
                 imageViewTimerSeconds:
@@ -1936,124 +2056,133 @@ export default function Home() {
     currentUser: User,
     currentProfile: UserProfile,
   ) => {
-    setConnectingStatus("Checking availability...");
-
-    const waitingUsersRef = collection(db, "waitingUsers");
-    const searchingQuery = query(
-      waitingUsersRef,
-      where("status", "==", "searching"),
-      where("mode", "==", mode),
-      limit(100),
-    );
-    const searchSnapshot = await getDocs(searchingQuery);
-
-    const me: WaitingUser = {
-      uid: currentUser.uid,
-      status: "searching",
-      mode,
-      filters,
-      profile: {
-        gender: currentProfile.gender,
-        age: currentProfile.age,
-        countryCode: currentProfile.countryCode,
-      },
-    };
-
-    const staleThresholdMs = Date.now() - 2 * 60 * 1000;
-    const compatibleCandidates = searchSnapshot.docs
-      .filter((candidateDoc) => candidateDoc.id !== currentUser.uid)
-      .map((candidateDoc) => candidateDoc.data() as WaitingUser)
-      .filter((candidate) => areUsersCompatible(me, candidate));
-
-    const activeCompatibleCandidates = compatibleCandidates
-      .filter((candidate) => {
-        const lastSeenMs =
-          typeof candidate.lastSeenAt === "number"
-            ? candidate.lastSeenAt
-            : candidate.lastSeenAt?.toMillis?.() ?? 0;
-        return lastSeenMs >= staleThresholdMs;
-      });
-
-    // Fall back to compatible candidates when heartbeat metadata is missing.
-    const candidates =
-      activeCompatibleCandidates.length > 0 ? activeCompatibleCandidates : compatibleCandidates;
-
-    if (candidates.length === 0) {
-      setConnectingStatus("Waiting for a compatible stranger...");
-      return;
-    }
-
-    const candidate = candidates[Math.floor(Math.random() * candidates.length)];
-
     try {
-      const matchedRoomId = await runTransaction(db, async (transaction) => {
-        const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
-        const candidateWaitingRef = doc(db, "waitingUsers", candidate.uid);
+      setConnectingStatus("Checking availability...");
 
-        const [mySnapshot, candidateSnapshot] = await Promise.all([
-          transaction.get(myWaitingRef),
-          transaction.get(candidateWaitingRef),
-        ]);
+      const waitingUsersRef = collection(db, "waitingUsers");
+      const searchingQuery = query(
+        waitingUsersRef,
+        where("status", "==", "searching"),
+        where("mode", "==", mode),
+        limit(100),
+      );
+      const searchSnapshot = await getDocs(searchingQuery);
 
-        if (!mySnapshot.exists() || !candidateSnapshot.exists()) {
-          throw new Error("Queue entry expired");
-        }
+      const me: WaitingUser = {
+        uid: currentUser.uid,
+        status: "searching",
+        mode,
+        filters,
+        profile: {
+          gender: currentProfile.gender,
+          age: currentProfile.age,
+          countryCode: currentProfile.countryCode,
+        },
+      };
 
-        const myData = mySnapshot.data() as WaitingUser;
-        const candidateData = candidateSnapshot.data() as WaitingUser;
+      const staleThresholdMs = Date.now() - 2 * 60 * 1000;
+      const compatibleCandidates = searchSnapshot.docs
+        .filter((candidateDoc) => candidateDoc.id !== currentUser.uid)
+        .map((candidateDoc) => candidateDoc.data())
+        .filter((candidateData): candidateData is WaitingUser => isValidWaitingUser(candidateData))
+        .filter((candidate) => areUsersCompatible(me, candidate));
 
-        if (
-          myData.status !== "searching" ||
-          candidateData.status !== "searching" ||
-          myData.mode !== mode ||
-          candidateData.mode !== mode ||
-          !areUsersCompatible(myData, candidateData)
-        ) {
-          throw new Error("Candidate no longer available");
-        }
-
-        const roomRef = doc(collection(db, "rooms"));
-
-        transaction.set(roomRef, {
-          status: "active",
-          mode,
-          participants: [currentUser.uid, candidate.uid],
-          participantProfiles: [
-            {
-              uid: currentUser.uid,
-              gender: myData.profile.gender,
-              age: myData.profile.age,
-              countryCode: myData.profile.countryCode ?? null,
-            },
-            {
-              uid: candidate.uid,
-              gender: candidateData.profile.gender,
-              age: candidateData.profile.age,
-              countryCode: candidateData.profile.countryCode ?? null,
-            },
-          ],
-          createdAt: serverTimestamp(),
+      const activeCompatibleCandidates = compatibleCandidates
+        .filter((candidate) => {
+          const lastSeenMs =
+            typeof candidate.lastSeenAt === "number"
+              ? candidate.lastSeenAt
+              : candidate.lastSeenAt?.toMillis?.() ?? 0;
+          return lastSeenMs >= staleThresholdMs;
         });
 
-        transaction.update(myWaitingRef, {
-          status: "matched",
-          roomId: roomRef.id,
-          matchedAt: serverTimestamp(),
+      // Fall back to compatible candidates when heartbeat metadata is missing.
+      const candidates =
+        activeCompatibleCandidates.length > 0 ? activeCompatibleCandidates : compatibleCandidates;
+
+      if (candidates.length === 0) {
+        setConnectingStatus("Waiting for a compatible stranger...");
+        return;
+      }
+
+      const candidate = candidates[Math.floor(Math.random() * candidates.length)];
+
+      try {
+        const matchedRoomId = await runTransaction(db, async (transaction) => {
+          const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
+          const candidateWaitingRef = doc(db, "waitingUsers", candidate.uid);
+
+          const [mySnapshot, candidateSnapshot] = await Promise.all([
+            transaction.get(myWaitingRef),
+            transaction.get(candidateWaitingRef),
+          ]);
+
+          if (!mySnapshot.exists() || !candidateSnapshot.exists()) {
+            throw new Error("Queue entry expired");
+          }
+
+          const myData = mySnapshot.data() as WaitingUser;
+          const candidateData = candidateSnapshot.data() as WaitingUser;
+
+          if (
+            myData.status !== "searching" ||
+            candidateData.status !== "searching" ||
+            myData.mode !== mode ||
+            candidateData.mode !== mode ||
+            !areUsersCompatible(myData, candidateData)
+          ) {
+            throw new Error("Candidate no longer available");
+          }
+
+          const roomRef = doc(collection(db, "rooms"));
+
+          transaction.set(roomRef, {
+            status: "active",
+            mode,
+            participants: [currentUser.uid, candidate.uid],
+            participantProfiles: [
+              {
+                uid: currentUser.uid,
+                gender: myData.profile.gender,
+                age: myData.profile.age,
+                countryCode: myData.profile.countryCode ?? null,
+              },
+              {
+                uid: candidate.uid,
+                gender: candidateData.profile.gender,
+                age: candidateData.profile.age,
+                countryCode: candidateData.profile.countryCode ?? null,
+              },
+            ],
+            createdAt: serverTimestamp(),
+          });
+
+          transaction.update(myWaitingRef, {
+            status: "matched",
+            roomId: roomRef.id,
+            matchedAt: serverTimestamp(),
+          });
+
+          transaction.update(candidateWaitingRef, {
+            status: "matched",
+            roomId: roomRef.id,
+            matchedAt: serverTimestamp(),
+          });
+
+          return roomRef.id;
         });
 
-        transaction.update(candidateWaitingRef, {
-          status: "matched",
-          roomId: roomRef.id,
-          matchedAt: serverTimestamp(),
-        });
-
-        return roomRef.id;
+        setConnectingStatus("Stranger found. Connecting...");
+        setActiveRoomId(matchedRoomId);
+      } catch {
+        setConnectingStatus("Retrying match...");
+      }
+    } catch (error) {
+      console.error("Match lookup failed", {
+        uid: currentUser.uid,
+        error: formatFirebaseError(error),
       });
-
-      setConnectingStatus("Stranger found. Connecting...");
-      setActiveRoomId(matchedRoomId);
-    } catch {
-      setConnectingStatus("Retrying match...");
+      setConnectingStatus("Matching service is busy. Retrying...");
     }
   };
 
@@ -2072,25 +2201,33 @@ export default function Home() {
     setActiveRoomId(null);
 
     const waitingRef = doc(db, "waitingUsers", user.uid);
-    await setDoc(
-      waitingRef,
-      {
-        uid: user.uid,
-        status: "searching",
-        mode: chatMode,
-        filters,
-        profile: {
-          gender: profile.gender,
-          age: profile.age,
-          countryCode: profile.countryCode ?? null,
+    try {
+      await setDoc(
+        waitingRef,
+        {
+          uid: user.uid,
+          status: "searching",
+          mode: chatMode,
+          filters,
+          profile: {
+            gender: profile.gender,
+            age: profile.age,
+            countryCode: profile.countryCode ?? null,
+          },
+          createdAt: serverTimestamp(),
+          lastSeenAt: serverTimestamp(),
         },
-        createdAt: serverTimestamp(),
-        lastSeenAt: serverTimestamp(),
-      },
-      { merge: true },
-    );
+        { merge: true },
+      );
 
-    await tryMatchWithAvailableUser(filters, chatMode, user, profile);
+      await tryMatchWithAvailableUser(filters, chatMode, user, profile);
+    } catch (error) {
+      console.error("Failed to enter matchmaking queue", {
+        uid: user.uid,
+        error: formatFirebaseError(error),
+      });
+      setConnectingStatus("Could not reach matchmaking right now. Retrying...");
+    }
 
     retryMatchIntervalRef.current = window.setInterval(() => {
       void tryMatchWithAvailableUser(filters, chatMode, user, profile);
@@ -2143,7 +2280,10 @@ export default function Home() {
       return;
     }
 
-    if (!file.type.startsWith("image/")) {
+    const inferredMimeType = inferImageMimeTypeFromName(file.name);
+    const resolvedImageMimeType = file.type.startsWith("image/") ? file.type : inferredMimeType;
+
+    if (!resolvedImageMimeType) {
       setSendError("Only image files are supported.");
       event.target.value = "";
       return;
@@ -2182,6 +2322,11 @@ export default function Home() {
   };
 
   const sendMessage = async () => {
+    if (!hasSecureCryptoContext()) {
+      setSendError("Secure chat needs HTTPS (or localhost). Open this site securely and try again.");
+      return;
+    }
+
     if (!user || !activeRoomId || isSendingMessage || (!text.trim() && !selectedImageFile)) {
       return;
     }
@@ -2212,7 +2357,7 @@ export default function Home() {
     }
 
     if (!roomKey) {
-      roomKey = await waitForRoomCipherKey(2500);
+      roomKey = await waitForRoomCipherKey(12000);
     }
 
     if (!roomKey) {
@@ -2257,11 +2402,15 @@ export default function Home() {
           type: "application/octet-stream",
         });
 
+        const resolvedImageMimeType = selectedImageFile.type.startsWith("image/")
+          ? selectedImageFile.type
+          : inferImageMimeTypeFromName(selectedImageFile.name) ?? "image/jpeg";
+
         const uploadTask = uploadBytesResumable(uploadRef, encryptedBlob, {
           contentType: "application/octet-stream",
           customMetadata: {
             encrypted: "true",
-            originalMimeType: selectedImageFile.type || "image/jpeg",
+            originalMimeType: resolvedImageMimeType,
           },
         });
 
@@ -2283,7 +2432,7 @@ export default function Home() {
 
         imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
         imageIv = encryptedImage.iv;
-        imageMimeType = selectedImageFile.type || "image/jpeg";
+        imageMimeType = resolvedImageMimeType;
         imageEncrypted = true;
         imageViewTimer = imageTimerSeconds > 0 ? imageTimerSeconds : null;
       }
