@@ -184,6 +184,8 @@ const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
 const ROOM_PRESENCE_TIMEOUT_MS = 45000;
+const WAITING_STALE_THRESHOLD_MS = 30_000;
+const NO_SHOW_TIMEOUT_MS = 15_000;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const PENDING_STRANGER_PROFILE: UserProfile = {
   gender: "Other",
@@ -368,6 +370,7 @@ export default function Home() {
   const videoOfferSentRef = useRef(false);
   const videoAnswerSentRef = useRef(false);
   const processedCandidateIdsRef = useRef<Set<string>>(new Set());
+  const noShowTimeoutRef = useRef<number | null>(null);
   const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const processedFallbackCandidateSignaturesRef = useRef<Set<string>>(new Set());
   const decryptedTextCacheRef = useRef<Map<string, { ciphertext: string; iv: string; text: string }>>(new Map());
@@ -1418,6 +1421,75 @@ export default function Home() {
   }, [activeRoomId, e2eeReadyVersion, user]);
 
   useEffect(() => {
+    if (!activeRoomId || !user || !chatFilters) {
+      if (noShowTimeoutRef.current) {
+        window.clearTimeout(noShowTimeoutRef.current);
+        noShowTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const roomId = activeRoomId;
+
+    noShowTimeoutRef.current = window.setTimeout(async () => {
+      noShowTimeoutRef.current = null;
+      try {
+        const roomSnapshot = await getDoc(doc(db, "rooms", roomId));
+        if (!roomSnapshot.exists()) {
+          return;
+        }
+
+        const roomData = roomSnapshot.data() as {
+          participants?: string[];
+          presenceBy?: Record<string, number>;
+          status?: string;
+        };
+
+        if (roomData.status === "ended") {
+          return;
+        }
+
+        const otherUid = roomData.participants?.find((uid) => uid !== user.uid);
+        const otherPresence = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
+
+        if (typeof otherPresence === "number") {
+          return;
+        }
+
+        console.warn("No-show: stranger never joined room", { roomId, otherUid });
+
+        try {
+          await updateDoc(doc(db, "rooms", roomId), {
+            status: "ended",
+            endedBy: user.uid,
+            endedAt: serverTimestamp(),
+            endedReason: "no-show",
+          });
+        } catch {
+          // Ignore if already ended.
+        }
+
+        await deleteAllRoomData(roomId, roomData.participants ?? [user.uid]);
+
+        setActiveRoomId(null);
+        setMessages([]);
+        setShowNextStrangerPrompt(false);
+
+        void startSearching(chatFilters);
+      } catch (error) {
+        console.error("No-show check failed", error);
+      }
+    }, NO_SHOW_TIMEOUT_MS);
+
+    return () => {
+      if (noShowTimeoutRef.current) {
+        window.clearTimeout(noShowTimeoutRef.current);
+        noShowTimeoutRef.current = null;
+      }
+    };
+  }, [activeRoomId, user, chatFilters]);
+
+  useEffect(() => {
     if (!user) {
       hasAttemptedSessionRestoreRef.current = false;
       return;
@@ -1498,6 +1570,34 @@ export default function Home() {
 
     window.localStorage.removeItem(sessionKey);
   }, [activeRoomId, chatFilters, chatMode, user]);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    const handleBeforeUnload = () => {
+      try {
+        const payload = JSON.stringify({
+          uid: user.uid,
+        });
+        navigator.sendBeacon?.("/api/cleanup-waiting", payload);
+      } catch {
+        // Best-effort cleanup.
+      }
+
+      try {
+        void deleteDoc(doc(db, "waitingUsers", user.uid));
+      } catch {
+        // Best-effort cleanup.
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, [user]);
 
   useEffect(() => {
     if (!user) {
@@ -1984,6 +2084,11 @@ export default function Home() {
       window.clearInterval(heartbeatIntervalRef.current);
       heartbeatIntervalRef.current = null;
     }
+
+    if (noShowTimeoutRef.current) {
+      window.clearTimeout(noShowTimeoutRef.current);
+      noShowTimeoutRef.current = null;
+    }
   };
 
   const setTypingStatus = async (typing: boolean) => {
@@ -2102,7 +2207,7 @@ export default function Home() {
         },
       };
 
-      const staleThresholdMs = Date.now() - 2 * 60 * 1000;
+      const staleThresholdMs = Date.now() - WAITING_STALE_THRESHOLD_MS;
       const compatibleCandidates = searchSnapshot.docs
         .filter((candidateDoc) => candidateDoc.id !== currentUser.uid)
         .map((candidateDoc) => {
@@ -2126,20 +2231,12 @@ export default function Home() {
         return typeof activityMs === "number" && activityMs >= staleThresholdMs;
       });
 
-      // Candidates without timestamps can still be fresh due to local/server timestamp sync lag.
-      const unknownActivityCandidates = compatibleCandidates.filter(
-        (candidate) => candidate.lastSeenMs === null && candidate.createdAtMs === null,
-      );
-
-      const candidates =
-        activeCompatibleCandidates.length > 0 ? activeCompatibleCandidates : unknownActivityCandidates;
-
-      if (candidates.length === 0) {
+      if (activeCompatibleCandidates.length === 0) {
         setConnectingStatus("Waiting for a compatible stranger...");
         return;
       }
 
-      const shuffledCandidates = [...candidates].sort(() => Math.random() - 0.5);
+      const shuffledCandidates = [...activeCompatibleCandidates].sort(() => Math.random() - 0.5);
 
       for (const candidate of shuffledCandidates) {
         try {
@@ -2167,6 +2264,16 @@ export default function Home() {
               !areUsersCompatible(myData, candidateData)
             ) {
               throw new Error("Candidate no longer available");
+            }
+
+            const candidateActivityMs =
+              toTimestampMillis(candidateData.lastSeenAt) ??
+              toTimestampMillis((candidateSnapshot.data() as { createdAt?: unknown }).createdAt);
+            if (
+              typeof candidateActivityMs === "number" &&
+              candidateActivityMs < Date.now() - WAITING_STALE_THRESHOLD_MS
+            ) {
+              throw new Error("Candidate heartbeat stale");
             }
 
             const roomRef = doc(collection(db, "rooms"));
