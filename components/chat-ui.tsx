@@ -978,16 +978,16 @@ export function ChatRoomView({
         {!showBackConfirm ? (
           <button
             onClick={() => setShowBackConfirm(true)}
-            className="flex h-8 items-center gap-1 rounded-lg bg-white/[0.06] px-2.5 text-[11px] font-semibold text-white/50 transition hover:bg-white/[0.08] hover:text-white/70 active:scale-[0.97]"
+            className="flex h-8 items-center gap-1 rounded-lg bg-white/[0.06] px-2.5 text-[11px] font-semibold text-white/50 transition-all duration-150 hover:bg-white/[0.1] hover:text-white/70 active:scale-[0.95]"
           >
             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
             Back
           </button>
         ) : (
-          <div className="flex items-center gap-1.5 animate-fade-in">
+          <div className="flex items-center gap-1.5 animate-pop-in">
             <span className="text-[11px] font-semibold text-white/40">Sure?</span>
-            <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition hover:bg-pink-400 active:scale-[0.97]">Yes</button>
-            <button onClick={() => setShowBackConfirm(false)} className="h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition hover:bg-white/[0.12] active:scale-[0.97]">No</button>
+            <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-pink-400 active:scale-[0.95]">Yes</button>
+            <button onClick={() => setShowBackConfirm(false)} className="h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition-all duration-150 hover:bg-white/[0.14] active:scale-[0.95]">No</button>
           </div>
         )}
 
@@ -1013,28 +1013,31 @@ export function ChatRoomView({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {showNextStrangerPrompt && (
+          {showNextStrangerPrompt ? (
             <button
               onClick={onNextStranger}
-              className="flex h-8 items-center gap-1 rounded-lg bg-emerald-500/15 px-3 text-[11px] font-semibold text-emerald-400 transition hover:bg-emerald-500/25 active:scale-[0.97]"
+              className="animate-pop-in flex h-8 items-center gap-1 rounded-lg bg-emerald-500 px-4 text-[11px] font-bold text-white shadow-[0_0_12px_rgba(16,185,129,0.25)] transition-all duration-150 hover:bg-emerald-400 hover:shadow-[0_0_18px_rgba(16,185,129,0.35)] active:scale-[0.95]"
             >
               Next
               <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 6 6 6-6 6"/></svg>
             </button>
-          )}
-          {!showLeaveConfirm ? (
-            <button
-              onClick={() => setShowLeaveConfirm(true)}
-              className="flex h-8 items-center rounded-lg bg-rose-500 px-3 text-[11px] font-bold text-white transition hover:bg-rose-400 active:scale-[0.97]"
-            >
-              Leave
-            </button>
           ) : (
-            <div className="flex items-center gap-1.5 animate-fade-in">
-              <span className="text-[11px] font-semibold text-white/40">Sure?</span>
-              <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition hover:bg-pink-400 active:scale-[0.97]">Yes</button>
-              <button onClick={() => setShowLeaveConfirm(false)} className="h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition hover:bg-white/[0.12] active:scale-[0.97]">No</button>
-            </div>
+            <>
+              {!showLeaveConfirm ? (
+                <button
+                  onClick={() => setShowLeaveConfirm(true)}
+                  className="flex h-8 items-center rounded-lg bg-rose-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-rose-400 active:scale-[0.95]"
+                >
+                  Leave
+                </button>
+              ) : (
+                <div className="flex items-center gap-1.5 animate-pop-in">
+                  <span className="text-[11px] font-semibold text-white/40">Sure?</span>
+                  <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-pink-400 active:scale-[0.95]">Yes</button>
+                  <button onClick={() => setShowLeaveConfirm(false)} className="h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition-all duration-150 hover:bg-white/[0.14] active:scale-[0.95]">No</button>
+                </div>
+              )}
+            </>
           )}
           <button
             onClick={toggleFullscreen}

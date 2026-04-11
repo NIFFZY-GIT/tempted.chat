@@ -1,174 +1,116 @@
-import Link from "next/link";
 import {
   ShieldCheck,
   User,
   Zap,
   Timer,
+  Eye,
+  Globe,
 } from "lucide-react";
 
-type FeatureProps = {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  sub: string;
-};
-
-const ADVANTAGES = [
+const FEATURES = [
   {
-    title: "End-to-end encrypted chat",
-    description:
-      "Messages and media are encrypted on your device before sending, then decrypted only by the recipient.",
+    title: "End-to-end encrypted",
+    description: "Messages and media are encrypted on your device. Only the recipient can decrypt them.",
     icon: ShieldCheck,
+    color: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+    ring: "ring-emerald-500/20",
   },
   {
     title: "Anonymous by default",
-    description:
-      "Join quickly without public profiles. You control what you share and when.",
+    description: "No public profiles. You control what you share and when.",
     icon: User,
+    color: "text-cyan-400",
+    bg: "bg-cyan-500/10",
+    ring: "ring-cyan-500/20",
   },
   {
-    title: "Fast real-time matching",
-    description:
-      "Low-latency matching with smooth reconnects and instant transitions.",
+    title: "Instant matching",
+    description: "Low-latency real-time matching with smooth reconnects.",
     icon: Zap,
+    color: "text-amber-400",
+    bg: "bg-amber-500/10",
+    ring: "ring-amber-500/20",
   },
   {
-    title: "Timed encrypted media",
-    description:
-      "Send images with timers and automatic expiry for safer conversations.",
+    title: "Timed media",
+    description: "Send images with auto-expiring timers for safer sharing.",
     icon: Timer,
+    color: "text-pink-400",
+    bg: "bg-pink-500/10",
+    ring: "ring-pink-500/20",
+  },
+  {
+    title: "Disappearing content",
+    description: "Images are deleted from servers after the timer expires.",
+    icon: Eye,
+    color: "text-violet-400",
+    bg: "bg-violet-500/10",
+    ring: "ring-violet-500/20",
+  },
+  {
+    title: "Global reach",
+    description: "Filter by country, gender, and age to find the right conversation.",
+    icon: Globe,
+    color: "text-blue-400",
+    bg: "bg-blue-500/10",
+    ring: "ring-blue-500/20",
   },
 ];
 
 export function LandingPageSection() {
   return (
-    <section className="relative mx-auto w-full max-w-6xl px-4 py-12">
-      {/* Background glow */}
-      <div className="absolute -top-20 left-1/2 h-72 w-72 -translate-x-1/2 rounded-full bg-cyan-400/20 blur-3xl" />
-
-      <div className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-8 md:p-12 shadow-2xl">
-        
-        {/* TOP */}
-        <div className="grid gap-10 md:grid-cols-2 items-center">
-          
-          {/* LEFT */}
-          <div>
-            {/* <div className="flex gap-2 flex-wrap">
-              <span className="badge">Encrypted</span>
-              <span className="badge">Realtime</span>
-              <span className="badge">Anonymous</span>
-            </div> */}
-
-            <h1 className="mt-6 text-4xl md:text-6xl font-black text-white leading-tight">
-              Meet strangers.
-              <span className="block text-cyan-300">
-                Stay private.
-              </span>
-            </h1>
-
-            <p className="mt-4 text-white/70 max-w-md">
-              Tempted.Chat lets you connect instantly while keeping your identity protected with strong encryption and privacy-first design.
-            </p>
-
-            <div className="mt-8 flex gap-3 flex-wrap">
-              <Link
-                href="/"
-                className="btn-primary"
-              >
-                Start Chatting
-              </Link>
-              <Link
-                href="/"
-                className="btn-secondary"
-              >
-                Explore
-              </Link>
-            </div>
-          </div>
-
-          {/* RIGHT CARD */}
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-6 backdrop-blur-lg shadow-inner">
-            <p className="text-xs uppercase text-white/50 mb-4 tracking-wider">
-              Why choose us
-            </p>
-
-            <div className="space-y-4">
-              <Feature icon={ShieldCheck} label="E2EE" sub="Client-side encryption" />
-              <Feature icon={Zap} label="Realtime" sub="Instant matching" />
-              <Feature icon={Timer} label="Timed Media" sub="Auto-expiring images" />
-            </div>
-          </div>
+    <section className="mx-auto w-full max-w-5xl px-4 py-16 sm:py-20">
+      {/* Hero */}
+      <div className="mx-auto max-w-2xl text-center">
+        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-white/[0.06] bg-white/[0.03] px-4 py-1.5">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
+          </span>
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Live now</span>
         </div>
 
-        {/* FEATURES GRID */}
-        <div className="mt-12 grid gap-6 md:grid-cols-2">
-          {ADVANTAGES.map((item) => (
-            <div
-              key={item.title}
-              className="group rounded-2xl border border-white/10 bg-white/5 p-5 hover:bg-white/10 transition-all hover:-translate-y-1 hover:shadow-xl"
-            >
-              <item.icon className="h-6 w-6 text-cyan-300" />
+        <h2 className="text-3xl font-bold tracking-tight text-white sm:text-4xl md:text-5xl">
+          Meet strangers.{" "}
+          <span className="bg-gradient-to-r from-pink-400 to-violet-400 bg-clip-text text-transparent">
+            Stay private.
+          </span>
+        </h2>
 
-              <h3 className="mt-4 text-lg font-bold text-white">
-                {item.title}
-              </h3>
-
-              <p className="mt-2 text-sm text-white/70">
-                {item.description}
-              </p>
-            </div>
-          ))}
-        </div>
+        <p className="mx-auto mt-4 max-w-lg text-[15px] leading-relaxed text-white/40 sm:text-base">
+          Connect instantly with real people. End-to-end encrypted, anonymous by design, and built for privacy.
+        </p>
       </div>
 
-      {/* STYLES */}
-      <style jsx>{`
-        .badge {
-          padding: 4px 10px;
-          font-size: 10px;
-          border-radius: 999px;
-          border: 1px solid rgba(255,255,255,0.15);
-          color: rgba(255,255,255,0.7);
-        }
+      {/* Features grid */}
+      <div className="mt-14 grid gap-3 sm:mt-16 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+        {FEATURES.map((feature) => (
+          <div
+            key={feature.title}
+            className="group rounded-2xl border border-white/[0.04] bg-white/[0.02] p-5 transition-all duration-200 hover:border-white/[0.08] hover:bg-white/[0.04] sm:p-6"
+          >
+            <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${feature.bg} ring-1 ${feature.ring}`}>
+              <feature.icon className={`h-4 w-4 ${feature.color}`} />
+            </div>
 
-        .btn-primary {
-          background: linear-gradient(to right, #22d3ee, #34d399);
-          color: black;
-          font-weight: 700;
-          padding: 10px 18px;
-          border-radius: 12px;
-          transition: 0.2s;
-        }
+            <h3 className="mt-4 text-[15px] font-semibold text-white/90">
+              {feature.title}
+            </h3>
 
-        .btn-primary:hover {
-          filter: brightness(1.1);
-        }
+            <p className="mt-1.5 text-[13px] leading-relaxed text-white/35">
+              {feature.description}
+            </p>
+          </div>
+        ))}
+      </div>
 
-        .btn-secondary {
-          border: 1px solid rgba(255,255,255,0.2);
-          padding: 10px 18px;
-          border-radius: 12px;
-          color: white;
-        }
-
-        .btn-secondary:hover {
-          border-color: rgba(255,255,255,0.4);
-        }
-      `}</style>
+      {/* Bottom CTA */}
+      <div className="mt-14 text-center sm:mt-16">
+        <p className="text-[13px] text-white/25">
+          Sign in above to start chatting — it&apos;s free and takes seconds.
+        </p>
+      </div>
     </section>
-  );
-}
-
-/* SMALL FEATURE ROW */
-function Feature({ icon: Icon, label, sub }: FeatureProps) {
-  return (
-    <div className="flex items-center gap-3">
-      <div className="p-2 rounded-lg bg-cyan-400/10 border border-cyan-400/20">
-        <Icon className="h-4 w-4 text-cyan-300" />
-      </div>
-      <div>
-        <p className="text-white font-semibold text-sm">{label}</p>
-        <p className="text-white/50 text-xs">{sub}</p>
-      </div>
-    </div>
   );
 }

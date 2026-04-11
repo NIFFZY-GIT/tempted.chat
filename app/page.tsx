@@ -1,6 +1,6 @@
 "use client";
 
-import { auth, db, googleProvider, storage } from "@/lib/firebase";
+import { auth, db, firebaseApp, googleProvider, storage } from "@/lib/firebase";
 import {
   decryptBytes,
   decryptString,
@@ -50,6 +50,7 @@ import {
   where,
 } from "firebase/firestore";
 import { deleteObject, getDownloadURL, listAll, ref, uploadBytesResumable, type StorageReference } from "firebase/storage";
+import { getFunctions, httpsCallable } from "firebase/functions";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
@@ -63,6 +64,17 @@ import {
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { getUserRole } from "@/lib/admin";
+
+declare global {
+  interface Window {
+    grecaptcha: {
+      ready: (cb: () => void) => void;
+      execute: (siteKey: string, options: { action: string }) => Promise<string>;
+    };
+  }
+}
+
+const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!;
 
 type WaitingUser = {
   uid: string;
@@ -2789,6 +2801,30 @@ export default function Home() {
       setAuthBusy(true);
       setAuthError(null);
       setAuthNotice(null);
+
+      // reCAPTCHA v3 verification
+      const token = await new Promise<string>((resolve, reject) => {
+        const waitForRecaptcha = (attempts: number) => {
+          if (window.grecaptcha?.ready) {
+            window.grecaptcha.ready(() => {
+              window.grecaptcha
+                .execute(RECAPTCHA_SITE_KEY, { action: "guest_login" })
+                .then(resolve)
+                .catch(reject);
+            });
+          } else if (attempts > 0) {
+            setTimeout(() => waitForRecaptcha(attempts - 1), 500);
+          } else {
+            reject(new Error("reCAPTCHA failed to load. Please refresh the page."));
+          }
+        };
+        waitForRecaptcha(10);
+      });
+
+      const functions = getFunctions(firebaseApp, "us-central1");
+      const verifyRecaptcha = httpsCallable<{ token: string; action: string }, { success: boolean }>(functions, "verifyRecaptcha");
+      await verifyRecaptcha({ token, action: "guest_login" });
+
       await signInAnonymously(auth);
     } catch (error) {
       const message =

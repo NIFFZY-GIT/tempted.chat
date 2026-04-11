@@ -1,6 +1,10 @@
 const admin = require("firebase-admin");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { defineSecret } = require("firebase-functions/params");
 const { logger } = require("firebase-functions");
+
+const recaptchaSecret = defineSecret("RECAPTCHA_SECRET");
 
 admin.initializeApp();
 
@@ -155,5 +159,59 @@ exports.cleanupOrphanRooms = onSchedule(
       targeted: roomsToDelete.size,
       deleted: deletedCount,
     });
+  },
+);
+
+exports.verifyRecaptcha = onCall(
+  {
+    region: "us-central1",
+    secrets: [recaptchaSecret],
+    enforceAppCheck: false,
+  },
+  async (request) => {
+    const token = request.data?.token;
+    const expectedAction = request.data?.action;
+
+    if (!token || typeof token !== "string") {
+      throw new HttpsError("invalid-argument", "Missing reCAPTCHA token.");
+    }
+
+    if (!expectedAction || typeof expectedAction !== "string") {
+      throw new HttpsError("invalid-argument", "Missing reCAPTCHA action.");
+    }
+
+    const secret = recaptchaSecret.value();
+    const params = new URLSearchParams({ secret, response: token });
+
+    const res = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
+
+    const body = await res.json();
+
+    // Validate action matches to prevent cross-action token reuse
+    if (body.action && body.action !== expectedAction) {
+      logger.warn("reCAPTCHA action mismatch", {
+        expected: expectedAction,
+        actual: body.action,
+      });
+      throw new HttpsError("permission-denied", "reCAPTCHA verification failed.");
+    }
+
+    if (!body.success || (typeof body.score === "number" && body.score < 0.3)) {
+      logger.warn("reCAPTCHA verification failed", {
+        success: body.success,
+        score: body.score,
+        action: body.action,
+        errorCodes: body["error-codes"],
+      });
+      throw new HttpsError("permission-denied", "reCAPTCHA verification failed.");
+    }
+
+    logger.info("reCAPTCHA passed", { score: body.score, action: body.action });
+
+    return { success: true };
   },
 );
