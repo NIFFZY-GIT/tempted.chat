@@ -6,6 +6,9 @@ import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type Ref
 export type ChatMessage = {
   id: string;
   author: "you" | "stranger";
+  senderId?: string;
+  senderNickname?: string;
+  senderColor?: string;
   clientMessageId?: string;
   isPending?: boolean;
   text?: string;
@@ -574,10 +577,11 @@ export function ModeAndFiltersView({
   onStart,
   onBack,
 }: {
-  onStart: (mode: ChatMode, filters: ChatFilters) => void;
+  onStart: (mode: ChatMode, filters: ChatFilters, nickname?: string) => void;
   onBack: () => void;
 }) {
   const [selectedMode, setSelectedMode] = useState<ChatMode>("text");
+  const [nickname, setNickname] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [gender, setGender] = useState<GenderFilter>("Any");
   const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("Any age");
@@ -639,11 +643,13 @@ export function ModeAndFiltersView({
   ];
 
   const handleStart = () => {
-    onStart(selectedMode, { gender, ageGroup, style, country });
+    const trimmedNick = selectedMode === "group" ? nickname.trim() || undefined : undefined;
+    onStart(selectedMode, { gender, ageGroup, style, country }, trimmedNick);
   };
 
   const handleQuickStart = () => {
-    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any" });
+    const trimmedNick = selectedMode === "group" ? nickname.trim() || undefined : undefined;
+    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any" }, trimmedNick);
   };
 
   const pillClasses = (active: boolean) =>
@@ -682,6 +688,24 @@ export function ModeAndFiltersView({
           );
         })}
       </div>
+
+      {/* Nickname input for group mode */}
+      {selectedMode === "group" && (
+        <div className="mt-4 animate-fade-in">
+          <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-white/30">
+            Your Nickname
+          </label>
+          <input
+            type="text"
+            value={nickname}
+            onChange={(e) => setNickname(e.target.value.slice(0, 20))}
+            placeholder="Enter a nickname..."
+            maxLength={20}
+            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm font-medium text-white outline-none placeholder:text-white/25 transition focus:border-amber-500/40 focus:bg-white/[0.06]"
+          />
+          <p className="mt-1.5 text-[11px] text-white/25">{nickname.length}/20 — This is how others will see you</p>
+        </div>
+      )}
 
       {/* Quick Start */}
       <button
@@ -827,6 +851,7 @@ export function ChatRoomView({
   onLeaveChat,
   onChangeMode,
   onNextStranger,
+  groupParticipants,
   imagePreview,
   selectedFileName,
   imageTimerSeconds,
@@ -868,6 +893,7 @@ export function ChatRoomView({
   onLeaveChat: (filters: ChatFilters) => void;
   onChangeMode: () => void;
   onNextStranger: () => void;
+  groupParticipants?: Array<{ uid: string; nickname: string; color: string }>;
   imagePreview: string | null;
   selectedFileName: string | null;
   imageTimerSeconds: number;
@@ -1309,22 +1335,41 @@ export function ChatRoomView({
 
         <div className="relative flex-shrink-0">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/60 ring-1 ring-white/[0.08]">
-            <GenderIcon gender={strangerProfile.gender} />
+            {chatMode === "group" ? (
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            ) : (
+              <GenderIcon gender={strangerProfile.gender} />
+            )}
           </div>
           <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0d0d14] ${isConnecting ? "bg-amber-400" : "bg-emerald-400"}`} style={isConnecting ? { animation: "ripple 1.5s ease-out infinite" } : {}} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-white/90">Stranger</span>
-            {hasResolvedStrangerProfile && (
-              <span className="flex items-center gap-1 text-[11px] text-white/40">
-                <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-[1px] object-cover" />
-                {strangerProfile.gender}, {strangerProfile.age}
-              </span>
+            {chatMode === "group" ? (
+              <>
+                <span className="text-sm font-semibold text-white/90">Group Chat</span>
+                {groupParticipants && groupParticipants.length > 0 && (
+                  <span className="text-[11px] text-white/40">{groupParticipants.length} members</span>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="text-sm font-semibold text-white/90">Stranger</span>
+                {hasResolvedStrangerProfile && (
+                  <span className="flex items-center gap-1 text-[11px] text-white/40">
+                    <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-[1px] object-cover" />
+                    {strangerProfile.gender}, {strangerProfile.age}
+                  </span>
+                )}
+              </>
             )}
           </div>
           <p className="truncate text-[11px] text-white/30">
-            {isConnecting ? connectingStatus : `${modeLabel} · ${genderLabel} · ${ageLabel}`}
+            {isConnecting
+              ? connectingStatus
+              : chatMode === "group" && groupParticipants && groupParticipants.length > 0
+                ? groupParticipants.map((p) => p.nickname).join(", ")
+                : `${modeLabel} · ${genderLabel} · ${ageLabel}`}
           </p>
         </div>
 
@@ -1436,11 +1481,24 @@ export function ChatRoomView({
               (typeof msg.imageExpiresAtMs === "number" || typeof msg.imageRevealAtMs === "number");
 
             const isYou = msg.author === "you";
+            const isGroup = chatMode === "group";
             const hasReactions = msg.reactions && Object.keys(msg.reactions).length > 0;
+            const bubbleBg = isGroup && !isYou && msg.senderColor
+              ? undefined
+              : isYou ? "bg-pink-950" : "bg-blue-950";
+            const bubbleStyle = isGroup && !isYou && msg.senderColor
+              ? { backgroundColor: `${msg.senderColor}22` }
+              : undefined;
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
                 <div className={`group/msg relative flex max-w-[82%] flex-col gap-1 sm:max-w-[70%] ${isYou ? "items-end" : "items-start"}`}>
+                  {/* Sender nickname for group mode */}
+                  {isGroup && !isYou && msg.senderNickname && (
+                    <span className="ml-1 text-[11px] font-semibold" style={{ color: msg.senderColor ?? "#60a5fa" }}>
+                      {msg.senderNickname}
+                    </span>
+                  )}
                   {/* Reply quote */}
                   {msg.replyToId && msg.replyToText && (
                     <button
@@ -1459,7 +1517,7 @@ export function ChatRoomView({
                           : "bg-blue-400/20 text-white/70 text-left"
                       }`}
                     >
-                      <span className={`block text-[10px] font-semibold ${isYou ? "text-pink-300/80" : "text-blue-300/80"}`}>{msg.replyToAuthor === "you" ? "You" : "Stranger"}</span>
+                      <span className={`block text-[10px] font-semibold ${isYou ? "text-pink-300/80" : "text-blue-300/80"}`}>{msg.replyToAuthor === "you" ? "You" : (isGroup && msg.senderNickname ? msg.senderNickname : "Stranger")}</span>
                       <span className="block truncate">{msg.replyToText}</span>
                     </button>
                   )}
@@ -1468,10 +1526,11 @@ export function ChatRoomView({
                   <div
                     id={`msg-${msg.id}`}
                     onDoubleClick={() => setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id)}
+                    style={bubbleStyle}
                     className={`relative rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed break-words transition-all [overflow-wrap:anywhere] sm:text-[15px] ${
                     isYou
                       ? "rounded-br-sm bg-pink-950 text-white"
-                      : "rounded-bl-sm bg-blue-950 text-white"
+                      : `rounded-bl-sm ${bubbleBg ?? ""} text-white`
                   } ${msg.isPending ? "opacity-50" : ""}`}>
                     {msg.text}
                     {msg.image && isYou && !msg.imageDeleted && !senderImageExpired && (

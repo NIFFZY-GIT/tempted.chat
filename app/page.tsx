@@ -133,6 +133,9 @@ const isValidWaitingUser = (value: unknown): value is WaitingUser => {
   );
 };
 
+const GROUP_COLORS = ["#f472b6", "#60a5fa", "#34d399", "#fbbf24", "#a78bfa"];
+const MAX_GROUP_SIZE = 5;
+
 const toTimestampMillis = (value: unknown): number | null => {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -348,6 +351,8 @@ export default function Home() {
   const [roomParticipants, setRoomParticipants] = useState<string[]>([]);
   const [strangerIsTyping, setStrangerIsTyping] = useState(false);
   const [showNextStrangerPrompt, setShowNextStrangerPrompt] = useState(false);
+  const [myNickname, setMyNickname] = useState<string | null>(null);
+  const [groupParticipants, setGroupParticipants] = useState<Array<{ uid: string; nickname: string; color: string }>>([]);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
@@ -1778,22 +1783,37 @@ export default function Home() {
 
         const roomData = snapshot.data() as {
           participants?: string[];
-          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string }>;
+          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string }>;
           typingBy?: Record<string, boolean>;
           presenceBy?: Record<string, number>;
           e2eePublicKeys?: Record<string, JsonWebKey>;
           status?: string;
           endedBy?: string;
+          mode?: string;
         };
 
-        void ensureRoomE2EEKey(activeRoomId, user.uid, {
-          participants: roomData.participants,
-          e2eePublicKeys: roomData.e2eePublicKeys,
-        }).catch(() => {
-          // Ignore key negotiation races.
-        });
+        // Skip E2EE for group mode (ECDH is 2-party only)
+        if (roomData.mode !== "group") {
+          void ensureRoomE2EEKey(activeRoomId, user.uid, {
+            participants: roomData.participants,
+            e2eePublicKeys: roomData.e2eePublicKeys,
+          }).catch(() => {
+            // Ignore key negotiation races.
+          });
+        }
 
         updateRoomParticipants(Array.isArray(roomData.participants) ? roomData.participants : []);
+
+        // Populate group participants with nicknames and colors
+        if (roomData.mode === "group" && roomData.participantProfiles) {
+          setGroupParticipants(
+            roomData.participantProfiles.map((p, i) => ({
+              uid: p.uid,
+              nickname: p.nickname || `User${p.uid.slice(0, 4)}`,
+              color: GROUP_COLORS[i % GROUP_COLORS.length],
+            })),
+          );
+        }
 
         const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
         if (stranger) {
@@ -1910,6 +1930,7 @@ export default function Home() {
             snapshot.docs.map(async (messageDoc) => {
               const data = messageDoc.data() as {
                 senderId?: string;
+                senderNickname?: string;
                 clientMessageId?: string;
                 text?: string;
                 textCiphertext?: string;
@@ -2023,9 +2044,16 @@ export default function Home() {
                     ? "Message unavailable"
                     : undefined;
 
+              const senderParticipant = chatMode === "group" && data.senderId
+                ? groupParticipants.find((p) => p.uid === data.senderId)
+                : undefined;
+
               return {
                 id: messageDoc.id,
-                author: data.senderId === user.uid ? "you" : "stranger",
+                author: data.senderId === user.uid ? "you" as const : "stranger" as const,
+                senderId: data.senderId,
+                senderNickname: senderParticipant?.nickname ?? data.senderNickname,
+                senderColor: senderParticipant?.color,
                 clientMessageId: data.clientMessageId,
                 text: fallbackText,
                 image: displayImageUrl,
@@ -2292,6 +2320,195 @@ export default function Home() {
     setMessages([]);
   };
 
+  const tryMatchGroup = async (
+    filters: ChatFilters,
+    currentUser: User,
+    currentProfile: UserProfile,
+  ) => {
+    if (activeRoomIdRef.current) {
+      return;
+    }
+
+    try {
+      setConnectingStatus("Looking for group members...");
+
+      const waitingUsersRef = collection(db, "waitingUsers");
+      const searchingQuery = query(
+        waitingUsersRef,
+        where("status", "==", "searching"),
+        where("mode", "==", "group"),
+        limit(100),
+      );
+      const searchSnapshot = await getDocsFromServer(searchingQuery);
+
+      if (activeRoomIdRef.current) {
+        return;
+      }
+
+      const me: WaitingUser = {
+        uid: currentUser.uid,
+        status: "searching",
+        mode: "group",
+        filters,
+        profile: {
+          gender: currentProfile.gender,
+          age: currentProfile.age,
+          countryCode: currentProfile.countryCode,
+        },
+      };
+
+      const now = Date.now();
+      const staleThresholdMs = now - WAITING_STALE_THRESHOLD_MS;
+      const allOtherDocs = searchSnapshot.docs.filter((d) => d.id !== currentUser.uid);
+
+      const activeCandidates = allOtherDocs
+        .map((candidateDoc) => {
+          const candidateData = candidateDoc.data();
+          if (!isValidWaitingUser(candidateData)) {
+            return null;
+          }
+          const raw = candidateData as WaitingUser & { nickname?: string };
+          return {
+            uid: candidateDoc.id,
+            data: raw,
+            nickname: typeof raw.nickname === "string" ? raw.nickname : undefined,
+            lastSeenMs: toTimestampMillis(candidateData.lastSeenAt),
+            createdAtMs: toTimestampMillis((candidateData as { createdAt?: unknown }).createdAt),
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => Boolean(c))
+        .filter((c) => areUsersCompatible(me, c.data))
+        .filter((c) => {
+          const activityMs = c.lastSeenMs ?? c.createdAtMs;
+          return typeof activityMs === "number" && activityMs >= staleThresholdMs;
+        });
+
+      console.log("[group-match] active compatible candidates:", activeCandidates.length);
+
+      if (activeCandidates.length === 0) {
+        setConnectingStatus("Waiting for group members...");
+        return;
+      }
+
+      const groupMembers = activeCandidates
+        .sort(() => Math.random() - 0.5)
+        .slice(0, MAX_GROUP_SIZE - 1);
+
+      try {
+        const matchedRoomId = await runTransaction(db, async (transaction) => {
+          const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
+          const mySnapshot = await transaction.get(myWaitingRef);
+
+          if (!mySnapshot.exists()) {
+            throw new Error("Own queue entry expired");
+          }
+
+          const myData = mySnapshot.data() as WaitingUser & { nickname?: string };
+          if (myData.status !== "searching" || myData.mode !== "group") {
+            throw new Error("No longer searching for group");
+          }
+
+          const verifiedMembers: Array<{
+            uid: string;
+            nickname: string;
+            gender: ProfileGender;
+            age: number;
+            countryCode?: string;
+          }> = [];
+
+          for (const member of groupMembers) {
+            const memberRef = doc(db, "waitingUsers", member.uid);
+            const memberSnapshot = await transaction.get(memberRef);
+
+            if (!memberSnapshot.exists()) continue;
+            const memberData = memberSnapshot.data() as WaitingUser & { nickname?: string };
+
+            if (memberData.status !== "searching" || memberData.mode !== "group") continue;
+            if (!areUsersCompatible(myData, memberData)) continue;
+
+            const memberActivityMs =
+              toTimestampMillis(memberData.lastSeenAt) ??
+              toTimestampMillis((memberSnapshot.data() as { createdAt?: unknown }).createdAt);
+            if (
+              typeof memberActivityMs === "number" &&
+              memberActivityMs < Date.now() - WAITING_STALE_THRESHOLD_MS
+            ) {
+              continue;
+            }
+
+            verifiedMembers.push({
+              uid: member.uid,
+              nickname: memberData.nickname || `User${member.uid.slice(0, 4)}`,
+              gender: memberData.profile.gender,
+              age: memberData.profile.age,
+              countryCode: memberData.profile.countryCode,
+            });
+
+            if (verifiedMembers.length >= MAX_GROUP_SIZE - 1) break;
+          }
+
+          if (verifiedMembers.length === 0) {
+            throw new Error("No verified group members available");
+          }
+
+          const roomRef = doc(collection(db, "rooms"));
+          const allParticipantUids = [currentUser.uid, ...verifiedMembers.map((m) => m.uid)];
+          const allProfiles = [
+            {
+              uid: currentUser.uid,
+              gender: myData.profile.gender,
+              age: myData.profile.age,
+              countryCode: myData.profile.countryCode ?? null,
+              nickname: myData.nickname || myNickname || `User${currentUser.uid.slice(0, 4)}`,
+            },
+            ...verifiedMembers.map((m) => ({
+              uid: m.uid,
+              gender: m.gender,
+              age: m.age,
+              countryCode: m.countryCode ?? null,
+              nickname: m.nickname,
+            })),
+          ];
+
+          transaction.set(roomRef, {
+            status: "active",
+            mode: "group",
+            participants: allParticipantUids,
+            participantProfiles: allProfiles,
+            createdAt: serverTimestamp(),
+          });
+
+          transaction.update(myWaitingRef, {
+            status: "matched",
+            roomId: roomRef.id,
+            matchedAt: serverTimestamp(),
+          });
+
+          for (const member of verifiedMembers) {
+            const memberRef = doc(db, "waitingUsers", member.uid);
+            transaction.update(memberRef, {
+              status: "matched",
+              roomId: roomRef.id,
+              matchedAt: serverTimestamp(),
+            });
+          }
+
+          return roomRef.id;
+        });
+
+        setConnectingStatus("Group found! Connecting...");
+        console.log("[group-match] SUCCESS! room:", matchedRoomId, "members:", groupMembers.length + 1);
+        setActiveRoomId(matchedRoomId);
+      } catch (txError) {
+        console.warn("[group-match] transaction failed:", txError instanceof Error ? txError.message : txError);
+        setConnectingStatus("Looking for more group members...");
+      }
+    } catch (error) {
+      console.error("[group-match] match lookup failed:", formatFirebaseError(error), error);
+      setConnectingStatus("Matching service is busy. Retrying...");
+    }
+  };
+
   const tryMatchWithAvailableUser = async (
     filters: ChatFilters,
     mode: ChatMode,
@@ -2487,7 +2704,7 @@ export default function Home() {
     }
   };
 
-  const startSearching = async (filters: ChatFilters, modeOverride?: ChatMode) => {
+  const startSearching = async (filters: ChatFilters, modeOverride?: ChatMode, nickname?: string) => {
     const effectiveMode = modeOverride ?? chatMode;
     if (!user || !profile || !effectiveMode) {
       return;
@@ -2502,6 +2719,9 @@ export default function Home() {
     setText("");
     clearAttachment();
     setActiveRoomId(null);
+    if (effectiveMode === "group") {
+      setGroupParticipants([]);
+    }
 
     const waitingRef = doc(db, "waitingUsers", user.uid);
     try {
@@ -2515,13 +2735,18 @@ export default function Home() {
           age: profile.age,
           countryCode: profile.countryCode ?? null,
         },
+        ...(effectiveMode === "group" && { nickname: nickname || myNickname || `User${user.uid.slice(0, 4)}` }),
         createdAt: serverTimestamp(),
         lastSeenAt: Date.now(),
       });
 
       console.log("[matchmaking] queue entry written for", user.uid, "mode:", effectiveMode, "filters:", filters);
 
-      await tryMatchWithAvailableUser(filters, effectiveMode, user, profile);
+      if (effectiveMode === "group") {
+        await tryMatchGroup(filters, user, profile);
+      } else {
+        await tryMatchWithAvailableUser(filters, effectiveMode, user, profile);
+      }
     } catch (error) {
       console.error("Failed to enter matchmaking queue", {
         uid: user.uid,
@@ -2531,7 +2756,11 @@ export default function Home() {
     }
 
     retryMatchIntervalRef.current = window.setInterval(() => {
-      void tryMatchWithAvailableUser(filters, effectiveMode, user, profile);
+      if (effectiveMode === "group") {
+        void tryMatchGroup(filters, user, profile);
+      } else {
+        void tryMatchWithAvailableUser(filters, effectiveMode, user, profile);
+      }
     }, 2500);
 
     heartbeatIntervalRef.current = window.setInterval(() => {
@@ -2702,34 +2931,37 @@ export default function Home() {
       return;
     }
 
+    const isGroupMode = chatMode === "group";
     let roomKey = roomCipherKeyRef.current;
 
-    if (!roomKey) {
-      try {
-        const roomSnapshot = await getDoc(doc(db, "rooms", activeRoomId));
-        if (roomSnapshot.exists()) {
-          const roomData = roomSnapshot.data() as {
-            participants?: string[];
-            e2eePublicKeys?: Record<string, JsonWebKey>;
-          };
-          roomKey = await ensureRoomE2EEKey(activeRoomId, user.uid, {
-            participants: roomData.participants,
-            e2eePublicKeys: roomData.e2eePublicKeys,
-          });
+    if (!isGroupMode) {
+      if (!roomKey) {
+        try {
+          const roomSnapshot = await getDoc(doc(db, "rooms", activeRoomId));
+          if (roomSnapshot.exists()) {
+            const roomData = roomSnapshot.data() as {
+              participants?: string[];
+              e2eePublicKeys?: Record<string, JsonWebKey>;
+            };
+            roomKey = await ensureRoomE2EEKey(activeRoomId, user.uid, {
+              participants: roomData.participants,
+              e2eePublicKeys: roomData.e2eePublicKeys,
+            });
+          }
+        } catch {
+          // Ignore transient negotiation fetch failures.
         }
-      } catch {
-        // Ignore transient negotiation fetch failures.
       }
-    }
 
-    if (!roomKey) {
-      roomKey = await waitForRoomCipherKey(12000);
-    }
+      if (!roomKey) {
+        roomKey = await waitForRoomCipherKey(12000);
+      }
 
-    if (!roomKey) {
-      setSendError("Secure channel is still negotiating. Message will send automatically when ready.");
-      schedulePendingSendRetry(sendMessage);
-      return;
+      if (!roomKey) {
+        setSendError("Secure channel is still negotiating. Message will send automatically when ready.");
+        schedulePendingSendRetry(sendMessage);
+        return;
+      }
     }
 
     clearPendingSendRetry();
@@ -2776,7 +3008,7 @@ export default function Home() {
     let textIv: string | null = null;
 
     try {
-      if (outgoingText) {
+      if (outgoingText && roomKey) {
         const encryptedText = await encryptString(roomKey, outgoingText);
         textCiphertext = encryptedText.ciphertext;
         textIv = encryptedText.iv;
@@ -2785,25 +3017,36 @@ export default function Home() {
       if (selectedImageFile) {
         imagePath = `chatUploads/${activeRoomId}/${user.uid}/${Date.now()}-${selectedImageFile.name}`;
         const uploadRef = ref(storage, imagePath);
-        const fileBytes = new Uint8Array(await selectedImageFile.arrayBuffer());
-        const encryptedImage = await encryptBytes(roomKey, fileBytes);
-        const encryptedBytes = payloadBase64ToBytes(encryptedImage.ciphertext);
-        const encryptedBuffer = encryptedBytes.buffer.slice(
-          encryptedBytes.byteOffset,
-          encryptedBytes.byteOffset + encryptedBytes.byteLength,
-        ) as ArrayBuffer;
-        const encryptedBlob = new Blob([encryptedBuffer], {
-          type: "application/octet-stream",
-        });
 
         const resolvedImageMimeType = selectedImageFile.type.startsWith("image/")
           ? selectedImageFile.type
           : inferImageMimeTypeFromName(selectedImageFile.name) ?? "image/jpeg";
 
-        const uploadTask = uploadBytesResumable(uploadRef, encryptedBlob, {
-          contentType: "application/octet-stream",
+        let uploadBlob: Blob;
+        let uploadContentType: string;
+
+        if (roomKey) {
+          const fileBytes = new Uint8Array(await selectedImageFile.arrayBuffer());
+          const encryptedImage = await encryptBytes(roomKey, fileBytes);
+          const encryptedBytes = payloadBase64ToBytes(encryptedImage.ciphertext);
+          const encryptedBuffer = encryptedBytes.buffer.slice(
+            encryptedBytes.byteOffset,
+            encryptedBytes.byteOffset + encryptedBytes.byteLength,
+          ) as ArrayBuffer;
+          uploadBlob = new Blob([encryptedBuffer], { type: "application/octet-stream" });
+          uploadContentType = "application/octet-stream";
+          imageIv = encryptedImage.iv;
+          imageEncrypted = true;
+        } else {
+          uploadBlob = selectedImageFile;
+          uploadContentType = resolvedImageMimeType;
+          imageEncrypted = false;
+        }
+
+        const uploadTask = uploadBytesResumable(uploadRef, uploadBlob, {
+          contentType: uploadContentType,
           customMetadata: {
-            encrypted: "true",
+            encrypted: String(imageEncrypted),
             originalMimeType: resolvedImageMimeType,
           },
         });
@@ -2825,14 +3068,13 @@ export default function Home() {
         });
 
         imageUrl = await getDownloadURL(uploadTask.snapshot.ref);
-        imageIv = encryptedImage.iv;
         imageMimeType = resolvedImageMimeType;
-        imageEncrypted = true;
         imageViewTimer = imageTimerSeconds > 0 ? imageTimerSeconds : null;
       }
 
       const messagePayload: {
         senderId: string;
+        senderNickname?: string;
         clientMessageId: string;
         text: string | null;
         textCiphertext?: string;
@@ -2853,9 +3095,13 @@ export default function Home() {
       } = {
         senderId: user.uid,
         clientMessageId: clientMsgId,
-        text: null,
+        text: isGroupMode ? (outgoingText ?? null) : null,
         createdAt: serverTimestamp(),
       };
+
+      if (isGroupMode && myNickname) {
+        messagePayload.senderNickname = myNickname;
+      }
 
       if (currentReply) {
         messagePayload.replyToId = currentReply.id;
@@ -3279,10 +3525,11 @@ export default function Home() {
             onGoToAdmin={() => router.push("/admin")}
           />
           <ModeAndFiltersView
-            onStart={(mode, filters) => {
+            onStart={(mode, filters, nickname) => {
               setChatMode(mode);
               setChatFilters(filters);
-              void startSearching(filters, mode);
+              if (nickname) setMyNickname(nickname);
+              void startSearching(filters, mode, nickname);
             }}
             onBack={logout}
           />
@@ -3332,6 +3579,7 @@ export default function Home() {
           selectedFileName={selectedFileName}
           imageTimerSeconds={imageTimerSeconds}
           setImageTimerSeconds={setImageTimerSeconds}
+          groupParticipants={groupParticipants}
           isSendingMessage={isSendingMessage}
           imageUploadProgress={imageUploadProgress}
           sendError={sendError}
