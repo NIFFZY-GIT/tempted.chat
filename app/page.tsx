@@ -68,8 +68,9 @@ import { getUserRole } from "@/lib/admin";
 declare global {
   interface Window {
     grecaptcha: {
-      ready: (cb: () => void) => void;
-      execute: (siteKey: string, options: { action: string }) => Promise<string>;
+      render: (container: string | HTMLElement, parameters: Record<string, unknown>) => number;
+      getResponse: (widgetId?: number) => string;
+      reset: (widgetId?: number) => void;
     };
   }
 }
@@ -2796,37 +2797,48 @@ export default function Home() {
     }
   };
 
+  const recaptchaWidgetIdRef = useRef<number | null>(null);
+  const recaptchaTokenRef = useRef<string | null>(null);
+
+  const renderRecaptcha = (containerId: string) => {
+    if (!window.grecaptcha || recaptchaWidgetIdRef.current !== null) return;
+    try {
+      recaptchaWidgetIdRef.current = window.grecaptcha.render(containerId, {
+        sitekey: RECAPTCHA_SITE_KEY,
+        theme: "dark",
+        callback: (token: string) => { recaptchaTokenRef.current = token; },
+        "expired-callback": () => { recaptchaTokenRef.current = null; },
+        "error-callback": () => { recaptchaTokenRef.current = null; },
+      });
+    } catch {
+      // Already rendered
+    }
+  };
+
   const loginAnonymously = async () => {
     try {
       setAuthBusy(true);
       setAuthError(null);
       setAuthNotice(null);
 
-      // reCAPTCHA v3 verification
-      const token = await new Promise<string>((resolve, reject) => {
-        const waitForRecaptcha = (attempts: number) => {
-          if (window.grecaptcha?.ready) {
-            window.grecaptcha.ready(() => {
-              window.grecaptcha
-                .execute(RECAPTCHA_SITE_KEY, { action: "guest_login" })
-                .then(resolve)
-                .catch(reject);
-            });
-          } else if (attempts > 0) {
-            setTimeout(() => waitForRecaptcha(attempts - 1), 500);
-          } else {
-            reject(new Error("reCAPTCHA failed to load. Please refresh the page."));
-          }
-        };
-        waitForRecaptcha(10);
-      });
+      const token = recaptchaTokenRef.current;
+      if (!token) {
+        setAuthError("Please complete the CAPTCHA first.");
+        setAuthBusy(false);
+        return;
+      }
 
       const functions = getFunctions(firebaseApp, "us-central1");
-      const verifyRecaptcha = httpsCallable<{ token: string; action: string }, { success: boolean }>(functions, "verifyRecaptcha");
-      await verifyRecaptcha({ token, action: "guest_login" });
+      const verifyRecaptcha = httpsCallable<{ token: string }, { success: boolean }>(functions, "verifyRecaptcha");
+      await verifyRecaptcha({ token });
 
       await signInAnonymously(auth);
     } catch (error) {
+      // Reset captcha so user can retry
+      recaptchaTokenRef.current = null;
+      if (window.grecaptcha && recaptchaWidgetIdRef.current !== null) {
+        window.grecaptcha.reset(recaptchaWidgetIdRef.current);
+      }
       const message =
         error instanceof Error ? error.message : "Guest login failed. Try again.";
       setAuthError(message);
@@ -3041,6 +3053,7 @@ export default function Home() {
             authNotice={authNotice}
             emailInputRef={emailInputRef}
             loginAnonymously={loginAnonymously}
+            renderRecaptcha={renderRecaptcha}
             loginWithGoogle={loginWithGoogle}
             loginWithEmail={loginWithEmail}
             resetPassword={resetPassword}

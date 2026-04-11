@@ -264,6 +264,7 @@ type AuthViewProps = {
   authNotice: string | null;
   emailInputRef: RefObject<HTMLInputElement | null>;
   loginAnonymously: () => void;
+  renderRecaptcha: (containerId: string) => void;
   loginWithGoogle: () => void;
   loginWithEmail: () => void;
   resetPassword: () => void;
@@ -284,10 +285,27 @@ export function AuthView({
   authNotice,
   emailInputRef,
   loginAnonymously,
+  renderRecaptcha,
   loginWithGoogle,
   loginWithEmail,
   resetPassword,
 }: AuthViewProps) {
+  const captchaRendered = useRef(false);
+  const [showCaptcha, setShowCaptcha] = useState(false);
+
+  useEffect(() => {
+    if (!showCaptcha || captchaRendered.current) return;
+    const tryRender = (attempts: number) => {
+      if (typeof window !== "undefined" && window.grecaptcha) {
+        renderRecaptcha("recaptcha-container");
+        captchaRendered.current = true;
+      } else if (attempts > 0) {
+        setTimeout(() => tryRender(attempts - 1), 500);
+      }
+    };
+    tryRender(20);
+  }, [showCaptcha, renderRecaptcha]);
+
   return (
     <section className="w-full max-w-sm animate-fade-in-up px-4">
       {/* Heading */}
@@ -299,20 +317,41 @@ export function AuthView({
       {/* Auth options */}
       <div className="space-y-2.5">
         {/* Guest */}
-        <button
-          onClick={loginAnonymously}
-          disabled={authBusy}
-          className="group flex w-full items-center gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-5 py-4 text-left transition-all hover:border-white/15 hover:bg-white/[0.06] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
-        >
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
-            <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          </span>
-          <div className="min-w-0">
-            <span className="block text-[15px] font-semibold text-white">Continue as Guest</span>
-            <span className="block text-xs text-white/35">No sign-up needed</span>
+        {!showCaptcha ? (
+          <button
+            onClick={() => setShowCaptcha(true)}
+            disabled={authBusy}
+            className="group flex w-full items-center gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.03] px-5 py-4 text-left transition-all hover:border-white/15 hover:bg-white/[0.06] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+          >
+            <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            </span>
+            <div className="min-w-0">
+              <span className="block text-[15px] font-semibold text-white">Continue as Guest</span>
+              <span className="block text-xs text-white/35">No sign-up needed</span>
+            </div>
+            <svg className="ml-auto h-4 w-4 text-white/20 transition-transform group-hover:translate-x-0.5 group-hover:text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+        ) : (
+          <div className="animate-pop-in rounded-2xl border border-emerald-500/20 bg-emerald-500/[0.04] px-5 py-4">
+            <div className="mb-3 flex items-center gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </span>
+              <span className="text-sm font-medium text-white/70">Verify to continue as guest</span>
+            </div>
+            <div className="flex justify-center">
+              <div id="recaptcha-container" />
+            </div>
+            <button
+              onClick={loginAnonymously}
+              disabled={authBusy}
+              className="mt-3 w-full rounded-xl bg-emerald-500/15 py-2.5 text-sm font-semibold text-emerald-400 ring-1 ring-emerald-500/25 transition-all hover:bg-emerald-500/25 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40"
+            >
+              {authBusy ? "Joining…" : "Join as Guest"}
+            </button>
           </div>
-          <svg className="ml-auto h-4 w-4 text-white/20 transition-transform group-hover:translate-x-0.5 group-hover:text-white/40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
-        </button>
+        )}
 
         {/* Google */}
         <button

@@ -170,14 +170,9 @@ exports.verifyRecaptcha = onCall(
   },
   async (request) => {
     const token = request.data?.token;
-    const expectedAction = request.data?.action;
 
     if (!token || typeof token !== "string") {
       throw new HttpsError("invalid-argument", "Missing reCAPTCHA token.");
-    }
-
-    if (!expectedAction || typeof expectedAction !== "string") {
-      throw new HttpsError("invalid-argument", "Missing reCAPTCHA action.");
     }
 
     const secret = recaptchaSecret.value();
@@ -191,26 +186,16 @@ exports.verifyRecaptcha = onCall(
 
     const body = await res.json();
 
-    // Validate action matches to prevent cross-action token reuse
-    if (body.action && body.action !== expectedAction) {
-      logger.warn("reCAPTCHA action mismatch", {
-        expected: expectedAction,
-        actual: body.action,
-      });
-      throw new HttpsError("permission-denied", "reCAPTCHA verification failed.");
-    }
-
-    if (!body.success || (typeof body.score === "number" && body.score < 0.3)) {
+    if (!body.success) {
       logger.warn("reCAPTCHA verification failed", {
         success: body.success,
-        score: body.score,
-        action: body.action,
+        hostname: body.hostname,
         errorCodes: body["error-codes"],
       });
       throw new HttpsError("permission-denied", "reCAPTCHA verification failed.");
     }
 
-    logger.info("reCAPTCHA passed", { score: body.score, action: body.action });
+    logger.info("reCAPTCHA passed", { hostname: body.hostname });
 
     return { success: true };
   },

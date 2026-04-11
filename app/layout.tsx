@@ -36,8 +36,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
 })(window,document,'script','dataLayer','GTM-N7MQ2L64');`}
       </Script>
       <Script
-        src={`https://www.google.com/recaptcha/api.js?render=${process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY}`}
+        src="https://www.google.com/recaptcha/api.js"
         strategy="afterInteractive"
+        async
       />
       <body className="min-h-full flex flex-col">
         <noscript>
