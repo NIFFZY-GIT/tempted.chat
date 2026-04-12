@@ -1544,7 +1544,7 @@ export default function Home() {
         roomPresenceIntervalRef.current = null;
       }
     };
-  }, [activeRoomId, e2eeReadyVersion, user]);
+  }, [activeRoomId, user]);
 
   useEffect(() => {
     if (!activeRoomId || !user || !chatFilters) {
@@ -1797,8 +1797,6 @@ export default function Home() {
     if (!activeRoomId || !user) {
       roomUnsubRef.current?.();
       roomUnsubRef.current = null;
-      roomMessagesUnsubRef.current?.();
-      roomMessagesUnsubRef.current = null;
       updateRoomParticipants([]);
       setStrangerIsTyping(false);
       selfTypingRef.current = false;
@@ -1806,7 +1804,6 @@ export default function Home() {
     }
 
     const roomRef = doc(db, "rooms", activeRoomId);
-    const messagesRef = query(collection(roomRef, "messages"), orderBy("createdAt", "asc"));
     disconnectHandledRoomRef.current = null;
 
     roomUnsubRef.current?.();
@@ -1960,6 +1957,22 @@ export default function Home() {
         setConnectingStatus("Realtime connection lost. Reconnecting...");
       },
     );
+
+    return () => {
+      roomUnsubRef.current?.();
+      roomUnsubRef.current = null;
+    };
+  }, [activeRoomId, user]);
+
+  useEffect(() => {
+    if (!activeRoomId || !user) {
+      roomMessagesUnsubRef.current?.();
+      roomMessagesUnsubRef.current = null;
+      return;
+    }
+
+    const roomRef = doc(db, "rooms", activeRoomId);
+    const messagesRef = query(collection(roomRef, "messages"), orderBy("createdAt", "asc"));
 
     roomMessagesUnsubRef.current?.();
     roomMessagesUnsubRef.current = onSnapshot(
@@ -2180,8 +2193,6 @@ export default function Home() {
     );
 
     return () => {
-      roomUnsubRef.current?.();
-      roomUnsubRef.current = null;
       roomMessagesUnsubRef.current?.();
       roomMessagesUnsubRef.current = null;
     };
