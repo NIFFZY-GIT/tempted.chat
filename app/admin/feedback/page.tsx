@@ -199,7 +199,10 @@ export default function AdminFeedbackPage() {
               <p className="text-[10px] text-emerald-400">Administrator</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-[12px] font-medium text-white/40 transition hover:bg-rose-500/10 hover:text-rose-400">
+          <button onClick={() => router.push("/")} className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-[12px] font-medium text-white/40 transition hover:bg-white/[0.08] hover:text-white/60">
+            ← Back to App
+          </button>
+          <button onClick={handleLogout} className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-[12px] font-medium text-white/40 transition hover:bg-rose-500/10 hover:text-rose-400">
             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
             Sign out
           </button>

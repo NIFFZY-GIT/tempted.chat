@@ -6,6 +6,7 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import type { PlanId, PlanTier } from "@/lib/stripe";
 import { TopNav } from "@/components/navbar";
+import { getUserRole } from "@/lib/admin";
 
 type Duration = "1h" | "24h" | "7d" | "30d";
 
@@ -44,11 +45,17 @@ export default function PlansPage() {
   const [subscriptionExpiresAt, setSubscriptionExpiresAt] = useState<number | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState<PlanTier | null>(null);
   const [subLoading, setSubLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (u) => {
       setUser(u);
       setAuthLoading(false);
+      if (u && !u.isAnonymous) {
+        void getUserRole(u.uid).then((role) => setIsAdmin(role === "admin")).catch(() => setIsAdmin(false));
+      } else {
+        setIsAdmin(false);
+      }
     });
     return unsub;
   }, []);
@@ -71,7 +78,7 @@ export default function PlansPage() {
       .finally(() => setSubLoading(false));
   }, [user]);
 
-  const isActive = subscriptionExpiresAt !== null && subscriptionExpiresAt > Date.now();
+  const isActive = isAdmin || (subscriptionExpiresAt !== null && subscriptionExpiresAt > Date.now());
   const isGuest = !!user && user.isAnonymous;
 
   const handlePurchase = async (tier: PlanTier) => {
@@ -119,6 +126,11 @@ export default function PlansPage() {
             <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3 py-1.5 text-xs text-white/30">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/10 border-t-white/40" />
               Checking...
+            </div>
+          ) : isAdmin ? (
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+              Admin — Full VVIP Access
             </div>
           ) : isActive && subscriptionExpiresAt ? (
             <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400">

@@ -3416,12 +3416,6 @@ export default function Home() {
     };
   }, [user]);
 
-  useEffect(() => {
-    if (!adminRoleLoading && isAdmin) {
-      router.push("/admin");
-    }
-  }, [adminRoleLoading, isAdmin, router]);
-
   // Fetch subscription status when user is available.
   const checkSubscription = useCallback(async (uid: string) => {
     setSubscriptionLoading(true);
@@ -3463,7 +3457,8 @@ export default function Home() {
     }
   }, [user, checkSubscription]);
 
-  const hasActiveSubscription = subscriptionExpiresAt !== null && subscriptionExpiresAt > Date.now();
+  const hasActiveSubscription = isAdmin || (subscriptionExpiresAt !== null && subscriptionExpiresAt > Date.now());
+  const effectiveSubscriptionTier: "vip" | "vvip" | null = isAdmin ? "vvip" : subscriptionTier;
 
   const saveProfile = () => {
     const parsedAge = Number(profileAge);
@@ -3619,7 +3614,7 @@ export default function Home() {
             }}
             onBack={logout}
             hasActiveSubscription={hasActiveSubscription}
-            subscriptionTier={subscriptionTier}
+            subscriptionTier={effectiveSubscriptionTier}
             onShowPaywall={() => router.push("/plans")}
           />
           <DevelopedBy />
@@ -3681,7 +3676,7 @@ export default function Home() {
           toggleLocalVideo={toggleLocalVideo}
           toggleLocalAudio={toggleLocalAudio}
           switchCamera={switchCamera}
-          subscriptionTier={subscriptionTier}
+          subscriptionTier={effectiveSubscriptionTier}
           hasActiveSubscription={hasActiveSubscription}
           onShowPaywall={() => router.push("/plans")}
           onLeaveChat={(filters) => {
