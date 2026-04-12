@@ -26,7 +26,7 @@ import {
   type UserProfile,
 } from "@/components/chat-ui";
 import { LandingPageSection } from "@/components/landing-page";
-import { SiteFooter } from "@/components/footer";
+import { DevelopedBy } from "@/components/developed-by";
 import { TopNav } from "@/components/navbar";
 import {
   addDoc,
@@ -3513,8 +3513,8 @@ export default function Home() {
           <section className="auth-shell">
             <article className="auth-panel auth-loading">Checking account session...</article>
           </section>
+          <DevelopedBy />
         </main>
-        <SiteFooter />
       </>
     );
   }
@@ -3522,7 +3522,7 @@ export default function Home() {
   if (!isAuthenticated) {
     return (
       <>
-        <main className="screen !content-start gap-5">
+        <main className="screen !h-auto !min-h-[100dvh] !content-start !overflow-y-auto gap-5">
           <TopNav
             isAuthenticated={isAuthenticated}
             onLogin={() => {
@@ -3555,8 +3555,9 @@ export default function Home() {
             resetPassword={resetPassword}
           />
           <LandingPageSection />
+          <DevelopedBy />
+          
         </main>
-        <SiteFooter />
       </>
     );
   }
@@ -3588,8 +3589,8 @@ export default function Home() {
             onContinue={saveProfile}
             backLabel="Sign Out"
           />
+          <DevelopedBy />
         </main>
-        <SiteFooter />
       </>
     );
   }
@@ -3621,8 +3622,8 @@ export default function Home() {
             subscriptionTier={subscriptionTier}
             onShowPaywall={() => router.push("/plans")}
           />
+          <DevelopedBy />
         </main>
-        <SiteFooter />
       </>
     );
   }
@@ -3681,6 +3682,8 @@ export default function Home() {
           toggleLocalAudio={toggleLocalAudio}
           switchCamera={switchCamera}
           subscriptionTier={subscriptionTier}
+          hasActiveSubscription={hasActiveSubscription}
+          onShowPaywall={() => router.push("/plans")}
           onLeaveChat={(filters) => {
             void (async () => {
               await markRoomEnded();
@@ -3699,10 +3702,8 @@ export default function Home() {
             void startSearching(chatFilters);
           }}
         />
+        <DevelopedBy />
       </main>
-      <div className="hidden md:block">
-        <SiteFooter />
-      </div>
     </>
   );
 }

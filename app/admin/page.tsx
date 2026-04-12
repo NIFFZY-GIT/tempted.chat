@@ -5,7 +5,6 @@ import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { getUserRole } from "@/lib/admin";
-import { TopNav } from "@/components/navbar";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -300,78 +299,232 @@ export default function AdminDashboardPage() {
   }
 
   return (
-    <>
-      <TopNav
-        isAuthenticated={true}
-        onLogin={() => {
-          router.push("/");
-        }}
-        onLogout={handleLogout}
-        isWorking={false}
-        isAdmin={true}
-        onGoToAdmin={() => {
-          router.push("/admin");
-        }}
-      />
-      <main className="mx-auto min-h-screen w-full max-w-6xl px-6 pb-16 pt-28 text-white">
-        <h1 className="text-3xl font-bold sm:text-4xl">Admin Dashboard</h1>
-        <p className="mt-3 text-white/75">
-          Welcome back, admin. This page is restricted to users with role set to admin.
-        </p>
+    <div className="flex h-dvh overflow-hidden bg-[#07070d] text-white">
+      {/* ── Sidebar ── */}
+      <aside className="hidden w-64 flex-shrink-0 flex-col border-r border-white/[0.06] bg-[#0a0a14] md:flex">
+        {/* Logo area */}
+        <div className="flex h-16 items-center gap-2.5 border-b border-white/[0.06] px-5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-pink-500 to-violet-500">
+            <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z" /><path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /></svg>
+          </div>
+          <div>
+            <p className="text-sm font-bold text-white/90">Admin Panel</p>
+            <p className="text-[10px] text-white/30">tempted.chat</p>
+          </div>
+        </div>
 
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Current Users</p>
-            <p className="mt-2 text-3xl font-bold">{stats.totalCurrentUsers}</p>
-          </article>
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Anonymous Users</p>
-            <p className="mt-2 text-3xl font-bold">{stats.anonymousUsers}</p>
-          </article>
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Google Users</p>
-            <p className="mt-2 text-3xl font-bold">{stats.googleUsers}</p>
-          </article>
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Email Users</p>
-            <p className="mt-2 text-3xl font-bold">{stats.emailUsers}</p>
-          </article>
-        </section>
+        {/* Navigation */}
+        <nav className="flex-1 space-y-1 px-3 py-4">
+          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-white/20">Analytics</p>
+          <button className="flex w-full items-center gap-3 rounded-xl bg-white/[0.06] px-3 py-2.5 text-[13px] font-medium text-white/80">
+            <svg className="h-4 w-4 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 0 1 3 19.875v-6.75ZM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V8.625ZM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125V4.125Z" /></svg>
+            Overview
+          </button>
 
-        <section className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Users In Chats</p>
-            <p className="mt-2 text-3xl font-bold">{stats.usersInChats}</p>
-          </article>
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Waiting Users</p>
-            <p className="mt-2 text-3xl font-bold">{stats.waitingUsers}</p>
-          </article>
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Users Texting</p>
-            <p className="mt-2 text-3xl font-bold">{stats.usersTexting}</p>
-          </article>
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Users In Video</p>
-            <p className="mt-2 text-3xl font-bold">{stats.usersVideo}</p>
-          </article>
-        </section>
+          <p className="mb-2 mt-5 px-3 text-[10px] font-semibold uppercase tracking-widest text-white/20">Management</p>
+          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 transition hover:bg-white/[0.04] hover:text-white/60">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>
+            Users
+          </button>
+          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 transition hover:bg-white/[0.04] hover:text-white/60">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" /></svg>
+            Rooms
+          </button>
+        </nav>
 
-        <section className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">User</p>
-            <p className="mt-2 text-sm font-semibold">{user.email ?? user.uid}</p>
-          </article>
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Role</p>
-            <p className="mt-2 text-sm font-semibold">Administrator</p>
-          </article>
-          <article className="rounded-2xl border border-white/10 bg-black/25 p-5">
-            <p className="text-xs uppercase tracking-wider text-white/50">Status</p>
-            <p className="mt-2 text-sm font-semibold text-emerald-300">Access Granted</p>
-          </article>
-        </section>
-      </main>
-    </>
+        {/* User info at bottom */}
+        <div className="border-t border-white/[0.06] p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-400">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-xs font-semibold text-white/80">{user.email ?? "Admin"}</p>
+              <p className="text-[10px] text-emerald-400">Administrator</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-white/[0.04] px-3 py-2 text-[12px] font-medium text-white/40 transition hover:bg-rose-500/10 hover:text-rose-400"
+          >
+            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15m3 0 3-3m0 0-3-3m3 3H9" /></svg>
+            Sign out
+          </button>
+        </div>
+      </aside>
+
+      {/* ── Main content ── */}
+      <div className="flex flex-1 flex-col overflow-hidden">
+        {/* Top bar */}
+        <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0a14]/60 px-5 backdrop-blur-xl md:px-8">
+          <div>
+            <h1 className="text-lg font-bold text-white/90">Overview</h1>
+            <p className="text-[11px] text-white/30">Real-time analytics dashboard</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-400">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" style={{ animation: "ripple 2s ease-out infinite" }} />
+              Live
+            </span>
+            <button onClick={() => router.push("/")} className="rounded-lg bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-white/40 transition hover:bg-white/[0.08] hover:text-white/60">
+              ← Back to App
+            </button>
+          </div>
+        </header>
+
+        {/* Scrollable content */}
+        <main className="flex-1 overflow-y-auto p-5 md:p-8">
+          {/* ── Primary stats row ── */}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* Total Users */}
+            <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 transition hover:border-white/[0.1]">
+              <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-pink-500/[0.06] blur-2xl transition-all group-hover:bg-pink-500/[0.1]" />
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Total Online</p>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-pink-500/10">
+                  <svg className="h-4 w-4 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>
+                </div>
+              </div>
+              <p className="mt-3 text-3xl font-extrabold tracking-tight">{stats.totalCurrentUsers}</p>
+              <p className="mt-1 text-[11px] text-white/25">users active now</p>
+            </div>
+
+            {/* In Chats */}
+            <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 transition hover:border-white/[0.1]">
+              <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-emerald-500/[0.06] blur-2xl transition-all group-hover:bg-emerald-500/[0.1]" />
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">In Chats</p>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/10">
+                  <svg className="h-4 w-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" /></svg>
+                </div>
+              </div>
+              <p className="mt-3 text-3xl font-extrabold tracking-tight">{stats.usersInChats}</p>
+              <p className="mt-1 text-[11px] text-white/25">actively chatting</p>
+            </div>
+
+            {/* Waiting */}
+            <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 transition hover:border-white/[0.1]">
+              <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-amber-500/[0.06] blur-2xl transition-all group-hover:bg-amber-500/[0.1]" />
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Waiting</p>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
+                  <svg className="h-4 w-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M12 6v6h4.5m4.5 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" /></svg>
+                </div>
+              </div>
+              <p className="mt-3 text-3xl font-extrabold tracking-tight">{stats.waitingUsers}</p>
+              <p className="mt-1 text-[11px] text-white/25">searching for match</p>
+            </div>
+
+            {/* Text vs Video ratio */}
+            <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 transition hover:border-white/[0.1]">
+              <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-violet-500/[0.06] blur-2xl transition-all group-hover:bg-violet-500/[0.1]" />
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Text / Video</p>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-violet-500/10">
+                  <svg className="h-4 w-4 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0 0 20.25 18V6A2.25 2.25 0 0 0 18 3.75H6A2.25 2.25 0 0 0 3.75 6v12A2.25 2.25 0 0 0 6 20.25Z" /></svg>
+                </div>
+              </div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <p className="text-3xl font-extrabold tracking-tight">{stats.usersTexting}</p>
+                <span className="text-sm text-white/20">/</span>
+                <p className="text-3xl font-extrabold tracking-tight">{stats.usersVideo}</p>
+              </div>
+              <p className="mt-1 text-[11px] text-white/25">text vs video users</p>
+            </div>
+          </div>
+
+          {/* ── Auth breakdown + Activity visualiser ── */}
+          <div className="mt-6 grid gap-4 lg:grid-cols-3">
+            {/* Auth method breakdown */}
+            <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-6 lg:col-span-1">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Auth Methods</p>
+              <div className="mt-5 space-y-4">
+                {[
+                  { label: "Anonymous", value: stats.anonymousUsers, color: "bg-white/20", textColor: "text-white/50" },
+                  { label: "Google", value: stats.googleUsers, color: "bg-blue-500", textColor: "text-blue-400" },
+                  { label: "Email", value: stats.emailUsers, color: "bg-violet-500", textColor: "text-violet-400" },
+                ].map((item) => {
+                  const pct = stats.totalCurrentUsers > 0 ? Math.round((item.value / stats.totalCurrentUsers) * 100) : 0;
+                  return (
+                    <div key={item.label}>
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className={`font-medium ${item.textColor}`}>{item.label}</span>
+                        <span className="tabular-nums text-white/40">{item.value} <span className="text-white/20">({pct}%)</span></span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.04]">
+                        <div className={`h-full rounded-full ${item.color} transition-all duration-700`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Activity distribution chart */}
+            <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-6 lg:col-span-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Activity Distribution</p>
+              <div className="mt-5 flex h-48 items-end gap-3">
+                {[
+                  { label: "Online", value: stats.totalCurrentUsers, color: "from-pink-500 to-pink-600" },
+                  { label: "Chatting", value: stats.usersInChats, color: "from-emerald-500 to-emerald-600" },
+                  { label: "Waiting", value: stats.waitingUsers, color: "from-amber-500 to-amber-600" },
+                  { label: "Text", value: stats.usersTexting, color: "from-blue-500 to-blue-600" },
+                  { label: "Video", value: stats.usersVideo, color: "from-violet-500 to-violet-600" },
+                  { label: "Anonymous", value: stats.anonymousUsers, color: "from-white/30 to-white/20" },
+                  { label: "Google", value: stats.googleUsers, color: "from-sky-400 to-sky-500" },
+                  { label: "Email", value: stats.emailUsers, color: "from-fuchsia-500 to-fuchsia-600" },
+                ].map((bar) => {
+                  const maxVal = Math.max(stats.totalCurrentUsers, 1);
+                  const heightPct = Math.max((bar.value / maxVal) * 100, 2);
+                  return (
+                    <div key={bar.label} className="group flex flex-1 flex-col items-center gap-2">
+                      <span className="text-[11px] tabular-nums font-bold text-white/60 opacity-0 transition group-hover:opacity-100">{bar.value}</span>
+                      <div className="flex w-full justify-center">
+                        <div
+                          className={`w-full max-w-[36px] rounded-t-lg bg-gradient-to-t ${bar.color} transition-all duration-700 group-hover:opacity-100 opacity-80`}
+                          style={{ height: `${heightPct}%`, minHeight: "4px" }}
+                        />
+                      </div>
+                      <span className="text-[10px] text-white/25">{bar.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Quick info row ── */}
+          <div className="mt-6 grid gap-4 sm:grid-cols-3">
+            <div className="flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/10">
+                <svg className="h-5 w-5 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z" /></svg>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/25">Signed in as</p>
+                <p className="mt-0.5 truncate text-sm font-semibold text-white/80">{user.email ?? user.uid}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">
+                <svg className="h-5 w-5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/25">Role</p>
+                <p className="mt-0.5 text-sm font-semibold text-emerald-400">Administrator</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10">
+                <svg className="h-5 w-5 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 0 0-2.455 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z" /></svg>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/25">Status</p>
+                <p className="mt-0.5 text-sm font-semibold text-white/60">All systems operational</p>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
   );
 }

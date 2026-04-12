@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { SiteFooter } from "@/components/footer";
 import { TopNav } from "@/components/navbar";
 
 export default function NotFound() {
@@ -44,7 +43,6 @@ export default function NotFound() {
           </div>
         </section>
       </main>
-      <SiteFooter />
     </>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { SiteFooter } from "@/components/footer";
 import { LandingPageSection } from "@/components/landing-page";
 import { TopNav } from "@/components/navbar";
 
@@ -10,7 +9,7 @@ export default function LandingPage() {
 
   return (
     <>
-      <main className="screen !place-items-stretch !content-start gap-6">
+      <main className="screen !place-items-stretch !content-start !overflow-y-auto gap-6">
         <TopNav
           isAuthenticated={false}
           onLogin={() => router.push("/")}
@@ -19,7 +18,6 @@ export default function LandingPage() {
         />
         <LandingPageSection />
       </main>
-      <SiteFooter />
     </>
   );
 }

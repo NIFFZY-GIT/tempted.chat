@@ -596,6 +596,7 @@ export function ModeAndFiltersView({
   const [country, setCountry] = useState<CountryFilter>("Any");
   const [hideCountry, setHideCountry] = useState(false);
   const [countryMenuOpen, setCountryMenuOpen] = useState(false);
+  const [hoveredMode, setHoveredMode] = useState<ChatMode | null>(null);
   const countryMenuRef = useRef<HTMLDivElement | null>(null);
   const selectedCountryCode = country !== "Any" ? country : undefined;
 
@@ -608,294 +609,498 @@ export function ModeAndFiltersView({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [countryMenuOpen]);
 
-  const modeOptions: Array<{ id: ChatMode; label: string; desc: string; icon: ReactNode; color: string; activeBg: string }> = [
-    {
-      id: "text",
-      label: "Text",
-      desc: "Message chat",
-      color: "text-cyan-400",
-      activeBg: "border-cyan-500/30 bg-cyan-500/[0.08]",
-      icon: (
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v7A2.5 2.5 0 0 1 17.5 16H10l-4.5 4v-4H6.5A2.5 2.5 0 0 1 4 13.5v-7Z" />
-        </svg>
-      ),
-    },
-    {
-      id: "video",
-      label: "Video",
-      desc: "Face to face",
-      color: "text-rose-400",
-      activeBg: "border-rose-500/30 bg-rose-500/[0.08]",
-      icon: (
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <path d="M15 10.5 20 7v10l-5-3.5" />
-          <rect x="3" y="6" width="12" height="12" rx="2.5" />
-        </svg>
-      ),
-    },
-    {
-      id: "group",
-      label: "Groups",
-      desc: "Multi-person",
-      color: "text-amber-400",
-      activeBg: "border-amber-500/30 bg-amber-500/[0.08]",
-      icon: (
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-          <circle cx="8" cy="9" r="2.5" />
-          <circle cx="16" cy="9" r="2.5" />
-          <path d="M4.5 18a3.5 3.5 0 0 1 7 0M12.5 18a3.5 3.5 0 0 1 7 0" />
-        </svg>
-      ),
-    },
-  ];
+  const groupNickRequired = selectedMode === "group" && !nickname.trim();
 
   const handleStart = () => {
+    if (groupNickRequired) return;
     const trimmedNick = selectedMode === "group" ? nickname.trim() || undefined : undefined;
     onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, trimmedNick);
   };
 
   const handleQuickStart = () => {
+    if (groupNickRequired) return;
     const trimmedNick = selectedMode === "group" ? nickname.trim() || undefined : undefined;
     onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry }, trimmedNick);
   };
 
-  const pillClasses = (active: boolean) =>
-    `rounded-xl py-2.5 text-sm font-medium transition-all active:scale-[0.97] ${active ? "bg-white/[0.1] text-white ring-1 ring-white/20" : "bg-white/[0.03] text-white/40 hover:bg-white/[0.06] hover:text-white/60"}`;
+  const activeFiltersCount = [
+    gender !== "Any",
+    ageGroup !== "Any age",
+    style !== "Any style",
+    country !== "Any",
+    hideCountry,
+  ].filter(Boolean).length;
+
+  const chip = (active: boolean, color?: "pink" | "violet" | "blue" | "amber") => {
+    const c = color ?? "pink";
+    const activeColors: Record<string, string> = {
+      pink: "bg-pink-500/15 text-pink-300 border-pink-500/30 shadow-[0_0_12px_rgba(236,72,153,0.1)]",
+      violet: "bg-violet-500/15 text-violet-300 border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.1)]",
+      blue: "bg-blue-500/15 text-blue-300 border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.1)]",
+      amber: "bg-amber-500/15 text-amber-300 border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.1)]",
+    };
+    return `rounded-xl px-4 py-2.5 text-[13px] font-semibold text-center transition-all duration-300 cursor-pointer select-none border ${
+      active
+        ? activeColors[c]
+        : "bg-white/[0.02] text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/55 hover:bg-white/[0.04]"
+    }`;
+  };
+
+  const modeConfig: Array<{
+    id: ChatMode;
+    emoji: string;
+    title: string;
+    sub: string;
+    desc: string;
+    accent: string;
+    accentRgb: string;
+    bg: string;
+    border: string;
+    glow: string;
+    ring: string;
+    iconBg: string;
+    badgeBg: string;
+    chipColor: "pink" | "violet" | "blue";
+  }> = [
+    {
+      id: "text",
+      emoji: "💬",
+      title: "Text Chat",
+      sub: "Messages, photos & fun",
+      desc: "Send messages, share photos, and have fun conversations",
+      accent: "text-pink-400",
+      accentRgb: "236,72,153",
+      bg: "bg-pink-500/[0.06]",
+      border: "border-pink-500/30",
+      glow: "shadow-[0_0_40px_rgba(236,72,153,0.15),0_4px_24px_rgba(236,72,153,0.1)]",
+      ring: "ring-pink-500/20",
+      iconBg: "bg-gradient-to-br from-pink-500/20 to-pink-600/10",
+      badgeBg: "bg-pink-500",
+      chipColor: "pink",
+    },
+    {
+      id: "video",
+      emoji: "📹",
+      title: "Video Chat",
+      sub: "Face-to-face with strangers",
+      desc: "Live video calls with camera and microphone",
+      accent: "text-violet-400",
+      accentRgb: "139,92,246",
+      bg: "bg-violet-500/[0.06]",
+      border: "border-violet-500/30",
+      glow: "shadow-[0_0_40px_rgba(139,92,246,0.15),0_4px_24px_rgba(139,92,246,0.1)]",
+      ring: "ring-violet-500/20",
+      iconBg: "bg-gradient-to-br from-violet-500/20 to-violet-600/10",
+      badgeBg: "bg-violet-500",
+      chipColor: "violet",
+    },
+    {
+      id: "group",
+      emoji: "👥",
+      title: "Group Chat",
+      sub: "Chat with a crowd",
+      desc: "Join rooms with multiple strangers at once",
+      accent: "text-blue-400",
+      accentRgb: "59,130,246",
+      bg: "bg-blue-500/[0.06]",
+      border: "border-blue-500/30",
+      glow: "shadow-[0_0_40px_rgba(59,130,246,0.15),0_4px_24px_rgba(59,130,246,0.1)]",
+      ring: "ring-blue-500/20",
+      iconBg: "bg-gradient-to-br from-blue-500/20 to-blue-600/10",
+      badgeBg: "bg-blue-500",
+      chipColor: "blue",
+    },
+  ];
+
+  const activeModeConfig = modeConfig.find((m) => m.id === selectedMode) ?? modeConfig[0];
 
   return (
-    <section className="w-full max-w-sm animate-fade-in-up px-4">
-      <div className="mb-8 text-center">
-        <h2 className="text-2xl font-bold tracking-tight text-white">Ready to chat?</h2>
-        <p className="mt-1.5 text-sm text-white/40">Choose your mode</p>
-        {subscriptionTier && (
-          <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
-            subscriptionTier === "vvip"
-              ? "bg-amber-400/15 text-amber-400"
-              : "bg-pink-500/15 text-pink-400"
-          }`}>
-            {subscriptionTier === "vvip" ? "👑" : "💎"} {subscriptionTier.toUpperCase()} Member
+    <section className="relative flex h-full w-full items-center justify-center overflow-hidden px-4">
+
+      {/* ── Ambient glow that follows selected mode ── */}
+      <div
+        className="pointer-events-none absolute inset-0 transition-all duration-700"
+        style={{
+          background: `radial-gradient(ellipse 60% 40% at 50% 40%, rgba(${activeModeConfig.accentRgb}, 0.06) 0%, transparent 70%)`,
+        }}
+      />
+
+      {/* ══ Main content ══ */}
+      <div className="relative w-full max-w-[480px]">
+
+        {/* Hero section */}
+        <div className="mb-10 text-center">
+          <div className="animate-hero-text-in mb-5 inline-flex items-center justify-center">
+            <Image
+              src="/asstes/logo/logologoheartandtempetedchat.png"
+              alt="TEMPTED.CHAT"
+              width={200}
+              height={40}
+              className="h-8 w-auto sm:h-10"
+              priority
+            />
+          </div>
+          <p className="animate-hero-text-in mode-stagger-2 mt-3 text-[14px] text-white/30 font-medium">
+            Pick a mode, tap go — it&apos;s that simple
+          </p>
+        </div>
+
+        {/* Mode cards */}
+        <div className="mb-8 flex flex-col gap-3">
+          {modeConfig.map((m, i) => {
+            const active = selectedMode === m.id;
+            const hovered = hoveredMode === m.id;
+            return (
+              <button
+                key={m.id}
+                onClick={() => setSelectedMode(m.id)}
+                onMouseEnter={() => setHoveredMode(m.id)}
+                onMouseLeave={() => setHoveredMode(null)}
+                className={`animate-mode-card-in mode-stagger-${i + 1} group relative flex items-center gap-4 rounded-2xl border px-5 py-[18px] transition-all duration-300 active:scale-[0.98] ${
+                  active
+                    ? `${m.border} ${m.bg} ${m.glow}`
+                    : "border-white/[0.06] bg-white/[0.015] hover:border-white/[0.1] hover:bg-white/[0.03]"
+                }`}
+              >
+                {/* Active indicator line on left */}
+                <div
+                  className={`absolute left-0 top-1/2 -translate-y-1/2 h-8 w-[3px] rounded-r-full transition-all duration-300 ${
+                    active ? `opacity-100 ${m.badgeBg}` : "opacity-0"
+                  }`}
+                />
+
+                {/* Animated ring pulse behind icon when active */}
+                {active && (
+                  <div
+                    className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 h-12 w-12 rounded-xl"
+                    style={{
+                      animation: "pulse-ring 2s ease-out infinite",
+                      boxShadow: `0 0 0 0 rgba(${m.accentRgb}, 0.3)`,
+                    }}
+                  />
+                )}
+
+                {/* Icon */}
+                <div className={`relative flex h-12 w-12 shrink-0 items-center justify-center rounded-xl transition-all duration-300 ${
+                  active
+                    ? `${m.iconBg} ring-1 ${m.ring}`
+                    : "bg-white/[0.03] ring-1 ring-white/[0.05] group-hover:bg-white/[0.05] group-hover:ring-white/[0.08]"
+                }`}>
+                  <span className={`text-2xl transition-transform duration-300 ${active || hovered ? "scale-110" : "scale-100"}`}>
+                    {m.emoji}
+                  </span>
+                </div>
+
+                {/* Text */}
+                <div className="relative min-w-0 flex-1 text-left">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-[15px] font-bold leading-tight transition-colors duration-200 ${
+                      active ? "text-white" : "text-white/50 group-hover:text-white/70"
+                    }`}>
+                      {m.title}
+                    </span>
+                  </div>
+                  <span className={`mt-1 block text-[12px] leading-tight transition-colors duration-200 ${
+                    active ? "text-white/40" : "text-white/20 group-hover:text-white/30"
+                  }`}>
+                    {m.sub}
+                  </span>
+                </div>
+
+                {/* Arrow / Check indicator on right */}
+                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-all duration-300 ${
+                  active
+                    ? `${m.badgeBg} shadow-lg`
+                    : "bg-white/[0.03] group-hover:bg-white/[0.06]"
+                }`}
+                  style={active ? { boxShadow: `0 4px 12px rgba(${m.accentRgb}, 0.3)` } : undefined}
+                >
+                  {active ? (
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  ) : (
+                    <svg className="h-3.5 w-3.5 text-white/20 transition-all duration-200 group-hover:text-white/40 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
+                  )}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Nickname (group only) - animated entry */}
+        {selectedMode === "group" && (
+          <div className="mb-6 animate-fade-in-up">
+            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">
+              Nickname
+            </label>
+            <div className="relative">
+              <input
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value.slice(0, 20))}
+                placeholder="What should they call you?"
+                maxLength={20}
+                className={`w-full rounded-xl border bg-white/[0.03] px-4 py-3.5 text-sm text-white outline-none placeholder:text-white/20 transition-all duration-300 focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20 focus:bg-white/[0.04] ${groupNickRequired ? "border-rose-500/30" : "border-white/[0.08]"}`}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/15 font-medium tabular-nums">
+                {nickname.length}/20
+              </span>
+            </div>
+            {groupNickRequired && (
+              <p className="mt-1.5 text-[11px] text-rose-400/70">A nickname is required for group chat</p>
+            )}
           </div>
         )}
-      </div>
 
-      {/* Mode cards */}
-      <div className="space-y-2">
-        {modeOptions.map((m) => {
-          const active = selectedMode === m.id;
-          return (
-            <button
-              key={m.id}
-              onClick={() => setSelectedMode(m.id)}
-              className={`flex w-full items-center gap-4 rounded-2xl border px-5 py-4 text-left transition-all active:scale-[0.98] ${active ? m.activeBg : "border-white/[0.07] bg-white/[0.02] hover:border-white/12 hover:bg-white/[0.04]"}`}
-            >
-              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white/[0.05] ${active ? m.color : "text-white/30"}`}>
-                {m.icon}
-              </span>
-              <div>
-                <span className={`block text-[15px] font-semibold ${active ? "text-white" : "text-white/60"}`}>{m.label}</span>
-                <span className={`block text-xs ${active ? "text-white/50" : "text-white/25"}`}>{m.desc}</span>
-              </div>
-              {active && (
-                <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-white/10">
-                  <svg className="h-3 w-3 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6 9 17l-5-5"/></svg>
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Nickname input for group mode */}
-      {selectedMode === "group" && (
-        <div className="mt-4 animate-fade-in">
-          <label className="mb-2 block text-xs font-semibold uppercase tracking-widest text-white/30">
-            Your Nickname
-          </label>
-          <input
-            type="text"
-            value={nickname}
-            onChange={(e) => setNickname(e.target.value.slice(0, 20))}
-            placeholder="Enter a nickname..."
-            maxLength={20}
-            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm font-medium text-white outline-none placeholder:text-white/25 transition focus:border-amber-500/40 focus:bg-white/[0.06]"
-          />
-          <p className="mt-1.5 text-[11px] text-white/25">{nickname.length}/20 — This is how others will see you</p>
+        {/* Start button */}
+        <div className="animate-mode-card-in mode-stagger-4">
+          <button
+            type="button"
+            onClick={handleQuickStart}
+            disabled={groupNickRequired}
+            className={`group relative mb-5 flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl py-4.5 text-[15px] font-extrabold text-white transition-all duration-300 active:scale-[0.97] ${groupNickRequired ? "opacity-40 cursor-not-allowed" : ""}`}
+          >
+            {/* Base gradient */}
+            <span
+              className="pointer-events-none absolute inset-0 transition-opacity duration-300"
+              style={{
+                background: `linear-gradient(135deg, rgba(${activeModeConfig.accentRgb}, 0.9) 0%, rgba(${activeModeConfig.accentRgb}, 1) 50%, rgba(${activeModeConfig.accentRgb}, 0.85) 100%)`,
+              }}
+            />
+            {/* Brighter on hover */}
+            <span
+              className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+              style={{
+                background: `linear-gradient(135deg, rgba(${activeModeConfig.accentRgb}, 1) 0%, rgba(${activeModeConfig.accentRgb}, 0.9) 100%)`,
+              }}
+            />
+            {/* Shine sweep */}
+            <span className="pointer-events-none absolute inset-0 overflow-hidden">
+              <span
+                className="absolute top-0 h-full w-1/3 -skew-x-12 opacity-0 group-hover:opacity-100"
+                style={{
+                  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)",
+                  animation: "btn-shine 1.5s ease-in-out infinite",
+                }}
+              />
+            </span>
+            {/* Shadow */}
+            <span
+              className="pointer-events-none absolute inset-0 transition-shadow duration-300"
+              style={{
+                boxShadow: `0 8px 32px rgba(${activeModeConfig.accentRgb}, 0.35)`,
+              }}
+            />
+            <span className="pointer-events-none absolute inset-0 transition-shadow duration-300 opacity-0 group-hover:opacity-100"
+              style={{
+                boxShadow: `0 12px 44px rgba(${activeModeConfig.accentRgb}, 0.5)`,
+              }}
+            />
+            <span className="relative flex items-center gap-2.5">
+              <span className="text-lg transition-transform duration-300 group-hover:scale-110">🚀</span>
+              <span>Start Chatting</span>
+              <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            </span>
+          </button>
         </div>
-      )}
 
-      {/* Quick Start */}
-      <button
-        type="button"
-        onClick={handleQuickStart}
-        className="mt-5 w-full rounded-xl bg-pink-500 py-3.5 text-[15px] font-bold text-white transition hover:bg-pink-400 active:scale-[0.98]"
-      >
-        Quick Start
-      </button>
-
-      {/* Filter toggle */}
-      <button
-        type="button"
-        onClick={() => {
-          if (!hasActiveSubscription) {
-            onShowPaywall?.();
-            return;
-          }
-          setShowFilters((v) => !v);
-        }}
-        className="mt-3 flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-white/30 transition hover:text-white/60"
-      >
-        {showFilters ? "Hide preferences" : (
-          <span className="inline-flex items-center gap-1.5">
-            Set preferences
+        {/* Filter toggle */}
+        <div className="animate-mode-card-in mode-stagger-5 flex justify-center">
+          <button
+            type="button"
+            onClick={() => {
+              if (!hasActiveSubscription) { onShowPaywall?.(); return; }
+              setShowFilters((v) => !v);
+            }}
+            className="group relative inline-flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-5 py-2.5 text-[12px] font-semibold text-white/30 backdrop-blur-sm transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.05] hover:text-white/50 active:scale-[0.97]"
+          >
+            <svg className="h-3.5 w-3.5 transition-transform duration-300 group-hover:rotate-45" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+            Filters
             {!hasActiveSubscription ? (
-              <span className="inline-flex items-center gap-0.5 rounded-full bg-gradient-to-r from-pink-500/20 to-purple-500/20 px-2 py-0.5 text-[10px] font-bold text-pink-400">
-                PRO
-              </span>
-            ) : subscriptionTier ? (
-              <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"
-              }`}>
-                {subscriptionTier.toUpperCase()}
+              <span className="rounded-full bg-pink-500/15 px-2 py-0.5 text-[9px] font-bold text-pink-400">VIP</span>
+            ) : activeFiltersCount > 0 ? (
+              <span
+                className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
+                style={{ background: `rgba(${activeModeConfig.accentRgb}, 0.8)` }}
+              >
+                {activeFiltersCount}
               </span>
             ) : null}
-          </span>
-        )}
-        <svg className={`h-3 w-3 transition-transform ${showFilters ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
-      </button>
+          </button>
+        </div>
+      </div>
 
-      {/* Collapsible filters */}
+      {/* ══ Backdrop overlay ══ */}
       {showFilters && (
-        <div className="animate-fade-in space-y-4 pt-2">
-          {/* Gender — VIP + VVIP */}
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Gender</p>
-            <div className="grid grid-cols-4 gap-1.5">
-              {(["Any", "Male", "Female", "Other"] as GenderFilter[]).map((option) => (
-                <button key={option} type="button" onClick={() => setGender((c) => (c === option ? "Any" : option))} className={pillClasses(gender === option)}>
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
+        <div
+          className="animate-fade-in fixed inset-0 z-40 bg-black/60 backdrop-blur-md"
+          onClick={() => setShowFilters(false)}
+        />
+      )}
 
-          {/* Style — VIP + VVIP */}
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Style</p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((option) => (
-                <button key={option} type="button" onClick={() => setStyle((c) => (c === option ? "Any style" : option))} className={pillClasses(style === option)}>
-                  {option === "Any style" ? "Any" : option}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Age group — VVIP only */}
-          <div className="relative">
-            {subscriptionTier !== "vvip" && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-[2px]">
-                <button type="button" onClick={() => onShowPaywall?.()} className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400/20 to-orange-500/20 px-3 py-1 text-[11px] font-bold text-amber-400 transition hover:from-amber-400/30 hover:to-orange-500/30">
-                  👑 VVIP
-                </button>
+      {/* ══ Centered filter panel ══ */}
+      {showFilters && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setShowFilters(false)}>
+          <div
+            className="animate-filter-slide-in flex w-full max-w-[420px] max-h-[80dvh] flex-col rounded-3xl border border-white/[0.08] bg-[#0f0f17]/95 shadow-[0_32px_80px_rgba(0,0,0,0.7)] backdrop-blur-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Panel header */}
+            <div className="flex items-center justify-between px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] ring-1 ring-white/[0.06]">
+                  <svg className="h-4 w-4 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
+                </div>
+                <div>
+                  <h2 className="text-[15px] font-bold text-white">Filters</h2>
+                  <p className="text-[11px] text-white/25">Customize your match</p>
+                </div>
               </div>
-            )}
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Age</p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((option) => (
-                <button key={option} type="button" onClick={() => { if (subscriptionTier === "vvip") setAgeGroup((c) => (c === option ? "Any age" : option)); }} className={pillClasses(ageGroup === option)}>
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Country — VVIP only */}
-          <div className="relative">
-            {subscriptionTier !== "vvip" && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-[2px]">
-                <button type="button" onClick={() => onShowPaywall?.()} className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400/20 to-orange-500/20 px-3 py-1 text-[11px] font-bold text-amber-400 transition hover:from-amber-400/30 hover:to-orange-500/30">
-                  👑 VVIP
-                </button>
-              </div>
-            )}
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Country</p>
-            <div className="relative" ref={countryMenuRef}>
               <button
                 type="button"
-                onClick={() => setCountryMenuOpen((c) => !c)}
-                className="flex w-full items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-sm font-medium text-white/70 transition hover:bg-white/[0.06]"
+                onClick={() => setShowFilters(false)}
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-white/30 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 active:scale-90"
               >
-                <span className="inline-flex items-center gap-2.5">
-                  <CountryFlagIcon countryCode={selectedCountryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
-                  <span>{country === "Any" ? "Any country" : getCountryLabel(country)}</span>
-                </span>
-                <svg className={`h-3.5 w-3.5 text-white/30 transition-transform ${countryMenuOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
               </button>
+            </div>
 
-              {countryMenuOpen && (
-                <div className="absolute z-30 mt-1.5 max-h-52 w-full overflow-y-auto rounded-xl border border-white/[0.08] bg-[#12121a] p-1 shadow-2xl">
+            {/* Divider */}
+            <div className="mx-6 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+
+            {/* Scrollable filters */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+              {/* VIP section */}
+              <div>
+                <div className="mb-4 flex items-center gap-2.5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-pink-500/10 text-[12px]">💎</span>
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-pink-400/60">VIP Filters</span>
+                </div>
+
+                <div className="space-y-5">
+                  <div>
+                    <label className="mb-2.5 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Gender preference</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["Any", "Male", "Female", "Other"] as GenderFilter[]).map((opt) => (
+                        <button key={opt} type="button" onClick={() => setGender((c) => (c === opt ? "Any" : opt))} className={chip(gender === opt, activeModeConfig.chipColor)}>{opt}</button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2.5 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Chat vibe</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((opt) => (
+                        <button key={opt} type="button" onClick={() => setStyle((c) => (c === opt ? "Any style" : opt))} className={chip(style === opt, activeModeConfig.chipColor)}>
+                          {opt === "Any style" ? "Any" : opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <button
                     type="button"
-                    onClick={() => { setCountry("Any"); setCountryMenuOpen(false); }}
-                    className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition ${country === "Any" ? "bg-white/[0.08] text-white" : "text-white/60 hover:bg-white/[0.06]"}`}
+                    onClick={() => setHideCountry((v) => !v)}
+                    className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3.5 transition-all duration-200 hover:bg-white/[0.04]"
                   >
-                    <CountryFlagIcon className="h-3.5 w-5 rounded-[2px] object-cover" />
-                    Any country
+                    <span className="flex items-center gap-2.5 text-[13px] font-medium text-white/40">
+                      <span className="text-[14px]">🙈</span>
+                      Hide my location
+                    </span>
+                    <span className={`relative flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${hideCountry ? "bg-pink-500" : "bg-white/10"}`}>
+                      <span className={`absolute h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${hideCountry ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
+                    </span>
                   </button>
-                  {COUNTRY_OPTIONS.map((option) => (
-                    <button
-                      key={option.code}
-                      type="button"
-                      onClick={() => { setCountry(option.code); setCountryMenuOpen(false); }}
-                      className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition ${country === option.code ? "bg-white/[0.08] text-white" : "text-white/60 hover:bg-white/[0.06]"}`}
-                    >
-                      <CountryFlagIcon countryCode={option.code} className="h-3.5 w-5 rounded-[2px] object-cover" />
-                      {option.label}
-                    </button>
-                  ))}
                 </div>
-              )}
+              </div>
+
+              {/* Divider */}
+              <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+
+              {/* VVIP section */}
+              <div className={subscriptionTier !== "vvip" ? "pointer-events-none" : ""}>
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/10 text-[12px]">👑</span>
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400/60">VVIP Filters</span>
+                  </div>
+                  {subscriptionTier !== "vvip" && (
+                    <button
+                      type="button"
+                      onClick={() => onShowPaywall?.()}
+                      className="pointer-events-auto rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-[10px] font-bold text-black transition-all duration-200 hover:shadow-[0_4px_16px_rgba(245,158,11,0.3)] active:scale-95"
+                    >
+                      Upgrade
+                    </button>
+                  )}
+                </div>
+
+                <div className={`space-y-5 transition-opacity duration-300 ${subscriptionTier !== "vvip" ? "opacity-30" : ""}`}>
+                  <div>
+                    <label className="mb-2.5 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Age range</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((opt) => (
+                        <button key={opt} type="button" onClick={() => { if (subscriptionTier === "vvip") setAgeGroup((c) => (c === opt ? "Any age" : opt)); }} className={chip(ageGroup === opt, "amber")}>
+                          {opt === "Any age" ? "Any" : opt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2.5 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Country</label>
+                    <div className="relative" ref={countryMenuRef}>
+                      <button
+                        type="button"
+                        onClick={() => { if (subscriptionTier === "vvip") setCountryMenuOpen((c) => !c); }}
+                        className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3.5 text-sm text-white/40 transition-all duration-200 hover:bg-white/[0.04]"
+                      >
+                        <span className="inline-flex items-center gap-2.5">
+                          <CountryFlagIcon countryCode={selectedCountryCode} className="h-3.5 w-5 rounded-sm object-cover" />
+                          {country === "Any" ? "Any country" : getCountryLabel(country)}
+                        </span>
+                        <svg className={`h-4 w-4 text-white/20 transition-transform duration-300 ${countryMenuOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
+                      </button>
+                      {countryMenuOpen && (
+                        <div className="absolute z-30 mt-2 max-h-44 w-full overflow-y-auto rounded-xl border border-white/[0.06] bg-[#141420] p-1.5 shadow-2xl backdrop-blur-xl">
+                          <button type="button" onClick={() => { setCountry("Any"); setCountryMenuOpen(false); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${country === "Any" ? "bg-white/10 text-white" : "text-white/40 hover:bg-white/[0.05]"}`}>
+                            <CountryFlagIcon className="h-3.5 w-5 rounded-sm object-cover" /> Any country
+                          </button>
+                          {COUNTRY_OPTIONS.map((opt) => (
+                            <button key={opt.code} type="button" onClick={() => { setCountry(opt.code); setCountryMenuOpen(false); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${country === opt.code ? "bg-white/10 text-white" : "text-white/40 hover:bg-white/[0.05]"}`}>
+                              <CountryFlagIcon countryCode={opt.code} className="h-3.5 w-5 rounded-sm object-cover" /> {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Apply button */}
+            <div className="border-t border-white/[0.06] px-6 py-5">
+              <button
+                type="button"
+                onClick={handleStart}
+                disabled={groupNickRequired}
+                className={`group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl py-3.5 text-[14px] font-bold text-white transition-all duration-300 active:scale-[0.97] ${groupNickRequired ? "opacity-40 cursor-not-allowed" : ""}`}
+                style={{
+                  background: `linear-gradient(135deg, rgba(${activeModeConfig.accentRgb}, 0.9), rgba(${activeModeConfig.accentRgb}, 1))`,
+                  boxShadow: `0 8px 24px rgba(${activeModeConfig.accentRgb}, 0.3)`,
+                }}
+              >
+                <span className="relative flex items-center gap-2">
+                  Apply & Start
+                  <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                </span>
+              </button>
             </div>
           </div>
-
-          {/* Hide location toggle — VIP + VVIP */}
-          <button
-            type="button"
-            onClick={() => setHideCountry((v) => !v)}
-            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition active:scale-[0.98] ${
-              hideCountry
-                ? "border-pink-500/25 bg-pink-500/[0.06] text-white/80"
-                : "border-white/[0.08] bg-white/[0.03] text-white/50 hover:bg-white/[0.05]"
-            }`}
-          >
-            <span className="flex items-center gap-2">
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-              Hide my location
-            </span>
-            <span className={`flex h-5 w-9 items-center rounded-full transition ${hideCountry ? "bg-pink-500 justify-end" : "bg-white/10 justify-start"}`}>
-              <span className={`mx-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform`} />
-            </span>
-          </button>
-
-          {/* Start with preferences */}
-          <button
-            type="button"
-            onClick={handleStart}
-            className="w-full rounded-xl border border-pink-500/25 bg-pink-500/[0.08] py-3 text-sm font-bold text-pink-300 transition hover:bg-pink-500/15 active:scale-[0.98]"
-          >
-            Start with Preferences
-          </button>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={onBack}
-        className="mt-4 w-full py-2 text-xs font-medium text-white/25 transition hover:text-white/50"
-      >
-        Sign Out
-      </button>
     </section>
   );
 }
@@ -943,6 +1148,8 @@ export function ChatRoomView({
   onSelectImage,
   clearAttachment,
   subscriptionTier = null,
+  hasActiveSubscription = false,
+  onShowPaywall,
 }: {
   strangerProfile: UserProfile;
   chatMode: ChatMode;
@@ -986,6 +1193,8 @@ export function ChatRoomView({
   onSelectImage: (event: ChangeEvent<HTMLInputElement>) => void;
   clearAttachment: () => void;
   subscriptionTier?: "vip" | "vvip" | null;
+  hasActiveSubscription?: boolean;
+  onShowPaywall?: () => void;
 }) {
   const chatContainerRef = useRef<HTMLElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1002,6 +1211,15 @@ export function ChatRoomView({
   const [revealedTimedImageIds, setRevealedTimedImageIds] = useState<Set<string>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [activeEmojiPickerMsgId, setActiveEmojiPickerMsgId] = useState<string | null>(null);
+  const [showChatFilters, setShowChatFilters] = useState(false);
+  const [filterGender, setFilterGender] = useState<GenderFilter>(chatFilters?.gender ?? "Any");
+  const [filterAgeGroup, setFilterAgeGroup] = useState<AgeGroupFilter>(chatFilters?.ageGroup ?? "Any age");
+  const [filterStyle, setFilterStyle] = useState<ChatStyleFilter>(chatFilters?.style ?? "Any style");
+  const [filterCountry, setFilterCountry] = useState<CountryFilter>(chatFilters?.country ?? "Any");
+  const [filterHideCountry, setFilterHideCountry] = useState(chatFilters?.hideCountry ?? false);
+  const [filterCountryMenuOpen, setFilterCountryMenuOpen] = useState(false);
+  const filterCountryMenuRef = useRef<HTMLDivElement | null>(null);
+  const filterSelectedCountryCode = filterCountry !== "Any" ? filterCountry : undefined;
   const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
 
   const modeLabel = chatMode === "text" ? "Text" : chatMode === "video" ? "Video" : "Group";
@@ -1015,6 +1233,168 @@ export function ChatRoomView({
   const strangerProfileLabel = hasResolvedStrangerProfile
     ? `${strangerProfile.gender}, ${strangerProfile.age}`
     : "Searching...";
+
+  const chatFilterActiveCount = [
+    chatFilters?.gender !== "Any" && chatFilters?.gender,
+    chatFilters?.ageGroup !== "Any age" && chatFilters?.ageGroup,
+    chatFilters?.style !== "Any style" && chatFilters?.style,
+    chatFilters?.country !== "Any" && chatFilters?.country,
+    chatFilters?.hideCountry,
+  ].filter(Boolean).length;
+
+  useEffect(() => {
+    if (!filterCountryMenuOpen) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!filterCountryMenuRef.current?.contains(event.target as Node)) setFilterCountryMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [filterCountryMenuOpen]);
+
+  const handleApplyFilters = () => {
+    setShowChatFilters(false);
+    onLeaveChat({ gender: filterGender, ageGroup: filterAgeGroup, style: filterStyle, country: filterCountry, hideCountry: filterHideCountry });
+  };
+
+  const chatFilterChip = (active: boolean) =>
+    `rounded-xl px-3.5 py-2 text-[12px] font-semibold text-center transition-all duration-300 cursor-pointer select-none border ${
+      active
+        ? "bg-pink-500/15 text-pink-300 border-pink-500/30 shadow-[0_0_12px_rgba(236,72,153,0.1)]"
+        : "bg-white/[0.02] text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/55 hover:bg-white/[0.04]"
+    }`;
+
+  const renderChatFilterPanel = () => (
+    <>
+      {showChatFilters && (
+        <div
+          className="animate-fade-in fixed inset-0 z-[60] bg-black/60 backdrop-blur-md"
+          onClick={() => setShowChatFilters(false)}
+        />
+      )}
+      {showChatFilters && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center px-4" onClick={() => setShowChatFilters(false)}>
+          <div
+            className="animate-filter-slide-in flex w-full max-w-[420px] max-h-[80dvh] flex-col rounded-3xl border border-white/[0.08] bg-[#0f0f17]/95 shadow-[0_32px_80px_rgba(0,0,0,0.7)] backdrop-blur-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-5">
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] ring-1 ring-white/[0.06]">
+                  <svg className="h-4 w-4 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
+                </div>
+                <div>
+                  <h2 className="text-[15px] font-bold text-white">Filters</h2>
+                  <p className="text-[11px] text-white/25">Change filters & find new match</p>
+                </div>
+              </div>
+              <button type="button" onClick={() => setShowChatFilters(false)} className="flex h-9 w-9 items-center justify-center rounded-xl text-white/30 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 active:scale-90">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="mx-6 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+
+            {/* Filters */}
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+              {/* VIP */}
+              <div className={!hasActiveSubscription ? "pointer-events-none opacity-40" : ""}>
+                <div className="mb-4 flex items-center gap-2.5">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-pink-500/10 text-[12px]">💎</span>
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-pink-400/60">VIP</span>
+                  {!hasActiveSubscription && (
+                    <button type="button" onClick={() => { setShowChatFilters(false); onShowPaywall?.(); }} className="pointer-events-auto ml-auto rounded-lg bg-pink-500 px-3 py-1 text-[10px] font-bold text-white transition hover:bg-pink-400 active:scale-95">Unlock</button>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Gender</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["Any", "Male", "Female", "Other"] as GenderFilter[]).map((opt) => (
+                        <button key={opt} type="button" onClick={() => setFilterGender((c) => (c === opt ? "Any" : opt))} className={chatFilterChip(filterGender === opt)}>{opt}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Vibe</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((opt) => (
+                        <button key={opt} type="button" onClick={() => setFilterStyle((c) => (c === opt ? "Any style" : opt))} className={chatFilterChip(filterStyle === opt)}>{opt === "Any style" ? "Any" : opt}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => setFilterHideCountry((v) => !v)} className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 transition-all duration-200 hover:bg-white/[0.04]">
+                    <span className="flex items-center gap-2.5 text-[13px] font-medium text-white/40"><span className="text-[14px]">🙈</span>Hide my location</span>
+                    <span className={`relative flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${filterHideCountry ? "bg-pink-500" : "bg-white/10"}`}>
+                      <span className={`absolute h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${filterHideCountry ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
+
+              {/* VVIP */}
+              <div className={subscriptionTier !== "vvip" ? "pointer-events-none" : ""}>
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/10 text-[12px]">👑</span>
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400/60">VVIP</span>
+                  </div>
+                  {subscriptionTier !== "vvip" && (
+                    <button type="button" onClick={() => { setShowChatFilters(false); onShowPaywall?.(); }} className="pointer-events-auto rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-[10px] font-bold text-black transition-all duration-200 hover:shadow-[0_4px_16px_rgba(245,158,11,0.3)] active:scale-95">Upgrade</button>
+                  )}
+                </div>
+                <div className={`space-y-4 transition-opacity duration-300 ${subscriptionTier !== "vvip" ? "opacity-30" : ""}`}>
+                  <div>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Age Range</label>
+                    <div className="flex flex-wrap gap-2">
+                      {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((opt) => (
+                        <button key={opt} type="button" onClick={() => { if (subscriptionTier === "vvip") setFilterAgeGroup((c) => (c === opt ? "Any age" : opt)); }} className={chatFilterChip(filterAgeGroup === opt)}>{opt === "Any age" ? "Any" : opt}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Country</label>
+                    <div className="relative" ref={filterCountryMenuRef}>
+                      <button type="button" onClick={() => { if (subscriptionTier === "vvip") setFilterCountryMenuOpen((c) => !c); }} className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm text-white/40 transition-all duration-200 hover:bg-white/[0.04]">
+                        <span className="inline-flex items-center gap-2.5">
+                          <CountryFlagIcon countryCode={filterSelectedCountryCode} className="h-3.5 w-5 rounded-sm object-cover" />
+                          {filterCountry === "Any" ? "Any country" : getCountryLabel(filterCountry)}
+                        </span>
+                        <svg className={`h-4 w-4 text-white/20 transition-transform duration-300 ${filterCountryMenuOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
+                      </button>
+                      {filterCountryMenuOpen && (
+                        <div className="absolute z-30 mt-2 max-h-44 w-full overflow-y-auto rounded-xl border border-white/[0.06] bg-[#141420] p-1.5 shadow-2xl backdrop-blur-xl">
+                          <button type="button" onClick={() => { setFilterCountry("Any"); setFilterCountryMenuOpen(false); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${filterCountry === "Any" ? "bg-white/10 text-white" : "text-white/40 hover:bg-white/[0.05]"}`}>
+                            <CountryFlagIcon className="h-3.5 w-5 rounded-sm object-cover" /> Any country
+                          </button>
+                          {COUNTRY_OPTIONS.map((opt) => (
+                            <button key={opt.code} type="button" onClick={() => { setFilterCountry(opt.code); setFilterCountryMenuOpen(false); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${filterCountry === opt.code ? "bg-white/10 text-white" : "text-white/40 hover:bg-white/[0.05]"}`}>
+                              <CountryFlagIcon countryCode={opt.code} className="h-3.5 w-5 rounded-sm object-cover" /> {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Apply */}
+            <div className="border-t border-white/[0.06] px-6 py-5">
+              <button type="button" onClick={handleApplyFilters} className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-pink-500 py-3.5 text-[14px] font-bold text-white transition-all duration-300 hover:bg-pink-400 active:scale-[0.97]">
+                <span className="relative flex items-center gap-2">
+                  Apply & Find New Match
+                  <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   const isNearBottom = (viewport: HTMLDivElement): boolean => {
     const distanceFromBottom = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop;
@@ -1121,9 +1501,21 @@ export function ChatRoomView({
     });
   }, [messages]);
 
+  /* ─── Stable vh for mobile keyboards ─── */
+  useEffect(() => {
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const update = () => {
+      document.documentElement.style.setProperty("--vh", `${vv.height * 0.01}px`);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    return () => vv.removeEventListener("resize", update);
+  }, []);
+
   useEffect(() => {
     if (!isSendingMessage && !isConnecting) {
-      messageInputRef.current?.focus();
+      messageInputRef.current?.focus({ preventScroll: true });
     }
   }, [isConnecting, isSendingMessage]);
 
@@ -1132,12 +1524,12 @@ export function ChatRoomView({
     return (
       <section
         ref={chatContainerRef}
-        className="fixed inset-0 z-50 flex flex-col bg-black"
+        className="fixed inset-0 z-50 flex flex-col bg-black touch-manipulation overscroll-contain"
       >
         {/* Split-screen: col on mobile (stranger top / you bottom), row on desktop (stranger left / you right) */}
-        <div className="flex h-[100dvh] w-full flex-col sm:flex-row">
+        <div className="flex h-[calc(var(--vh,1dvh)*100)] w-full flex-col sm:flex-row">
           {/* Stranger video panel */}
-          <div className="relative h-[50dvh] w-full shrink-0 overflow-hidden border-b border-white/10 sm:h-full sm:w-1/2 sm:shrink sm:border-b-0 sm:border-r">
+          <div className="relative h-[calc(var(--vh,1dvh)*50)] w-full shrink-0 overflow-hidden border-b border-white/10 sm:h-full sm:w-1/2 sm:shrink sm:border-b-0 sm:border-r">
             <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
             {!hasRemoteVideo && (
               <div className="absolute inset-0 grid place-items-center bg-black/90 text-center">
@@ -1146,14 +1538,16 @@ export function ChatRoomView({
                     <svg className="h-9 w-9 text-white/25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.5 20.118a7.5 7.5 0 0 1 15 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.5-1.632Z" /></svg>
                   </div>
                   {isConnecting ? (
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2 w-2 rounded-full bg-pink-400" style={{ animation: "typing-bounce 1.2s ease-in-out infinite" }} />
-                        <span className="h-2 w-2 rounded-full bg-pink-400/70" style={{ animation: "typing-bounce 1.2s ease-in-out 0.15s infinite" }} />
-                        <span className="h-2 w-2 rounded-full bg-pink-400/40" style={{ animation: "typing-bounce 1.2s ease-in-out 0.3s infinite" }} />
+                    <div className="flex flex-col items-center gap-4">
+                      <svg className="h-30 w-30" viewBox="0 0 60 60" style={{ animation: "search-spin 1.4s linear infinite" }}>
+                        <circle cx="30" cy="30" r="20" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2.5" />
+                        <circle cx="30" cy="30" r="20" fill="none" stroke="url(#search-grad)" strokeWidth="2.5" strokeLinecap="round" style={{ animation: "search-dash 1.6s ease-in-out infinite" }} />
+                        <defs><linearGradient id="search-grad" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="rgb(236,72,153)" /><stop offset="100%" stopColor="rgb(167,139,250)" /></linearGradient></defs>
+                      </svg>
+                      <div className="text-center" style={{ animation: "search-text-in 0.4s ease-out both" }}>
+                        <p className="text-sm font-medium text-white/60">Finding someone...</p>
+                        <p className="mt-1 text-xs text-white/30">{connectingStatus}</p>
                       </div>
-                      <p className="text-sm font-medium text-white/50">Finding someone...</p>
-                      <p className="text-xs text-white/30">{connectingStatus}</p>
                     </div>
                   ) : (
                     <p className="text-sm font-medium text-white/35">Waiting for stranger&apos;s camera...</p>
@@ -1164,7 +1558,7 @@ export function ChatRoomView({
           </div>
 
           {/* Your video panel */}
-          <div className="relative h-[50dvh] w-full shrink-0 overflow-hidden sm:h-full sm:w-1/2 sm:shrink">
+          <div className="relative h-[calc(var(--vh,1dvh)*50)] w-full shrink-0 overflow-hidden sm:h-full sm:w-1/2 sm:shrink">
             <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
             {!localVideoEnabled && (
               <div className="absolute inset-0 grid place-items-center bg-black/85">
@@ -1182,7 +1576,7 @@ export function ChatRoomView({
           {!showBackConfirm ? (
             <button
               onClick={() => setShowBackConfirm(true)}
-              className="flex h-10 min-w-[4rem] items-center justify-center gap-1.5 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md transition hover:bg-black/60 active:scale-[0.96]"
+              className="btn-action btn-action-ghost flex h-10 min-w-[4rem] items-center justify-center gap-1.5 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md transition hover:bg-black/60"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
               Back
@@ -1190,8 +1584,8 @@ export function ChatRoomView({
           ) : (
             <div className="flex items-center gap-2 animate-pop-in">
               <span className="text-xs font-semibold text-white/60">Leave?</span>
-              <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="h-10 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md active:scale-[0.96]">Yes</button>
-              <button onClick={() => setShowBackConfirm(false)} className="h-10 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md active:scale-[0.96]">No</button>
+              <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="btn-action btn-action-pink h-10 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md">Yes</button>
+              <button onClick={() => setShowBackConfirm(false)} className="btn-action btn-action-ghost h-10 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md">No</button>
             </div>
           )}
 
@@ -1219,10 +1613,23 @@ export function ChatRoomView({
           </div>
 
           <div className="flex items-center gap-2">
+            {/* Filter button (video mode) */}
+            <button
+              type="button"
+              onClick={() => setShowChatFilters(true)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition hover:bg-black/60 active:scale-[0.96]"
+              aria-label="Filters"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
+              {chatFilterActiveCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-pink-500 text-[9px] font-bold text-white">{chatFilterActiveCount}</span>
+              )}
+            </button>
+
             {showNextStrangerPrompt ? (
               <button
                 onClick={onNextStranger}
-                className="animate-pop-in flex h-10 items-center gap-1.5 rounded-full bg-emerald-500 px-5 text-xs font-bold text-white shadow-[0_0_12px_rgba(16,185,129,0.4)] active:scale-[0.96]"
+                className="btn-action btn-action-emerald animate-pop-in flex h-10 items-center gap-1.5 rounded-full bg-emerald-500 px-5 text-xs font-bold text-white shadow-[0_0_12px_rgba(16,185,129,0.4)]"
               >
                 Next
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 6 6 6-6 6"/></svg>
@@ -1232,15 +1639,15 @@ export function ChatRoomView({
                 {!showLeaveConfirm ? (
                   <button
                     onClick={() => setShowLeaveConfirm(true)}
-                    className="flex h-10 items-center rounded-full bg-rose-500/90 px-5 text-xs font-bold text-white backdrop-blur-md active:scale-[0.96]"
+                    className="btn-action btn-action-rose flex h-10 items-center rounded-full bg-rose-500/90 px-5 text-xs font-bold text-white backdrop-blur-md"
                   >
                     Leave
                   </button>
                 ) : (
                   <div className="flex items-center gap-2 animate-pop-in">
                     <span className="text-xs font-semibold text-white/60">Sure?</span>
-                    <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="h-10 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md active:scale-[0.96]">Yes</button>
-                    <button onClick={() => setShowLeaveConfirm(false)} className="h-10 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md active:scale-[0.96]">No</button>
+                    <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="btn-action btn-action-pink h-10 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md">Yes</button>
+                    <button onClick={() => setShowLeaveConfirm(false)} className="btn-action btn-action-ghost h-10 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md">No</button>
                   </div>
                 )}
               </>
@@ -1254,7 +1661,7 @@ export function ChatRoomView({
             <div
               ref={messagesViewportRef}
               onScroll={handleMessagesScroll}
-              className="flex-1 overflow-y-auto px-3 py-3"
+              className="flex-1 overflow-y-auto px-3 py-3 overscroll-contain will-change-scroll [transform:translateZ(0)]"
             >
               <div className="flex flex-col gap-2">
                 {messages.map((msg) => {
@@ -1290,6 +1697,11 @@ export function ChatRoomView({
               <input
                 ref={messageInputRef}
                 type="text"
+                inputMode="text"
+                enterKeyHint="send"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="sentences"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
@@ -1385,6 +1797,8 @@ export function ChatRoomView({
             <p className="rounded-xl bg-rose-500/20 px-4 py-2.5 text-center text-xs font-medium text-rose-300 backdrop-blur-md">{videoError}</p>
           </div>
         )}
+
+        {renderChatFilterPanel()}
       </section>
     );
   }
@@ -1393,14 +1807,14 @@ export function ChatRoomView({
   return (
     <section
       ref={chatContainerRef}
-      className={`${isFullscreen ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(100dvh-5.5rem)] rounded-2xl sm:h-[calc(100dvh-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.06] bg-[#0a0a10] shadow-[0_8px_40px_rgba(0,0,0,0.5)]`}
+      className={`${isFullscreen ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.06] bg-[#0a0a10] shadow-[0_8px_40px_rgba(0,0,0,0.5)] overscroll-contain touch-manipulation`}
     >
       {/* ─── Header ─── */}
       <header className="flex items-center gap-2 border-b border-white/[0.06] bg-[#0d0d14]/90 px-2.5 py-2 backdrop-blur-md sm:px-4 sm:py-2.5">
         {!showBackConfirm ? (
           <button
             onClick={() => setShowBackConfirm(true)}
-            className="flex h-8 items-center gap-1 rounded-lg bg-white/[0.06] px-2.5 text-[11px] font-semibold text-white/50 transition-all duration-150 hover:bg-white/[0.1] hover:text-white/70 active:scale-[0.95]"
+            className="btn-action btn-action-ghost flex h-8 items-center gap-1 rounded-lg bg-white/[0.06] px-2.5 text-[11px] font-semibold text-white/50 transition-all duration-150 hover:bg-white/[0.1] hover:text-white/70"
           >
             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
             Back
@@ -1408,8 +1822,8 @@ export function ChatRoomView({
         ) : (
           <div className="flex items-center gap-1.5 animate-pop-in">
             <span className="text-[11px] font-semibold text-white/40">Sure?</span>
-            <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-pink-400 active:scale-[0.95]">Yes</button>
-            <button onClick={() => setShowBackConfirm(false)} className="h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition-all duration-150 hover:bg-white/[0.14] active:scale-[0.95]">No</button>
+            <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="btn-action btn-action-pink h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-pink-400">Yes</button>
+            <button onClick={() => setShowBackConfirm(false)} className="btn-action btn-action-ghost h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition-all duration-150 hover:bg-white/[0.14]">No</button>
           </div>
         )}
 
@@ -1459,10 +1873,23 @@ export function ChatRoomView({
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* Filter button */}
+          <button
+            type="button"
+            onClick={() => setShowChatFilters(true)}
+            className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white/30 transition hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.95]"
+            aria-label="Filters"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
+            {chatFilterActiveCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-pink-500 text-[9px] font-bold text-white">{chatFilterActiveCount}</span>
+            )}
+          </button>
+
           {showNextStrangerPrompt ? (
             <button
               onClick={onNextStranger}
-              className="animate-pop-in flex h-8 items-center gap-1 rounded-lg bg-emerald-500 px-4 text-[11px] font-bold text-white shadow-[0_0_12px_rgba(16,185,129,0.25)] transition-all duration-150 hover:bg-emerald-400 hover:shadow-[0_0_18px_rgba(16,185,129,0.35)] active:scale-[0.95]"
+              className="btn-action btn-action-emerald animate-pop-in flex h-8 items-center gap-1 rounded-lg bg-emerald-500 px-4 text-[11px] font-bold text-white shadow-[0_0_12px_rgba(16,185,129,0.25)] transition-all duration-150 hover:bg-emerald-400 hover:shadow-[0_0_18px_rgba(16,185,129,0.35)]"
             >
               Next
               <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 6 6 6-6 6"/></svg>
@@ -1472,15 +1899,15 @@ export function ChatRoomView({
               {!showLeaveConfirm ? (
                 <button
                   onClick={() => setShowLeaveConfirm(true)}
-                  className="flex h-8 items-center rounded-lg bg-rose-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-rose-400 active:scale-[0.95]"
+                  className="btn-action btn-action-rose flex h-8 items-center rounded-lg bg-rose-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-rose-400"
                 >
                   Leave
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 animate-pop-in">
                   <span className="text-[11px] font-semibold text-white/40">Sure?</span>
-                  <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-pink-400 active:scale-[0.95]">Yes</button>
-                  <button onClick={() => setShowLeaveConfirm(false)} className="h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition-all duration-150 hover:bg-white/[0.14] active:scale-[0.95]">No</button>
+                  <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="btn-action btn-action-pink h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-pink-400">Yes</button>
+                  <button onClick={() => setShowLeaveConfirm(false)} className="btn-action btn-action-ghost h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition-all duration-150 hover:bg-white/[0.14]">No</button>
                 </div>
               )}
             </>
@@ -1503,19 +1930,19 @@ export function ChatRoomView({
       <div
         ref={messagesViewportRef}
         onScroll={handleMessagesScroll}
-        className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-5"
+        className="relative min-h-0 flex-1 overflow-y-auto px-3 py-4 md:px-5 overscroll-contain will-change-scroll [transform:translateZ(0)]"
       >
         <div className="mx-auto flex w-full max-w-2xl flex-col gap-3">
           {/* Connecting state */}
           {isConnecting && (
             <div className="animate-fade-in-up flex justify-center py-10">
               <div className="flex flex-col items-center gap-5">
-                <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-pink-400" style={{ animation: "typing-bounce 1.2s ease-in-out infinite" }} />
-                  <span className="h-2 w-2 rounded-full bg-pink-400/70" style={{ animation: "typing-bounce 1.2s ease-in-out 0.15s infinite" }} />
-                  <span className="h-2 w-2 rounded-full bg-pink-400/40" style={{ animation: "typing-bounce 1.2s ease-in-out 0.3s infinite" }} />
-                </div>
-                <div className="text-center">
+                <svg className="h-24 w-24" viewBox="0 0 50 50" style={{ animation: "search-spin 1.4s linear infinite" }}>
+                  <circle cx="25" cy="25" r="20" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="2.5" />
+                  <circle cx="25" cy="25" r="20" fill="none" stroke="url(#search-grad-txt)" strokeWidth="2.5" strokeLinecap="round" style={{ animation: "search-dash 1.6s ease-in-out infinite" }} />
+                  <defs><linearGradient id="search-grad-txt" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stopColor="rgb(236,72,153)" /><stop offset="100%" stopColor="rgb(167,139,250)" /></linearGradient></defs>
+                </svg>
+                <div className="text-center" style={{ animation: "search-text-in 0.4s ease-out both" }}>
                   <p className="text-sm font-medium text-white/70">Finding someone...</p>
                   <p className="mt-1 text-xs text-white/35">{connectingStatus}</p>
                 </div>
@@ -1802,7 +2229,7 @@ export function ChatRoomView({
       </div>
 
       {/* ─── Footer ─── */}
-      <footer className="border-t border-white/[0.06] bg-[#0a0a10] px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 md:px-4 md:pt-2.5">
+      <footer className="border-t border-white/[0.06] bg-[#0a0a10] px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 md:px-4 md:pt-2.5 flex-shrink-0">
         <div className="mx-auto w-full max-w-2xl space-y-2">
           {/* Reply preview */}
           {replyingTo && (
@@ -1898,6 +2325,11 @@ export function ChatRoomView({
               <input
                 ref={messageInputRef}
                 type="text"
+                inputMode="text"
+                enterKeyHint="send"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="sentences"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
@@ -1933,6 +2365,8 @@ export function ChatRoomView({
       </footer>
 
       <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={onSelectImage} />
+
+      {renderChatFilterPanel()}
     </section>
   );
 }
