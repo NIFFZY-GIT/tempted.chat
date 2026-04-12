@@ -55,6 +55,7 @@ export function TopNav({
 		{ href: "/plans", label: "Plans" },
 		{ href: "/safety", label: "Safety" },
 		{ href: "/about", label: "About" },
+		{ href: "/feedback", label: "Feedback" },
 	];
 
 	return (

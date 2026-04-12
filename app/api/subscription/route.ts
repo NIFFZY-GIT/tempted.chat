@@ -1,25 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getApps } from "firebase-admin/app";
-import { initializeApp, cert } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-
-if (getApps().length === 0) {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (serviceAccount) {
-    initializeApp({ credential: cert(JSON.parse(serviceAccount)) });
-  } else {
-    initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
-  }
-}
-
-const adminDb = getFirestore();
+import { adminDb, verifyAuthToken } from "@/lib/firebase-admin";
 
 export async function GET(request: NextRequest) {
-  const uid = request.nextUrl.searchParams.get("uid");
-
-  if (!uid) {
-    return NextResponse.json({ error: "Missing uid" }, { status: 400 });
+  const authenticatedUid = await verifyAuthToken(
+    request.headers.get("authorization"),
+  );
+  if (!authenticatedUid) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  const uid = authenticatedUid;
 
   try {
     const doc = await adminDb.collection("subscriptions").doc(uid).get();

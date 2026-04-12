@@ -17,6 +17,17 @@ type DashboardStats = {
   waitingUsers: number;
   usersTexting: number;
   usersVideo: number;
+  vipCount: number;
+  vvipCount: number;
+  genderMale: number;
+  genderFemale: number;
+  genderOther: number;
+  age18Under: number;
+  age18to24: number;
+  age25to34: number;
+  age35plus: number;
+  vipByGender: { male: number; female: number; other: number };
+  vvipByGender: { male: number; female: number; other: number };
 };
 
 const INITIAL_STATS: DashboardStats = {
@@ -28,6 +39,17 @@ const INITIAL_STATS: DashboardStats = {
   waitingUsers: 0,
   usersTexting: 0,
   usersVideo: 0,
+  vipCount: 0,
+  vvipCount: 0,
+  genderMale: 0,
+  genderFemale: 0,
+  genderOther: 0,
+  age18Under: 0,
+  age18to24: 0,
+  age25to34: 0,
+  age35plus: 0,
+  vipByGender: { male: 0, female: 0, other: 0 },
+  vvipByGender: { male: 0, female: 0, other: 0 },
 };
 
 const ROOM_PRESENCE_FRESH_MS = 20 * 1000;
@@ -168,10 +190,18 @@ export default function AdminDashboardPage() {
     const unsubWaitingUsers = onSnapshot(waitingUsersQuery, (snapshot) => {
       const thresholdMs = Date.now() - 2 * 60 * 1000;
       let waitingUsers = 0;
+      let genderMale = 0;
+      let genderFemale = 0;
+      let genderOther = 0;
+      let age18Under = 0;
+      let age18to24 = 0;
+      let age25to34 = 0;
+      let age35plus = 0;
 
       snapshot.docs.forEach((waitingDoc) => {
         const data = waitingDoc.data() as {
           lastSeenAt?: { toMillis?: () => number } | number;
+          profile?: { gender?: string; age?: number };
         };
 
         const lastSeenMs =
@@ -181,12 +211,32 @@ export default function AdminDashboardPage() {
 
         if (lastSeenMs >= thresholdMs) {
           waitingUsers += 1;
+
+          const gender = data.profile?.gender;
+          if (gender === "Male") genderMale += 1;
+          else if (gender === "Female") genderFemale += 1;
+          else genderOther += 1;
+
+          const age = data.profile?.age;
+          if (typeof age === "number") {
+            if (age < 18) age18Under += 1;
+            else if (age <= 24) age18to24 += 1;
+            else if (age <= 34) age25to34 += 1;
+            else age35plus += 1;
+          }
         }
       });
 
       nextStats = {
         ...nextStats,
         waitingUsers,
+        genderMale,
+        genderFemale,
+        genderOther,
+        age18Under,
+        age18to24,
+        age25to34,
+        age35plus,
       };
       applyStats();
     });
@@ -245,12 +295,65 @@ export default function AdminDashboardPage() {
       applyStats();
     });
 
+    // --- Subscription listener (VIP / VVIP) ---
+    const subscriptionsRef = collection(db, "subscriptions");
+    const unsubSubscriptions = onSnapshot(subscriptionsRef, async (snapshot) => {
+      const nowMs = Date.now();
+      let vipCount = 0;
+      let vvipCount = 0;
+      const vipByGender = { male: 0, female: 0, other: 0 };
+      const vvipByGender = { male: 0, female: 0, other: 0 };
+
+      // Collect active subscriber UIDs with their tier
+      const activeSubs: { uid: string; tier: string }[] = [];
+
+      snapshot.docs.forEach((subDoc) => {
+        const data = subDoc.data() as { tier?: string; expiresAt?: number };
+        if (!data.tier || !data.expiresAt || data.expiresAt <= nowMs) return;
+
+        if (data.tier === "vip") vipCount += 1;
+        else if (data.tier === "vvip") vvipCount += 1;
+
+        activeSubs.push({ uid: subDoc.id, tier: data.tier });
+      });
+
+      // Cross-reference with waitingUsers for gender breakdown
+      // (waitingUsers docs are keyed by uid and have profile.gender)
+      const { getDocs, doc, getDoc } = await import("firebase/firestore");
+      for (const sub of activeSubs) {
+        try {
+          const waitingDoc = await getDoc(doc(db, "waitingUsers", sub.uid));
+          const profile = waitingDoc.exists()
+            ? (waitingDoc.data() as { profile?: { gender?: string } }).profile
+            : undefined;
+
+          const g = profile?.gender;
+          const bucket = g === "Male" ? "male" : g === "Female" ? "female" : "other";
+
+          if (sub.tier === "vip") vipByGender[bucket] += 1;
+          else if (sub.tier === "vvip") vvipByGender[bucket] += 1;
+        } catch {
+          // skip if doc not found
+        }
+      }
+
+      nextStats = {
+        ...nextStats,
+        vipCount,
+        vvipCount,
+        vipByGender,
+        vvipByGender,
+      };
+      applyStats();
+    });
+
     return () => {
       unsubOnlineUsers();
       unsubWaitingUsers();
       unsubActiveRooms();
       unsubTextRooms();
       unsubVideoRooms();
+      unsubSubscriptions();
     };
   }, [isAdmin, user]);
 
@@ -329,6 +432,10 @@ export default function AdminDashboardPage() {
           <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 transition hover:bg-white/[0.04] hover:text-white/60">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" /></svg>
             Rooms
+          </button>
+          <button onClick={() => router.push("/admin/feedback")} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 transition hover:bg-white/[0.04] hover:text-white/60">
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+            Feedback
           </button>
         </nav>
 
@@ -486,6 +593,150 @@ export default function AdminDashboardPage() {
                         />
                       </div>
                       <span className="text-[10px] text-white/25">{bar.label}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ── VIP / VVIP stats ── */}
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {/* VIP count */}
+            <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 transition hover:border-white/[0.1]">
+              <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-yellow-500/[0.06] blur-2xl transition-all group-hover:bg-yellow-500/[0.1]" />
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VIP</p>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/10">
+                  <span className="text-sm">⭐</span>
+                </div>
+              </div>
+              <p className="mt-3 text-3xl font-extrabold tracking-tight text-yellow-400">{stats.vipCount}</p>
+              <p className="mt-1 text-[11px] text-white/25">active VIP subscribers</p>
+            </div>
+
+            {/* VVIP count */}
+            <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 transition hover:border-white/[0.1]">
+              <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-purple-500/[0.06] blur-2xl transition-all group-hover:bg-purple-500/[0.1]" />
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VVIP</p>
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10">
+                  <span className="text-sm">💎</span>
+                </div>
+              </div>
+              <p className="mt-3 text-3xl font-extrabold tracking-tight text-purple-400">{stats.vvipCount}</p>
+              <p className="mt-1 text-[11px] text-white/25">active VVIP subscribers</p>
+            </div>
+
+            {/* VIP by gender */}
+            <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VIP by Gender</p>
+              <div className="mt-4 space-y-2.5">
+                {[
+                  { label: "Male", value: stats.vipByGender.male, color: "bg-blue-500" },
+                  { label: "Female", value: stats.vipByGender.female, color: "bg-pink-500" },
+                  { label: "Other", value: stats.vipByGender.other, color: "bg-white/30" },
+                ].map((item) => {
+                  const pct = stats.vipCount > 0 ? Math.round((item.value / stats.vipCount) * 100) : 0;
+                  return (
+                    <div key={item.label}>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-medium text-white/50">{item.label}</span>
+                        <span className="tabular-nums text-white/40">{item.value} <span className="text-white/20">({pct}%)</span></span>
+                      </div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.04]">
+                        <div className={`h-full rounded-full ${item.color} transition-all duration-700`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* VVIP by gender */}
+            <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VVIP by Gender</p>
+              <div className="mt-4 space-y-2.5">
+                {[
+                  { label: "Male", value: stats.vvipByGender.male, color: "bg-blue-500" },
+                  { label: "Female", value: stats.vvipByGender.female, color: "bg-pink-500" },
+                  { label: "Other", value: stats.vvipByGender.other, color: "bg-white/30" },
+                ].map((item) => {
+                  const pct = stats.vvipCount > 0 ? Math.round((item.value / stats.vvipCount) * 100) : 0;
+                  return (
+                    <div key={item.label}>
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-medium text-white/50">{item.label}</span>
+                        <span className="tabular-nums text-white/40">{item.value} <span className="text-white/20">({pct}%)</span></span>
+                      </div>
+                      <div className="mt-1 h-1 overflow-hidden rounded-full bg-white/[0.04]">
+                        <div className={`h-full rounded-full ${item.color} transition-all duration-700`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Gender & Age Demographics ── */}
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            {/* Gender breakdown */}
+            <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Gender Distribution</p>
+              <p className="mt-0.5 text-[10px] text-white/15">active waiting users</p>
+              <div className="mt-5 flex items-end gap-4">
+                {[
+                  { label: "Male", value: stats.genderMale, color: "from-blue-500 to-blue-600", emoji: "♂" },
+                  { label: "Female", value: stats.genderFemale, color: "from-pink-500 to-pink-600", emoji: "♀" },
+                  { label: "Other", value: stats.genderOther, color: "from-white/30 to-white/20", emoji: "⚧" },
+                ].map((bar) => {
+                  const total = stats.genderMale + stats.genderFemale + stats.genderOther;
+                  const pct = total > 0 ? Math.round((bar.value / total) * 100) : 0;
+                  const maxVal = Math.max(stats.genderMale, stats.genderFemale, stats.genderOther, 1);
+                  const heightPct = Math.max((bar.value / maxVal) * 100, 4);
+                  return (
+                    <div key={bar.label} className="group flex flex-1 flex-col items-center gap-2">
+                      <span className="text-xs tabular-nums font-bold text-white/60">{bar.value}</span>
+                      <div className="flex h-32 w-full items-end justify-center">
+                        <div
+                          className={`w-full max-w-[48px] rounded-t-lg bg-gradient-to-t ${bar.color} transition-all duration-700 opacity-80 group-hover:opacity-100`}
+                          style={{ height: `${heightPct}%`, minHeight: "6px" }}
+                        />
+                      </div>
+                      <div className="text-center">
+                        <span className="text-sm">{bar.emoji}</span>
+                        <p className="text-[10px] text-white/30">{bar.label}</p>
+                        <p className="text-[10px] tabular-nums text-white/20">{pct}%</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Age breakdown */}
+            <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Age Distribution</p>
+              <p className="mt-0.5 text-[10px] text-white/15">active waiting users</p>
+              <div className="mt-5 space-y-4">
+                {[
+                  { label: "Under 18", value: stats.age18Under, color: "bg-rose-500" },
+                  { label: "18 – 24", value: stats.age18to24, color: "bg-orange-500" },
+                  { label: "25 – 34", value: stats.age25to34, color: "bg-emerald-500" },
+                  { label: "35+", value: stats.age35plus, color: "bg-cyan-500" },
+                ].map((item) => {
+                  const total = stats.age18Under + stats.age18to24 + stats.age25to34 + stats.age35plus;
+                  const pct = total > 0 ? Math.round((item.value / total) * 100) : 0;
+                  return (
+                    <div key={item.label}>
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="font-medium text-white/50">{item.label}</span>
+                        <span className="tabular-nums text-white/40">{item.value} <span className="text-white/20">({pct}%)</span></span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white/[0.04]">
+                        <div className={`h-full rounded-full ${item.color} transition-all duration-700`} style={{ width: `${pct}%` }} />
+                      </div>
                     </div>
                   );
                 })}

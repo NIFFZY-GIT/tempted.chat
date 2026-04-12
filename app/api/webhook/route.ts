@@ -1,19 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
-import { initializeApp, cert, getApps } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
-
-// Initialize Firebase Admin if not already done.
-if (getApps().length === 0) {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
-  if (serviceAccount) {
-    initializeApp({ credential: cert(JSON.parse(serviceAccount)) });
-  } else {
-    initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
-  }
-}
-
-const adminDb = getFirestore();
+import { adminDb } from "@/lib/firebase-admin";
 
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();

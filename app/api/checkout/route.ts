@@ -1,21 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, getPlanById, type PlanId } from "@/lib/stripe";
+import { verifyAuthToken } from "@/lib/firebase-admin";
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { planId, uid } = body as { planId?: string; uid?: string };
-
-    if (!planId || !uid) {
-      return NextResponse.json({ error: "Missing planId or uid" }, { status: 400 });
+    const authenticatedUid = await verifyAuthToken(
+      request.headers.get("authorization"),
+    );
+    if (!authenticatedUid) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    const body = await request.json();
+    const { planId } = body as { planId?: string };
+
+    if (!planId) {
+      return NextResponse.json({ error: "Missing planId" }, { status: 400 });
+    }
+
+    const uid = authenticatedUid;
 
     const plan = getPlanById(planId as PlanId);
     if (!plan) {
       return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
     }
 
-    const origin = request.headers.get("origin") ?? "http://localhost:3000";
+    const origin = request.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://tempted.chat";
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",

@@ -2,8 +2,7 @@
   {
     "origin": [
       "https://www.tempted.chat",
-      "https://tempted.chat",
-      "http://localhost:3000"
+      "https://tempted.chat"
     ],
     "method": ["GET", "HEAD", "POST", "PUT", "DELETE", "OPTIONS"],
     "responseHeader": ["Content-Type", "Authorization", "x-goog-resumable"],
