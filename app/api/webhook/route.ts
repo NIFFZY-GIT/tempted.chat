@@ -5,9 +5,12 @@ import { getFirestore } from "firebase-admin/firestore";
 
 // Initialize Firebase Admin if not already done.
 if (getApps().length === 0) {
-  initializeApp({
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  });
+  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (serviceAccount) {
+    initializeApp({ credential: cert(JSON.parse(serviceAccount)) });
+  } else {
+    initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
+  }
 }
 
 const adminDb = getFirestore();

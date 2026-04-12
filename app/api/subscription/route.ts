@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getApps } from "firebase-admin/app";
-import { initializeApp } from "firebase-admin/app";
+import { initializeApp, cert } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 
 if (getApps().length === 0) {
-  initializeApp({
-    projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  });
+  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  if (serviceAccount) {
+    initializeApp({ credential: cert(JSON.parse(serviceAccount)) });
+  } else {
+    initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
+  }
 }
 
 const adminDb = getFirestore();
