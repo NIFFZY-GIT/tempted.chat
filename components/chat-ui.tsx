@@ -1062,9 +1062,9 @@ export function ChatRoomView({
         className="fixed inset-0 z-50 flex flex-col bg-black"
       >
         {/* Split-screen: col on mobile (stranger top / you bottom), row on desktop (stranger left / you right) */}
-        <div className="flex flex-1 flex-col sm:flex-row">
+        <div className="flex h-[100dvh] w-full flex-col sm:flex-row">
           {/* Stranger video panel */}
-          <div className="relative flex-1 overflow-hidden border-b border-white/10 sm:border-b-0 sm:border-r">
+          <div className="relative h-[50dvh] w-full shrink-0 overflow-hidden border-b border-white/10 sm:h-full sm:w-1/2 sm:shrink sm:border-b-0 sm:border-r">
             <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
             {!hasRemoteVideo && (
               <div className="absolute inset-0 grid place-items-center bg-black/90 text-center">
@@ -1091,7 +1091,7 @@ export function ChatRoomView({
           </div>
 
           {/* Your video panel */}
-          <div className="relative flex-1 overflow-hidden">
+          <div className="relative h-[50dvh] w-full shrink-0 overflow-hidden sm:h-full sm:w-1/2 sm:shrink">
             <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
             {!localVideoEnabled && (
               <div className="absolute inset-0 grid place-items-center bg-black/85">

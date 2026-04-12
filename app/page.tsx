@@ -509,22 +509,34 @@ export default function Home() {
     const targetFacingMode: "user" | "environment" = cameraFacingMode === "user" ? "environment" : "user";
 
     try {
-      const switchedStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: targetFacingMode } },
-        audio: false,
+      // Stop old video tracks first — mobile browsers often won't release the
+      // camera hardware until the existing track is stopped, which prevents
+      // getUserMedia from acquiring the other camera.
+      const existingVideoTracks = localStream.getVideoTracks();
+      existingVideoTracks.forEach((track) => {
+        localStream.removeTrack(track);
+        track.stop();
       });
+
+      // Try with `exact` first (reliable on mobile), fall back to `ideal`.
+      let switchedStream: MediaStream;
+      try {
+        switchedStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: targetFacingMode } },
+          audio: false,
+        });
+      } catch {
+        switchedStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: targetFacingMode } },
+          audio: false,
+        });
+      }
 
       const newVideoTrack = switchedStream.getVideoTracks()[0];
       if (!newVideoTrack) {
         setVideoError("Could not switch camera.");
         return;
       }
-
-      const existingVideoTracks = localStream.getVideoTracks();
-      existingVideoTracks.forEach((track) => {
-        localStream.removeTrack(track);
-        track.stop();
-      });
 
       localStream.addTrack(newVideoTrack);
       newVideoTrack.enabled = localVideoEnabled;
@@ -1104,7 +1116,10 @@ export default function Home() {
     clearE2EECaches();
   }, [activeRoomId]);
 
-  // Start local camera preview as soon as video mode is entered (before matching).
+  // Start local camera preview as soon as video mode is entered and the user has
+  // started searching (Quick Start). Without the connecting/room guard the camera
+  // would activate immediately when the saved "video" mode is restored from
+  // localStorage, even though the user is still on the mode-selection screen.
   useEffect(() => {
     if (chatMode !== "video") {
       // Stop preview when leaving video mode, but only if no peer connection is active.
@@ -1118,6 +1133,12 @@ export default function Home() {
         setLocalAudioEnabled(true);
         setVideoError(null);
       }
+      return;
+    }
+
+    // Only start the camera once the user has actually initiated a chat session
+    // (clicked Quick Start) rather than just having video mode restored from storage.
+    if (!isConnecting && !activeRoomId) {
       return;
     }
 
@@ -1163,7 +1184,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [chatMode]);
+  }, [chatMode, isConnecting, activeRoomId]);
 
   useEffect(() => {
     if (chatMode !== "video" || !activeRoomId || !user) {
