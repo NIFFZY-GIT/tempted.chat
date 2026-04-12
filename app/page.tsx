@@ -3420,7 +3420,11 @@ export default function Home() {
   const checkSubscription = useCallback(async (uid: string) => {
     setSubscriptionLoading(true);
     try {
-      const res = await fetch(`/api/subscription?uid=${encodeURIComponent(uid)}`);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) return;
+      const res = await fetch(`/api/subscription?uid=${encodeURIComponent(uid)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
       if (res.ok) {
         const data = await res.json();
         setSubscriptionExpiresAt(data.active ? data.expiresAt : null);

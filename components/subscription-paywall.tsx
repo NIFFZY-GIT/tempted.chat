@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
+import { auth } from "@/lib/firebase";
 
 export type PlanId = "1h" | "24h" | "7d" | "30d";
 
@@ -78,10 +79,12 @@ export function SubscriptionPaywall({
     setError(null);
 
     try {
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) { setError("Please sign in again."); setLoading(null); return; }
       const response = await fetch("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, uid }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ planId }),
       });
 
       const data = await response.json();

@@ -63,7 +63,11 @@ export default function PlansPage() {
   useEffect(() => {
     if (!user) { setSubLoading(false); return; }
     setSubLoading(true);
-    fetch(`/api/subscription?uid=${encodeURIComponent(user.uid)}`)
+    user.getIdToken().then((token) =>
+      fetch(`/api/subscription?uid=${encodeURIComponent(user.uid)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+    )
       .then((r) => r.json())
       .then((data) => {
         if (data.active) {
@@ -87,10 +91,11 @@ export default function PlansPage() {
     setLoading(planId);
     setError(null);
     try {
+      const token = await user.getIdToken();
       const res = await fetch("/api/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId, uid: user.uid }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ planId }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Something went wrong"); setLoading(null); return; }
