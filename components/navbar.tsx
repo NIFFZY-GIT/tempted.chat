@@ -63,6 +63,7 @@ export function TopNav({
 
 					<div className="hidden items-center md:flex">
 						<Link href="/" className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-white/35 transition-all duration-150 hover:bg-white/[0.06] hover:text-white/75">Home</Link>
+						<Link href="/plans" className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-white/35 transition-all duration-150 hover:bg-white/[0.06] hover:text-white/75">Plans</Link>
 						<Link href="/safety" className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-white/35 transition-all duration-150 hover:bg-white/[0.06] hover:text-white/75">Safety</Link>
 						<Link href="/about" className="rounded-full px-3.5 py-1.5 text-[13px] font-medium text-white/35 transition-all duration-150 hover:bg-white/[0.06] hover:text-white/75">About</Link>
 					</div>
@@ -121,6 +122,7 @@ export function TopNav({
 						{isMenuOpen && (
 							<div className="animate-pop-in absolute right-0 mt-2 min-w-[180px] rounded-2xl border border-white/[0.06] bg-[#0e0e16]/95 p-1.5 shadow-[0_12px_40px_rgba(0,0,0,0.6)] backdrop-blur-xl">
 								<Link href="/" onClick={() => setIsMenuOpen(false)} className="flex rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-white/60 transition-all duration-150 hover:bg-white/[0.06] hover:text-white">Home</Link>
+								<Link href="/plans" onClick={() => setIsMenuOpen(false)} className="flex rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-white/60 transition-all duration-150 hover:bg-white/[0.06] hover:text-white">Plans</Link>
 								<Link href="/safety" onClick={() => setIsMenuOpen(false)} className="flex rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-white/60 transition-all duration-150 hover:bg-white/[0.06] hover:text-white">Safety</Link>
 								<Link href="/about" onClick={() => setIsMenuOpen(false)} className="flex rounded-xl px-3.5 py-2.5 text-[13px] font-medium text-white/60 transition-all duration-150 hover:bg-white/[0.06] hover:text-white">About</Link>
 								<div className="my-1 border-t border-white/[0.04]" />

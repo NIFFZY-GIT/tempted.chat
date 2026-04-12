@@ -62,7 +62,7 @@ import {
   type User,
 } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { getUserRole } from "@/lib/admin";
 
 declare global {
@@ -201,7 +201,7 @@ const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
 const ROOM_PRESENCE_TIMEOUT_MS = 45000;
 const WAITING_STALE_THRESHOLD_MS = 30_000;
-const NO_SHOW_TIMEOUT_MS = 15_000;
+const NO_SHOW_TIMEOUT_MS = 30_000;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const PENDING_STRANGER_PROFILE: UserProfile = {
   gender: "Other",
@@ -361,6 +361,9 @@ export default function Home() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminRoleLoading, setAdminRoleLoading] = useState(false);
   const [e2eeReadyVersion, setE2eeReadyVersion] = useState(0);
+  const [subscriptionExpiresAt, setSubscriptionExpiresAt] = useState<number | null>(null);
+  const [subscriptionTier, setSubscriptionTier] = useState<"vip" | "vvip" | null>(null);
+  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1136,9 +1139,9 @@ export default function Home() {
       return;
     }
 
-    // Only start the camera once the user has actually initiated a chat session
-    // (clicked Quick Start) rather than just having video mode restored from storage.
-    if (!isConnecting && !activeRoomId) {
+    // Only start the camera once the user has actually entered the video chat UI
+    // (clicked Quick Start and has filters set), not while still on the mode selection menu.
+    if (!chatFilters || (!isConnecting && !activeRoomId)) {
       return;
     }
 
@@ -1184,7 +1187,7 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  }, [chatMode, isConnecting, activeRoomId]);
+  }, [chatMode, chatFilters, isConnecting, activeRoomId]);
 
   useEffect(() => {
     if (chatMode !== "video" || !activeRoomId || !user) {
@@ -1236,22 +1239,30 @@ export default function Home() {
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
             { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun3.l.google.com:19302" },
+            { urls: "stun:stun4.l.google.com:19302" },
             {
-              urls: "turn:openrelay.metered.ca:80",
-              username: "openrelayproject",
-              credential: "openrelayproject",
+              urls: "turn:a.relay.metered.ca:80",
+              username: "e53a8cec5765272ee7307826",
+              credential: "uWdKMi+UeI1VNmNG",
             },
             {
-              urls: "turn:openrelay.metered.ca:443",
-              username: "openrelayproject",
-              credential: "openrelayproject",
+              urls: "turn:a.relay.metered.ca:80?transport=tcp",
+              username: "e53a8cec5765272ee7307826",
+              credential: "uWdKMi+UeI1VNmNG",
             },
             {
-              urls: "turn:openrelay.metered.ca:443?transport=tcp",
-              username: "openrelayproject",
-              credential: "openrelayproject",
+              urls: "turn:a.relay.metered.ca:443",
+              username: "e53a8cec5765272ee7307826",
+              credential: "uWdKMi+UeI1VNmNG",
+            },
+            {
+              urls: "turns:a.relay.metered.ca:443?transport=tcp",
+              username: "e53a8cec5765272ee7307826",
+              credential: "uWdKMi+UeI1VNmNG",
             },
           ],
+          iceCandidatePoolSize: 10,
         });
         peerConnectionRef.current = peerConnection;
 
@@ -1316,6 +1327,27 @@ export default function Home() {
           });
         };
 
+        const attemptIceRestart = () => {
+          if (!isOfferer) return;
+          void (async () => {
+            try {
+              peerConnection.restartIce();
+              const restartOffer = await peerConnection.createOffer({ iceRestart: true });
+              await peerConnection.setLocalDescription(restartOffer);
+              videoOfferSentRef.current = true;
+              await updateDoc(roomRef, {
+                [`webrtc.offerBy.${user.uid}`]: {
+                  type: restartOffer.type,
+                  sdp: restartOffer.sdp,
+                },
+                webrtcUpdatedAt: serverTimestamp(),
+              });
+            } catch {
+              // Ignore restart races.
+            }
+          })();
+        };
+
         peerConnection.onconnectionstatechange = () => {
           if (peerConnection.connectionState === "connected") {
             setVideoError(null);
@@ -1324,30 +1356,19 @@ export default function Home() {
 
           if (peerConnection.connectionState === "disconnected") {
             setVideoError("Connection unstable. Reconnecting video...");
-
-            if (isOfferer) {
-              void (async () => {
-                try {
-                  peerConnection.restartIce();
-                  const restartOffer = await peerConnection.createOffer({ iceRestart: true });
-                  await peerConnection.setLocalDescription(restartOffer);
-                  await updateDoc(roomRef, {
-                    [`webrtc.offerBy.${user.uid}`]: {
-                      type: restartOffer.type,
-                      sdp: restartOffer.sdp,
-                    },
-                    webrtcUpdatedAt: serverTimestamp(),
-                  });
-                } catch {
-                  // Ignore restart races.
-                }
-              })();
-            }
+            attemptIceRestart();
             return;
           }
 
           if (peerConnection.connectionState === "failed") {
-            setVideoError("Video connection failed. Try reconnecting.");
+            setVideoError("Video connection failed. Retrying...");
+            attemptIceRestart();
+          }
+        };
+
+        peerConnection.oniceconnectionstatechange = () => {
+          if (peerConnection.iceConnectionState === "failed") {
+            attemptIceRestart();
           }
         };
 
@@ -2754,7 +2775,7 @@ export default function Home() {
         profile: {
           gender: profile.gender,
           age: profile.age,
-          countryCode: profile.countryCode ?? null,
+          countryCode: filters.hideCountry ? null : (profile.countryCode ?? null),
         },
         ...(effectiveMode === "group" && { nickname: nickname || myNickname || `User${user.uid.slice(0, 4)}` }),
         createdAt: serverTimestamp(),
@@ -3401,6 +3422,49 @@ export default function Home() {
     }
   }, [adminRoleLoading, isAdmin, router]);
 
+  // Fetch subscription status when user is available.
+  const checkSubscription = useCallback(async (uid: string) => {
+    setSubscriptionLoading(true);
+    try {
+      const res = await fetch(`/api/subscription?uid=${encodeURIComponent(uid)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setSubscriptionExpiresAt(data.active ? data.expiresAt : null);
+        setSubscriptionTier(data.active ? (data.tier ?? null) : null);
+      }
+    } catch {
+      // Ignore — treat as no subscription.
+    } finally {
+      setSubscriptionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setSubscriptionExpiresAt(null);
+      setSubscriptionTier(null);
+      return;
+    }
+    void checkSubscription(user.uid);
+  }, [user, checkSubscription]);
+
+  // Re-check subscription when returning from Stripe checkout.
+  useEffect(() => {
+    if (!user) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") === "success") {
+      // Remove query param and re-check after a short delay for webhook processing.
+      window.history.replaceState({}, "", "/");
+      const timer = setTimeout(() => void checkSubscription(user.uid), 2000);
+      return () => clearTimeout(timer);
+    }
+    if (params.get("payment") === "cancelled") {
+      window.history.replaceState({}, "", "/");
+    }
+  }, [user, checkSubscription]);
+
+  const hasActiveSubscription = subscriptionExpiresAt !== null && subscriptionExpiresAt > Date.now();
+
   const saveProfile = () => {
     const parsedAge = Number(profileAge);
 
@@ -3553,6 +3617,9 @@ export default function Home() {
               void startSearching(filters, mode, nickname);
             }}
             onBack={logout}
+            hasActiveSubscription={hasActiveSubscription}
+            subscriptionTier={subscriptionTier}
+            onShowPaywall={() => router.push("/plans")}
           />
         </main>
         <SiteFooter />
@@ -3613,6 +3680,7 @@ export default function Home() {
           toggleLocalVideo={toggleLocalVideo}
           toggleLocalAudio={toggleLocalAudio}
           switchCamera={switchCamera}
+          subscriptionTier={subscriptionTier}
           onLeaveChat={(filters) => {
             void (async () => {
               await markRoomEnded();

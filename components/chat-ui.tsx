@@ -43,6 +43,7 @@ export type ChatFilters = {
   ageGroup: AgeGroupFilter;
   style: ChatStyleFilter;
   country: CountryFilter;
+  hideCountry?: boolean;
 };
 
 export const starterMessages: ChatMessage[] = [
@@ -576,9 +577,15 @@ export function ProfileSetupView({
 export function ModeAndFiltersView({
   onStart,
   onBack,
+  hasActiveSubscription = false,
+  subscriptionTier = null,
+  onShowPaywall,
 }: {
   onStart: (mode: ChatMode, filters: ChatFilters, nickname?: string) => void;
   onBack: () => void;
+  hasActiveSubscription?: boolean;
+  subscriptionTier?: "vip" | "vvip" | null;
+  onShowPaywall?: () => void;
 }) {
   const [selectedMode, setSelectedMode] = useState<ChatMode>("text");
   const [nickname, setNickname] = useState("");
@@ -587,6 +594,7 @@ export function ModeAndFiltersView({
   const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("Any age");
   const [style, setStyle] = useState<ChatStyleFilter>("Any style");
   const [country, setCountry] = useState<CountryFilter>("Any");
+  const [hideCountry, setHideCountry] = useState(false);
   const [countryMenuOpen, setCountryMenuOpen] = useState(false);
   const countryMenuRef = useRef<HTMLDivElement | null>(null);
   const selectedCountryCode = country !== "Any" ? country : undefined;
@@ -644,12 +652,12 @@ export function ModeAndFiltersView({
 
   const handleStart = () => {
     const trimmedNick = selectedMode === "group" ? nickname.trim() || undefined : undefined;
-    onStart(selectedMode, { gender, ageGroup, style, country }, trimmedNick);
+    onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, trimmedNick);
   };
 
   const handleQuickStart = () => {
     const trimmedNick = selectedMode === "group" ? nickname.trim() || undefined : undefined;
-    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any" }, trimmedNick);
+    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry }, trimmedNick);
   };
 
   const pillClasses = (active: boolean) =>
@@ -660,6 +668,15 @@ export function ModeAndFiltersView({
       <div className="mb-8 text-center">
         <h2 className="text-2xl font-bold tracking-tight text-white">Ready to chat?</h2>
         <p className="mt-1.5 text-sm text-white/40">Choose your mode</p>
+        {subscriptionTier && (
+          <div className={`mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+            subscriptionTier === "vvip"
+              ? "bg-amber-400/15 text-amber-400"
+              : "bg-pink-500/15 text-pink-400"
+          }`}>
+            {subscriptionTier === "vvip" ? "👑" : "💎"} {subscriptionTier.toUpperCase()} Member
+          </div>
+        )}
       </div>
 
       {/* Mode cards */}
@@ -719,41 +736,38 @@ export function ModeAndFiltersView({
       {/* Filter toggle */}
       <button
         type="button"
-        onClick={() => setShowFilters((v) => !v)}
+        onClick={() => {
+          if (!hasActiveSubscription) {
+            onShowPaywall?.();
+            return;
+          }
+          setShowFilters((v) => !v);
+        }}
         className="mt-3 flex w-full items-center justify-center gap-1.5 py-2 text-xs font-medium text-white/30 transition hover:text-white/60"
       >
-        {showFilters ? "Hide preferences" : "Set preferences"}
+        {showFilters ? "Hide preferences" : (
+          <span className="inline-flex items-center gap-1.5">
+            Set preferences
+            {!hasActiveSubscription ? (
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-gradient-to-r from-pink-500/20 to-purple-500/20 px-2 py-0.5 text-[10px] font-bold text-pink-400">
+                PRO
+              </span>
+            ) : subscriptionTier ? (
+              <span className={`inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"
+              }`}>
+                {subscriptionTier.toUpperCase()}
+              </span>
+            ) : null}
+          </span>
+        )}
         <svg className={`h-3 w-3 transition-transform ${showFilters ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m6 9 6 6 6-6"/></svg>
       </button>
 
       {/* Collapsible filters */}
       {showFilters && (
         <div className="animate-fade-in space-y-4 pt-2">
-          {/* Age group */}
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Age</p>
-            <div className="grid grid-cols-2 gap-1.5">
-              {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((option) => (
-                <button key={option} type="button" onClick={() => setAgeGroup((c) => (c === option ? "Any age" : option))} className={pillClasses(ageGroup === option)}>
-                  {option}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Style */}
-          <div>
-            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Style</p>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((option) => (
-                <button key={option} type="button" onClick={() => setStyle((c) => (c === option ? "Any style" : option))} className={pillClasses(style === option)}>
-                  {option === "Any style" ? "Any" : option}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Gender */}
+          {/* Gender — VIP + VVIP */}
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Gender</p>
             <div className="grid grid-cols-4 gap-1.5">
@@ -765,8 +779,46 @@ export function ModeAndFiltersView({
             </div>
           </div>
 
-          {/* Country */}
+          {/* Style — VIP + VVIP */}
           <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Style</p>
+            <div className="grid grid-cols-3 gap-1.5">
+              {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((option) => (
+                <button key={option} type="button" onClick={() => setStyle((c) => (c === option ? "Any style" : option))} className={pillClasses(style === option)}>
+                  {option === "Any style" ? "Any" : option}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Age group — VVIP only */}
+          <div className="relative">
+            {subscriptionTier !== "vvip" && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-[2px]">
+                <button type="button" onClick={() => onShowPaywall?.()} className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400/20 to-orange-500/20 px-3 py-1 text-[11px] font-bold text-amber-400 transition hover:from-amber-400/30 hover:to-orange-500/30">
+                  👑 VVIP
+                </button>
+              </div>
+            )}
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Age</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((option) => (
+                <button key={option} type="button" onClick={() => { if (subscriptionTier === "vvip") setAgeGroup((c) => (c === option ? "Any age" : option)); }} className={pillClasses(ageGroup === option)}>
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Country — VVIP only */}
+          <div className="relative">
+            {subscriptionTier !== "vvip" && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-black/40 backdrop-blur-[2px]">
+                <button type="button" onClick={() => onShowPaywall?.()} className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-400/20 to-orange-500/20 px-3 py-1 text-[11px] font-bold text-amber-400 transition hover:from-amber-400/30 hover:to-orange-500/30">
+                  👑 VVIP
+                </button>
+              </div>
+            )}
             <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/30">Country</p>
             <div className="relative" ref={countryMenuRef}>
               <button
@@ -806,6 +858,25 @@ export function ModeAndFiltersView({
               )}
             </div>
           </div>
+
+          {/* Hide location toggle — VIP + VVIP */}
+          <button
+            type="button"
+            onClick={() => setHideCountry((v) => !v)}
+            className={`flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm font-medium transition active:scale-[0.98] ${
+              hideCountry
+                ? "border-pink-500/25 bg-pink-500/[0.06] text-white/80"
+                : "border-white/[0.08] bg-white/[0.03] text-white/50 hover:bg-white/[0.05]"
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+              Hide my location
+            </span>
+            <span className={`flex h-5 w-9 items-center rounded-full transition ${hideCountry ? "bg-pink-500 justify-end" : "bg-white/10 justify-start"}`}>
+              <span className={`mx-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform`} />
+            </span>
+          </button>
 
           {/* Start with preferences */}
           <button
@@ -871,6 +942,7 @@ export function ChatRoomView({
   fileInputRef,
   onSelectImage,
   clearAttachment,
+  subscriptionTier = null,
 }: {
   strangerProfile: UserProfile;
   chatMode: ChatMode;
@@ -913,6 +985,7 @@ export function ChatRoomView({
   fileInputRef: RefObject<HTMLInputElement | null>;
   onSelectImage: (event: ChangeEvent<HTMLInputElement>) => void;
   clearAttachment: () => void;
+  subscriptionTier?: "vip" | "vvip" | null;
 }) {
   const chatContainerRef = useRef<HTMLElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
@@ -1129,7 +1202,14 @@ export function ChatRoomView({
             <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-black ${isConnecting ? "bg-amber-400" : "bg-emerald-400"}`} style={isConnecting ? { animation: "ripple 1.5s ease-out infinite" } : {}} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-white/90 drop-shadow-md">Stranger</p>
+            <p className="truncate text-sm font-semibold text-white/90 drop-shadow-md">
+              Stranger
+              {subscriptionTier && (
+                <span className={`ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
+                  {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
+                </span>
+              )}
+            </p>
             {hasResolvedStrangerProfile && (
               <p className="flex items-center gap-1 text-[11px] text-white/55 drop-shadow-md">
                 <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-[1px] object-cover" />
@@ -1355,6 +1435,11 @@ export function ChatRoomView({
             ) : (
               <>
                 <span className="text-sm font-semibold text-white/90">Stranger</span>
+                {subscriptionTier && (
+                  <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
+                    {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
+                  </span>
+                )}
                 {hasResolvedStrangerProfile && (
                   <span className="flex items-center gap-1 text-[11px] text-white/40">
                     <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-[1px] object-cover" />
