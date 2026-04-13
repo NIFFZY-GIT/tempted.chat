@@ -2357,9 +2357,6 @@ export default function Home() {
       window.clearTimeout(noShowTimeoutRef.current);
       noShowTimeoutRef.current = null;
     }
-
-    waitingUnsubRef.current?.();
-    waitingUnsubRef.current = null;
   };
 
   const setTypingStatus = async (typing: boolean) => {
@@ -2883,24 +2880,6 @@ export default function Home() {
       setConnectingStatus("Could not reach matchmaking right now. Retrying...");
     }
 
-    // Listen in real-time for when another user matches us (sets status to "matched")
-    waitingUnsubRef.current?.();
-    waitingUnsubRef.current = onSnapshot(
-      doc(db, "waitingUsers", user.uid),
-      (snapshot) => {
-        if (!snapshot.exists() || activeRoomIdRef.current) {
-          return;
-        }
-
-        const data = snapshot.data() as { status?: string; roomId?: string };
-        if (data.status === "matched" && data.roomId) {
-          console.log("[matchmaking] matched via real-time listener, room:", data.roomId);
-          setConnectingStatus("Stranger found. Connecting...");
-          setActiveRoomId(data.roomId);
-        }
-      },
-    );
-
     retryMatchIntervalRef.current = window.setInterval(() => {
       if (effectiveMode === "group") {
         void tryMatchGroup(filters, user, profile);
@@ -3077,40 +3056,6 @@ export default function Home() {
       return;
     }
 
-    clearPendingSendRetry();
-    setSendError(null);
-    const outgoingText = text.trim() || null;
-    const hasImage = Boolean(selectedImageFile);
-    const clientMsgId = `${user.uid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const currentReply = replyingTo;
-    setReplyingTo(null);
-
-    // ─── Optimistic UI for text-only messages (show immediately) ───
-    if (outgoingText && !hasImage) {
-      const now = new Date();
-      const optimisticMsg: ChatMessage = {
-        id: clientMsgId,
-        clientMessageId: clientMsgId,
-        author: "you",
-        text: outgoingText,
-        isPending: true,
-        ...(currentReply && {
-          replyToId: currentReply.id,
-          replyToText: currentReply.text || (currentReply.image ? "Photo" : "Message"),
-          replyToAuthor: currentReply.author,
-        }),
-        sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-      };
-      setMessages((prev) => [...prev, optimisticMsg]);
-      setText("");
-    }
-
-    // For image sends, block further sends and show progress
-    if (hasImage) {
-      setIsSendingMessage(true);
-      setImageUploadProgress(0);
-    }
-
     const isGroupMode = chatMode === "group";
     let roomKey = roomCipherKeyRef.current;
 
@@ -3138,22 +3083,44 @@ export default function Home() {
       }
 
       if (!roomKey) {
-        // Remove optimistic message on E2EE failure
-        if (!hasImage && clientMsgId) {
-          setMessages((prev) => prev.filter((m) => m.id !== clientMsgId));
-        }
         setSendError("Secure channel is still negotiating. Message will send automatically when ready.");
-        // Re-add the text so user doesn't lose it
-        if (outgoingText && !hasImage) {
-          setText(outgoingText);
-        }
         schedulePendingSendRetry(sendMessage);
-        if (hasImage) {
-          setIsSendingMessage(false);
-          setImageUploadProgress(null);
-        }
         return;
       }
+    }
+
+    clearPendingSendRetry();
+    setSendError(null);
+    const outgoingText = text.trim() || null;
+    const hasImage = Boolean(selectedImageFile);
+    const clientMsgId = `${user.uid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const currentReply = replyingTo;
+    setReplyingTo(null);
+
+    // ─── Optimistic UI for text-only messages ───
+    if (outgoingText && !hasImage) {
+      const now = new Date();
+      const optimisticMsg: ChatMessage = {
+        id: clientMsgId,
+        clientMessageId: clientMsgId,
+        author: "you",
+        text: outgoingText,
+        isPending: true,
+        ...(currentReply && {
+          replyToId: currentReply.id,
+          replyToText: currentReply.text || (currentReply.image ? "Photo" : "Message"),
+          replyToAuthor: currentReply.author,
+        }),
+        sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+      };
+      setMessages((prev) => [...prev, optimisticMsg]);
+      setText("");
+    }
+
+    // For image sends, block further sends and show progress
+    if (hasImage) {
+      setIsSendingMessage(true);
+      setImageUploadProgress(0);
     }
 
     let imageUrl: string | undefined;
@@ -3773,7 +3740,6 @@ export default function Home() {
       <main className="screen screen-chat">
         <TopNav
           isAuthenticated={isAuthenticated}
-          isInChat={Boolean(activeRoomId || isConnecting)}
           onLogin={() => {
             setAuthMethod("email");
             emailInputRef.current?.focus();

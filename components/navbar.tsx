@@ -11,8 +11,6 @@ export type TopNavProps = {
 	isWorking: boolean;
 	isAdmin?: boolean;
 	onGoToAdmin?: () => void;
-	isInChat?: boolean;
-	onBackToChat?: () => void;
 };
 
 export function TopNav({
@@ -22,8 +20,6 @@ export function TopNav({
 	isWorking,
 	isAdmin = false,
 	onGoToAdmin,
-	isInChat = false,
-	onBackToChat,
 }: TopNavProps) {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
 	const [scrolled, setScrolled] = useState(false);
@@ -103,22 +99,16 @@ export function TopNav({
 
 					{/* ── Center: Desktop links ── */}
 					<div className="hidden items-center gap-0.5 md:flex absolute left-1/2 -translate-x-1/2">
-						{isInChat ? (
-							<span className="rounded-lg px-3.5 py-2 text-[13px] font-medium text-emerald-400/70">
-								Chat active
-							</span>
-						) : (
-							navLinks.map((link) => (
-								<Link
-									key={link.href}
-									href={link.href}
-									className="group relative rounded-lg px-3.5 py-2 text-[13px] font-medium text-white/40 transition-all duration-200 hover:text-white/80"
-								>
-									<span className="relative z-10">{link.label}</span>
-									<span className="absolute inset-0 rounded-lg bg-white/[0.06] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-								</Link>
-							))
-						)}
+						{navLinks.map((link) => (
+							<Link
+								key={link.href}
+								href={link.href}
+								className="group relative rounded-lg px-3.5 py-2 text-[13px] font-medium text-white/40 transition-all duration-200 hover:text-white/80"
+							>
+								<span className="relative z-10">{link.label}</span>
+								<span className="absolute inset-0 rounded-lg bg-white/[0.06] opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+							</Link>
+						))}
 					</div>
 
 					{/* ── Right: actions ── */}
@@ -239,25 +229,19 @@ export function TopNav({
 				/>
 
 				<div className="p-2">
-					{isInChat ? (
-						<div className="flex items-center justify-center rounded-xl px-4 py-3 text-[14px] font-medium text-emerald-400/70">
-							Chat active — leave chat first
-						</div>
-					) : (
-						navLinks.map((link, i) => (
-							<Link
-								key={link.href}
-								href={link.href}
-								onClick={() => setIsMenuOpen(false)}
-								className="group flex items-center gap-3 rounded-xl px-4 py-3 text-[14px] font-medium text-white/60 transition-all duration-200 hover:bg-white/[0.06] hover:text-white"
-								style={{
-									animationDelay: `${i * 50}ms`,
-								}}
-							>
-								{link.label}
-							</Link>
-						))
-					)}
+					{navLinks.map((link, i) => (
+						<Link
+							key={link.href}
+							href={link.href}
+							onClick={() => setIsMenuOpen(false)}
+							className="group flex items-center gap-3 rounded-xl px-4 py-3 text-[14px] font-medium text-white/60 transition-all duration-200 hover:bg-white/[0.06] hover:text-white"
+							style={{
+								animationDelay: `${i * 50}ms`,
+							}}
+						>
+							{link.label}
+						</Link>
+					))}
 
 					<div className="mx-3 my-1.5 border-t border-white/[0.06]" />
 
