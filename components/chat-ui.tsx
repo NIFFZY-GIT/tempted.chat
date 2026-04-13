@@ -1596,20 +1596,21 @@ export function ChatRoomView({
             <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-black ${isConnecting ? "bg-amber-400" : "bg-emerald-400"}`} style={isConnecting ? { animation: "ripple 1.5s ease-out infinite" } : {}} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-semibold text-white/90 drop-shadow-md">
-              Stranger
+            <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-white/90 drop-shadow-md">
+              {hasResolvedStrangerProfile ? (
+                <>
+                  <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
+                  {strangerProfile.gender}, {strangerProfile.age}
+                </>
+              ) : (
+                <span className="text-white/50">Connecting...</span>
+              )}
               {subscriptionTier && (
-                <span className={`ml-1.5 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
+                <span className={`ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
                   {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
                 </span>
               )}
             </p>
-            {hasResolvedStrangerProfile && (
-              <p className="flex items-center gap-1 text-[11px] text-white/55 drop-shadow-md">
-                <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-[1px] object-cover" />
-                {strangerProfile.gender}, {strangerProfile.age}
-              </p>
-            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -1848,16 +1849,17 @@ export function ChatRoomView({
               </>
             ) : (
               <>
-                <span className="text-sm font-semibold text-white/90">Stranger</span>
+                {hasResolvedStrangerProfile ? (
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-white/90">
+                    <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
+                    {strangerProfile.gender}, {strangerProfile.age}
+                  </span>
+                ) : (
+                  <span className="text-sm font-semibold text-white/50">Connecting...</span>
+                )}
                 {subscriptionTier && (
                   <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
                     {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
-                  </span>
-                )}
-                {hasResolvedStrangerProfile && (
-                  <span className="flex items-center gap-1 text-[11px] text-white/40">
-                    <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-[1px] object-cover" />
-                    {strangerProfile.gender}, {strangerProfile.age}
                   </span>
                 )}
               </>

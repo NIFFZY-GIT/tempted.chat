@@ -268,21 +268,10 @@ export default function Home() {
 
 
 
-    // Prompt for camera/mic permission as soon as user selects video mode
-    useEffect(() => {
-      if (chatMode !== "video") return;
-      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-        .then((stream) => {
-          stream.getTracks().forEach((track) => track.stop());
-          setVideoError(null);
-        })
-        .catch(() => {
-          setVideoError("Camera and microphone permission is required for video chat.");
-          setChatMode(null);
-        });
-      // Only run on chatMode change
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [chatMode]);
+    // Camera/mic permission is checked by the preview useEffect below
+    // (which starts the actual stream). No separate probe needed — the
+    // preview effect sets `videoError` on failure without resetting chatMode,
+    // so the user stays on the video layout and sees the error inline.
   const hasAttemptedSessionRestoreRef = useRef(false);
   const [sessionRestoreComplete, setSessionRestoreComplete] = useState(false);
   const disconnectHandledRoomRef = useRef<string | null>(null);
