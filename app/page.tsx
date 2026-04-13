@@ -1071,13 +1071,7 @@ export default function Home() {
         Number.isFinite(parsed.age)
       ) {
         setProfile(parsed);
-        if (typeof parsed.country === "string" && parsed.country.trim().length > 0) {
-          setProfileCountry(parsed.country === "GB" || parsed.country === "UK" ? "United Kingdom" : parsed.country);
-        }
-        if (typeof parsed.countryCode === "string" && parsed.countryCode.trim().length === 2) {
-          const normalizedCode = parsed.countryCode.toUpperCase() === "UK" ? "GB" : parsed.countryCode.toUpperCase();
-          setProfileCountryCode(normalizedCode);
-        }
+        // Country is always detected fresh from GPS — never restored from cache
       }
     } catch {
       setProfile(null);
@@ -1085,10 +1079,6 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
-    if (profileCountryCode) {
-      return;
-    }
-
     const locale = navigator.languages?.[0] ?? navigator.language;
     let cancelled = false;
 
@@ -1104,19 +1094,6 @@ export default function Home() {
 
       setProfileCountryCode(normalizedCode);
       setProfileCountry(countryName?.trim() || getCountryNameFromCode(normalizedCode, locale));
-    };
-
-    const fallbackToLocale = () => {
-      const localeCode = normalizeCountryCode(locale.split("-")[1]);
-      if (!localeCode) {
-        if (!cancelled) {
-          setProfileCountry("Unknown");
-          setProfileCountryCode("");
-        }
-        return;
-      }
-
-      applyCountry(localeCode);
     };
 
     const detectCountryFromGeolocation = async (latitude: number, longitude: number) => {
@@ -1142,30 +1119,43 @@ export default function Home() {
     };
 
     if (!("geolocation" in navigator)) {
-      fallbackToLocale();
+      // No geolocation support — leave country empty
+      if (!profileCountryCode && !cancelled) {
+        setProfileCountry("Unknown");
+        setProfileCountryCode("");
+      }
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         void detectCountryFromGeolocation(position.coords.latitude, position.coords.longitude).catch(() => {
-          fallbackToLocale();
+          // Reverse geocode failed — leave existing value or set unknown
+          if (!profileCountryCode && !cancelled) {
+            setProfileCountry("Unknown");
+            setProfileCountryCode("");
+          }
         });
       },
       () => {
-        fallbackToLocale();
+        // Location denied — leave existing value or set unknown
+        if (!profileCountryCode && !cancelled) {
+          setProfileCountry("Unknown");
+          setProfileCountryCode("");
+        }
       },
       {
-        enableHighAccuracy: false,
-        timeout: 8000,
-        maximumAge: 10 * 60 * 1000,
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
       },
     );
 
     return () => {
       cancelled = true;
     };
-  }, [profileCountry, profileCountryCode]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   useEffect(() => {
     return () => {
