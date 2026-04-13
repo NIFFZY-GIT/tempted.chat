@@ -21,9 +21,47 @@ export const viewport: Viewport = {
   interactiveWidget: "resizes-content",
 };
 
+
+
 export const metadata: Metadata = {
-  title: "TEMPTED.CHAT",
-  description: "Google-login gated random chat UI with image messaging.",
+  title: "Tempted.Chat – Random Video & Text Chat with Strangers",
+  description:
+    "Tempted.Chat is a modern random chat platform where you can instantly meet and chat with strangers worldwide. Start anonymous text or image chats securely with Google login.",
+  
+  keywords: [
+    "random chat",
+    "chat with strangers",
+    "omegle alternative",
+    "anonymous chat",
+    "random video chat",
+    "online chat platform",
+    "talk to strangers",
+    "image chat",
+    "tempted chat"
+  ],
+
+  authors: [{ name: "Tempted.Chat Team" }],
+
+  openGraph: {
+    title: "Tempted.Chat – Meet Strangers Instantly",
+    description:
+      "Connect with people around the world through random chats. Secure, fast, and anonymous conversations.",
+    url: "https://tempted.chat",
+    siteName: "Tempted.Chat",
+    type: "website",
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: "Tempted.Chat – Random Chat Platform",
+    description:
+      "Start chatting with strangers instantly. A modern alternative to Omegle.",
+  },
+
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({
