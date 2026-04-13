@@ -2357,6 +2357,9 @@ export default function Home() {
       window.clearTimeout(noShowTimeoutRef.current);
       noShowTimeoutRef.current = null;
     }
+
+    waitingUnsubRef.current?.();
+    waitingUnsubRef.current = null;
   };
 
   const setTypingStatus = async (typing: boolean) => {
@@ -2879,6 +2882,24 @@ export default function Home() {
       });
       setConnectingStatus("Could not reach matchmaking right now. Retrying...");
     }
+
+    // Listen in real-time for when another user matches us (sets status to "matched")
+    waitingUnsubRef.current?.();
+    waitingUnsubRef.current = onSnapshot(
+      doc(db, "waitingUsers", user.uid),
+      (snapshot) => {
+        if (!snapshot.exists() || activeRoomIdRef.current) {
+          return;
+        }
+
+        const data = snapshot.data() as { status?: string; roomId?: string };
+        if (data.status === "matched" && data.roomId) {
+          console.log("[matchmaking] matched via real-time listener, room:", data.roomId);
+          setConnectingStatus("Stranger found. Connecting...");
+          setActiveRoomId(data.roomId);
+        }
+      },
+    );
 
     retryMatchIntervalRef.current = window.setInterval(() => {
       if (effectiveMode === "group") {
