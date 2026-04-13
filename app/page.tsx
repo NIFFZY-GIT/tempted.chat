@@ -3337,17 +3337,42 @@ export default function Home() {
   const recaptchaTokenRef = useRef<string | null>(null);
 
   const renderRecaptcha = (containerId: string) => {
-    if (!window.grecaptcha || recaptchaWidgetIdRef.current !== null) return;
-    try {
-      recaptchaWidgetIdRef.current = window.grecaptcha.render(containerId, {
-        sitekey: RECAPTCHA_SITE_KEY,
-        theme: "dark",
-        callback: (token: string) => { recaptchaTokenRef.current = token; },
-        "expired-callback": () => { recaptchaTokenRef.current = null; },
-        "error-callback": () => { recaptchaTokenRef.current = null; },
-      });
-    } catch {
-      // Already rendered
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    // Reset previous widget so a fresh one renders into the new DOM node
+    recaptchaWidgetIdRef.current = null;
+    recaptchaTokenRef.current = null;
+    container.innerHTML = "";
+
+    const doRender = () => {
+      // Guard: container might have been removed by React
+      if (!document.getElementById(containerId)) return;
+      try {
+        recaptchaWidgetIdRef.current = window.grecaptcha.render(containerId, {
+          sitekey: RECAPTCHA_SITE_KEY,
+          theme: "dark",
+          callback: (token: string) => { recaptchaTokenRef.current = token; },
+          "expired-callback": () => { recaptchaTokenRef.current = null; },
+          "error-callback": () => { recaptchaTokenRef.current = null; },
+        });
+      } catch {
+        // Already rendered or container gone
+      }
+    };
+
+    if (window.grecaptcha && typeof window.grecaptcha.render === "function") {
+      doRender();
+    } else {
+      // Script not loaded yet — wait for it
+      const interval = window.setInterval(() => {
+        if (window.grecaptcha && typeof window.grecaptcha.render === "function") {
+          window.clearInterval(interval);
+          doRender();
+        }
+      }, 300);
+      // Stop trying after 15s
+      window.setTimeout(() => window.clearInterval(interval), 15000);
     }
   };
 
