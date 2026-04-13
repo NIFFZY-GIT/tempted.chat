@@ -994,24 +994,52 @@ export default function Home() {
       }
 
       const authProvider = getAuthProviderType(nextUser);
-      void setDoc(
-        doc(db, "users", nextUser.uid),
-        {
-          uid: nextUser.uid,
-          email: nextUser.email ?? null,
-          displayName: nextUser.displayName ?? null,
-          authProvider,
-          authProviderIds: nextUser.providerData
-            .map((provider) => provider.providerId)
-            .filter((providerId): providerId is string => Boolean(providerId)),
-          isAnonymous: nextUser.isAnonymous,
-          lastSeenAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true },
-      ).catch(() => {
-        // Ignore analytics profile write failures.
-      });
+      const userData: Record<string, unknown> = {
+        uid: nextUser.uid,
+        email: nextUser.email ?? null,
+        displayName: nextUser.displayName ?? null,
+        authProvider,
+        authProviderIds: nextUser.providerData
+          .map((provider) => provider.providerId)
+          .filter((providerId): providerId is string => Boolean(providerId)),
+        isAnonymous: nextUser.isAnonymous,
+        lastSeenAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      };
+
+      // Request live GPS location and save it to the user profile
+      if (typeof navigator !== "undefined" && navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            void setDoc(
+              doc(db, "users", nextUser.uid),
+              {
+                ...userData,
+                location: {
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude,
+                  accuracy: position.coords.accuracy,
+                  capturedAt: serverTimestamp(),
+                },
+              },
+              { merge: true },
+            ).catch(() => {
+              // Ignore profile write failures.
+            });
+          },
+          () => {
+            // Location denied or unavailable — save profile without location
+            void setDoc(doc(db, "users", nextUser.uid), userData, { merge: true }).catch(() => {
+              // Ignore profile write failures.
+            });
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+        );
+      } else {
+        void setDoc(doc(db, "users", nextUser.uid), userData, { merge: true }).catch(() => {
+          // Ignore profile write failures.
+        });
+      }
     });
 
     return () => unsubscribe();
