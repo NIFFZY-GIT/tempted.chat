@@ -1079,6 +1079,10 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     const locale = navigator.languages?.[0] ?? navigator.language;
     let cancelled = false;
 
@@ -1096,13 +1100,21 @@ export default function Home() {
       setProfileCountry(countryName?.trim() || getCountryNameFromCode(normalizedCode, locale));
     };
 
-    const detectCountryFromGeolocation = async (latitude: number, longitude: number) => {
+    const setUnknown = () => {
+      if (cancelled) {
+        return;
+      }
+      setProfileCountry("Unknown");
+      setProfileCountryCode("");
+    };
+
+    const detectCountryFromCoords = async (latitude: number, longitude: number) => {
       const response = await fetch(
         `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${latitude}&longitude=${longitude}&localityLanguage=en`,
       );
 
       if (!response.ok) {
-        throw new Error(`Geocode request failed with status ${response.status}`);
+        throw new Error("Reverse geocode failed");
       }
 
       const data = (await response.json()) as {
@@ -1112,41 +1124,58 @@ export default function Home() {
 
       const geocodedCode = normalizeCountryCode(data.countryCode);
       if (!geocodedCode) {
-        throw new Error("Geocoder returned invalid country code");
+        throw new Error("Invalid country code from geocoder");
       }
 
       applyCountry(geocodedCode, data.countryName);
     };
 
-    if (!("geolocation" in navigator)) {
-      // No geolocation support — leave country empty
-      if (!profileCountryCode && !cancelled) {
-        setProfileCountry("Unknown");
-        setProfileCountryCode("");
+    const detectCountryFromIP = async () => {
+      const response = await fetch(
+        "https://api.bigdatacloud.net/data/reverse-geocode-client?localityLanguage=en",
+      );
+
+      if (!response.ok) {
+        throw new Error("IP geocode failed");
       }
+
+      const data = (await response.json()) as {
+        countryCode?: string;
+        countryName?: string;
+      };
+
+      const ipCode = normalizeCountryCode(data.countryCode);
+      if (!ipCode) {
+        throw new Error("Invalid country code from IP geocoder");
+      }
+
+      applyCountry(ipCode, data.countryName);
+    };
+
+    // Show "Detecting..." while location is being resolved
+    setProfileCountry("Detecting...");
+    setProfileCountryCode("");
+
+    if (!("geolocation" in navigator)) {
+      // No GPS — fall back to IP-based detection
+      void detectCountryFromIP().catch(() => setUnknown());
       return;
     }
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        void detectCountryFromGeolocation(position.coords.latitude, position.coords.longitude).catch(() => {
-          // Reverse geocode failed — leave existing value or set unknown
-          if (!profileCountryCode && !cancelled) {
-            setProfileCountry("Unknown");
-            setProfileCountryCode("");
-          }
+        void detectCountryFromCoords(position.coords.latitude, position.coords.longitude).catch(() => {
+          // GPS coords obtained but reverse geocode failed — try IP fallback
+          void detectCountryFromIP().catch(() => setUnknown());
         });
       },
       () => {
-        // Location denied — leave existing value or set unknown
-        if (!profileCountryCode && !cancelled) {
-          setProfileCountry("Unknown");
-          setProfileCountryCode("");
-        }
+        // GPS denied or unavailable — fall back to IP-based detection
+        void detectCountryFromIP().catch(() => setUnknown());
       },
       {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 15000,
         maximumAge: 0,
       },
     );
