@@ -39,7 +39,6 @@ import {
   doc,
   getDoc,
   getDocs,
-  getDocsFromServer,
   limit,
   onSnapshot,
   orderBy,
@@ -79,130 +78,11 @@ declare global {
 
 const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!;
 
-type WaitingUser = {
-  uid: string;
-  status: "searching" | "matched";
-  mode: ChatMode;
-  roomId?: string;
-  lastSeenAt?: { toMillis?: () => number } | number;
-  filters: ChatFilters;
-  profile: {
-    gender: ProfileGender;
-    age: number;
-    countryCode?: string;
-  };
-};
-
-const isObjectRecord = (value: unknown): value is Record<string, unknown> => {
-  return typeof value === "object" && value !== null;
-};
-
-const isValidWaitingUser = (value: unknown): value is WaitingUser => {
-  if (!isObjectRecord(value)) {
-    return false;
-  }
-
-  const status = value.status;
-  const mode = value.mode;
-  const profile = value.profile;
-  const filters = value.filters;
-
-  if (
-    typeof value.uid !== "string" ||
-    (status !== "searching" && status !== "matched") ||
-    (mode !== "text" && mode !== "video" && mode !== "group")
-  ) {
-    return false;
-  }
-
-  if (!isObjectRecord(profile) || !isObjectRecord(filters)) {
-    return false;
-  }
-
-  if (
-    (profile.gender !== "Male" && profile.gender !== "Female" && profile.gender !== "Other") ||
-    typeof profile.age !== "number" ||
-    (typeof profile.countryCode !== "undefined" && profile.countryCode !== null && typeof profile.countryCode !== "string")
-  ) {
-    return false;
-  }
-
-  return (
-    (filters.gender === "Any" || filters.gender === "Male" || filters.gender === "Female" || filters.gender === "Other") &&
-    (filters.ageGroup === "Any age" || filters.ageGroup === "Under 18" || filters.ageGroup === "18-25" || filters.ageGroup === "25+") &&
-    (filters.style === "Any style" || filters.style === "Casual" || filters.style === "Intimate") &&
-    (typeof filters.country === "string")
-  );
-};
-
 const GROUP_COLORS = ["#f472b6", "#60a5fa", "#34d399", "#fbbf24", "#a78bfa"];
-const MAX_GROUP_SIZE = 5;
-
-const toTimestampMillis = (value: unknown): number | null => {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "object" && value !== null && "toMillis" in value) {
-    try {
-      const maybeToMillis = (value as { toMillis?: () => number }).toMillis;
-      const millis = typeof maybeToMillis === "function" ? maybeToMillis() : NaN;
-      return Number.isFinite(millis) ? millis : null;
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
-};
-
-const ageGroupMatches = (ageGroup: ChatFilters["ageGroup"], age: number): boolean => {
-  if (ageGroup === "Any age") {
-    return true;
-  }
-
-  if (ageGroup === "Under 18") {
-    return age < 18;
-  }
-
-  if (ageGroup === "18-25") {
-    return age >= 18 && age <= 25;
-  }
-
-  return age >= 25;
-};
-
-const countryMatches = (country: ChatFilters["country"], countryCode?: string): boolean => {
-  if (country === "Any") {
-    return true;
-  }
-
-  return countryCode?.toUpperCase() === country;
-};
-
-const styleMatches = (a: ChatFilters["style"], b: ChatFilters["style"]): boolean => {
-  return a === "Any style" || b === "Any style" || a === b;
-};
-
-const profileMatchesFilters = (filters: ChatFilters, profile: WaitingUser["profile"]): boolean => {
-  const genderOk = filters.gender === "Any" || filters.gender === profile.gender;
-  const ageOk = ageGroupMatches(filters.ageGroup, profile.age);
-  const countryOk = countryMatches(filters.country, profile.countryCode);
-  return genderOk && ageOk && countryOk;
-};
-
-const areUsersCompatible = (a: WaitingUser, b: WaitingUser): boolean => {
-  return (
-    styleMatches(a.filters.style, b.filters.style) &&
-    profileMatchesFilters(a.filters, b.profile) &&
-    profileMatchesFilters(b.filters, a.profile)
-  );
-};
 
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
 const ROOM_PRESENCE_TIMEOUT_MS = 45000;
-const WAITING_STALE_THRESHOLD_MS = 30_000;
 const NO_SHOW_TIMEOUT_MS = 30_000;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const PENDING_STRANGER_PROFILE: UserProfile = {
@@ -2357,6 +2237,11 @@ export default function Home() {
       window.clearTimeout(noShowTimeoutRef.current);
       noShowTimeoutRef.current = null;
     }
+
+    if (waitingUnsubRef.current) {
+      waitingUnsubRef.current();
+      waitingUnsubRef.current = null;
+    }
   };
 
   const setTypingStatus = async (typing: boolean) => {
@@ -2445,390 +2330,6 @@ export default function Home() {
     setMessages([]);
   };
 
-  const tryMatchGroup = async (
-    filters: ChatFilters,
-    currentUser: User,
-    currentProfile: UserProfile,
-  ) => {
-    if (activeRoomIdRef.current) {
-      return;
-    }
-
-    try {
-      setConnectingStatus("Looking for group members...");
-
-      const waitingUsersRef = collection(db, "waitingUsers");
-      const searchingQuery = query(
-        waitingUsersRef,
-        where("status", "==", "searching"),
-        where("mode", "==", "group"),
-        limit(100),
-      );
-      const searchSnapshot = await getDocsFromServer(searchingQuery);
-
-      if (activeRoomIdRef.current) {
-        return;
-      }
-
-      const me: WaitingUser = {
-        uid: currentUser.uid,
-        status: "searching",
-        mode: "group",
-        filters,
-        profile: {
-          gender: currentProfile.gender,
-          age: currentProfile.age,
-          countryCode: currentProfile.countryCode,
-        },
-      };
-
-      const now = Date.now();
-      const staleThresholdMs = now - WAITING_STALE_THRESHOLD_MS;
-      const allOtherDocs = searchSnapshot.docs.filter((d) => d.id !== currentUser.uid);
-
-      const activeCandidates = allOtherDocs
-        .map((candidateDoc) => {
-          const candidateData = candidateDoc.data();
-          if (!isValidWaitingUser(candidateData)) {
-            return null;
-          }
-          const raw = candidateData as WaitingUser & { nickname?: string };
-          return {
-            uid: candidateDoc.id,
-            data: raw,
-            nickname: typeof raw.nickname === "string" ? raw.nickname : undefined,
-            lastSeenMs: toTimestampMillis(candidateData.lastSeenAt),
-            createdAtMs: toTimestampMillis((candidateData as { createdAt?: unknown }).createdAt),
-          };
-        })
-        .filter((c): c is NonNullable<typeof c> => Boolean(c))
-        .filter((c) => areUsersCompatible(me, c.data))
-        .filter((c) => {
-          const activityMs = c.lastSeenMs ?? c.createdAtMs;
-          return typeof activityMs === "number" && activityMs >= staleThresholdMs;
-        });
-
-      console.log("[group-match] active compatible candidates:", activeCandidates.length);
-
-      if (activeCandidates.length === 0) {
-        setConnectingStatus("Waiting for group members...");
-        return;
-      }
-
-      const groupMembers = activeCandidates
-        .sort(() => Math.random() - 0.5)
-        .slice(0, MAX_GROUP_SIZE - 1);
-
-      try {
-        const matchedRoomId = await runTransaction(db, async (transaction) => {
-          const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
-          const mySnapshot = await transaction.get(myWaitingRef);
-
-          if (!mySnapshot.exists()) {
-            throw new Error("Own queue entry expired");
-          }
-
-          const myData = mySnapshot.data() as WaitingUser & { nickname?: string };
-          if (myData.status !== "searching" || myData.mode !== "group") {
-            throw new Error("No longer searching for group");
-          }
-
-          const verifiedMembers: Array<{
-            uid: string;
-            nickname: string;
-            gender: ProfileGender;
-            age: number;
-            countryCode?: string;
-          }> = [];
-
-          for (const member of groupMembers) {
-            const memberRef = doc(db, "waitingUsers", member.uid);
-            const memberSnapshot = await transaction.get(memberRef);
-
-            if (!memberSnapshot.exists()) continue;
-            const memberData = memberSnapshot.data() as WaitingUser & { nickname?: string };
-
-            if (memberData.status !== "searching" || memberData.mode !== "group") continue;
-            if (!areUsersCompatible(myData, memberData)) continue;
-
-            const memberActivityMs =
-              toTimestampMillis(memberData.lastSeenAt) ??
-              toTimestampMillis((memberSnapshot.data() as { createdAt?: unknown }).createdAt);
-            if (
-              typeof memberActivityMs === "number" &&
-              memberActivityMs < Date.now() - WAITING_STALE_THRESHOLD_MS
-            ) {
-              continue;
-            }
-
-            verifiedMembers.push({
-              uid: member.uid,
-              nickname: memberData.nickname || `User${member.uid.slice(0, 4)}`,
-              gender: memberData.profile.gender,
-              age: memberData.profile.age,
-              countryCode: memberData.profile.countryCode,
-            });
-
-            if (verifiedMembers.length >= MAX_GROUP_SIZE - 1) break;
-          }
-
-          if (verifiedMembers.length === 0) {
-            throw new Error("No verified group members available");
-          }
-
-          const roomRef = doc(collection(db, "rooms"));
-          const allParticipantUids = [currentUser.uid, ...verifiedMembers.map((m) => m.uid)];
-          const allProfiles = [
-            {
-              uid: currentUser.uid,
-              gender: myData.profile.gender,
-              age: myData.profile.age,
-              countryCode: myData.profile.countryCode ?? null,
-              nickname: myData.nickname || myNickname || `User${currentUser.uid.slice(0, 4)}`,
-            },
-            ...verifiedMembers.map((m) => ({
-              uid: m.uid,
-              gender: m.gender,
-              age: m.age,
-              countryCode: m.countryCode ?? null,
-              nickname: m.nickname,
-            })),
-          ];
-
-          transaction.set(roomRef, {
-            status: "active",
-            mode: "group",
-            participants: allParticipantUids,
-            participantProfiles: allProfiles,
-            createdAt: serverTimestamp(),
-          });
-
-          transaction.update(myWaitingRef, {
-            status: "matched",
-            roomId: roomRef.id,
-            matchedAt: serverTimestamp(),
-          });
-
-          for (const member of verifiedMembers) {
-            const memberRef = doc(db, "waitingUsers", member.uid);
-            transaction.update(memberRef, {
-              status: "matched",
-              roomId: roomRef.id,
-              matchedAt: serverTimestamp(),
-            });
-          }
-
-          return roomRef.id;
-        });
-
-        setConnectingStatus("Group found! Connecting...");
-        console.log("[group-match] SUCCESS! room:", matchedRoomId, "members:", groupMembers.length + 1);
-        setActiveRoomId(matchedRoomId);
-      } catch (txError) {
-        console.warn("[group-match] transaction failed:", txError instanceof Error ? txError.message : txError);
-        setConnectingStatus("Looking for more group members...");
-      }
-    } catch (error) {
-      console.error("[group-match] match lookup failed:", formatFirebaseError(error), error);
-      setConnectingStatus("Matching service is busy. Retrying...");
-    }
-  };
-
-  const tryMatchWithAvailableUser = async (
-    filters: ChatFilters,
-    mode: ChatMode,
-    currentUser: User,
-    currentProfile: UserProfile,
-  ) => {
-    if (activeRoomIdRef.current) {
-      return;
-    }
-
-    try {
-      setConnectingStatus("Checking availability...");
-
-      const waitingUsersRef = collection(db, "waitingUsers");
-      const searchingQuery = query(
-        waitingUsersRef,
-        where("status", "==", "searching"),
-        where("mode", "==", mode),
-        limit(100),
-      );
-      const searchSnapshot = await getDocsFromServer(searchingQuery);
-
-      if (activeRoomIdRef.current) {
-        return;
-      }
-
-      console.log("[matchmaking] query returned", searchSnapshot.docs.length, "docs, my uid:", currentUser.uid);
-
-      const me: WaitingUser = {
-        uid: currentUser.uid,
-        status: "searching",
-        mode,
-        filters,
-        profile: {
-          gender: currentProfile.gender,
-          age: currentProfile.age,
-          countryCode: currentProfile.countryCode,
-        },
-      };
-
-      const now = Date.now();
-      const staleThresholdMs = now - WAITING_STALE_THRESHOLD_MS;
-      const allOtherDocs = searchSnapshot.docs.filter((d) => d.id !== currentUser.uid);
-
-      console.log("[matchmaking] other candidates:", allOtherDocs.length);
-
-      for (const candidateDoc of allOtherDocs) {
-        const raw = candidateDoc.data();
-        const valid = isValidWaitingUser(raw);
-        const lastSeenMs = toTimestampMillis(raw.lastSeenAt);
-        const createdAtMs = toTimestampMillis((raw as { createdAt?: unknown }).createdAt);
-        const activityMs = lastSeenMs ?? createdAtMs;
-        const isFresh = typeof activityMs === "number" && activityMs >= staleThresholdMs;
-        const compat = valid ? areUsersCompatible(me, raw as WaitingUser) : false;
-        console.log("[matchmaking] candidate", candidateDoc.id, {
-          valid,
-          status: raw.status,
-          mode: raw.mode,
-          lastSeenMs,
-          createdAtMs,
-          activityMs,
-          ageMs: typeof activityMs === "number" ? now - activityMs : "N/A",
-          isFresh,
-          compatible: compat,
-          rawLastSeenAt: raw.lastSeenAt,
-          rawCreatedAt: (raw as Record<string, unknown>).createdAt,
-          profile: raw.profile,
-          filters: raw.filters,
-        });
-      }
-
-      const compatibleCandidates = allOtherDocs
-        .map((candidateDoc) => {
-          const candidateData = candidateDoc.data();
-          if (!isValidWaitingUser(candidateData)) {
-            return null;
-          }
-
-          return {
-            uid: candidateDoc.id,
-            data: candidateData,
-            lastSeenMs: toTimestampMillis(candidateData.lastSeenAt),
-            createdAtMs: toTimestampMillis((candidateDoc.data() as { createdAt?: unknown }).createdAt),
-          };
-        })
-        .filter((candidate): candidate is { uid: string; data: WaitingUser; lastSeenMs: number | null; createdAtMs: number | null } => Boolean(candidate))
-        .filter((candidate) => areUsersCompatible(me, candidate.data));
-
-      const activeCompatibleCandidates = compatibleCandidates.filter((candidate) => {
-        const activityMs = candidate.lastSeenMs ?? candidate.createdAtMs;
-        return typeof activityMs === "number" && activityMs >= staleThresholdMs;
-      });
-
-      console.log("[matchmaking] compatible:", compatibleCandidates.length, "active:", activeCompatibleCandidates.length);
-
-      if (activeCompatibleCandidates.length === 0) {
-        setConnectingStatus("Waiting for a compatible stranger...");
-        return;
-      }
-
-      const shuffledCandidates = [...activeCompatibleCandidates].sort(() => Math.random() - 0.5);
-
-      for (const candidate of shuffledCandidates) {
-        try {
-          console.log("[matchmaking] trying transaction with candidate", candidate.uid);
-          const matchedRoomId = await runTransaction(db, async (transaction) => {
-            const myWaitingRef = doc(db, "waitingUsers", currentUser.uid);
-            const candidateWaitingRef = doc(db, "waitingUsers", candidate.uid);
-
-            const [mySnapshot, candidateSnapshot] = await Promise.all([
-              transaction.get(myWaitingRef),
-              transaction.get(candidateWaitingRef),
-            ]);
-
-            if (!mySnapshot.exists() || !candidateSnapshot.exists()) {
-              throw new Error("Queue entry expired");
-            }
-
-            const myData = mySnapshot.data() as WaitingUser;
-            const candidateData = candidateSnapshot.data() as WaitingUser;
-
-            if (
-              myData.status !== "searching" ||
-              candidateData.status !== "searching" ||
-              myData.mode !== mode ||
-              candidateData.mode !== mode ||
-              !areUsersCompatible(myData, candidateData)
-            ) {
-              throw new Error("Candidate no longer available");
-            }
-
-            const candidateActivityMs =
-              toTimestampMillis(candidateData.lastSeenAt) ??
-              toTimestampMillis((candidateSnapshot.data() as { createdAt?: unknown }).createdAt);
-            if (
-              typeof candidateActivityMs === "number" &&
-              candidateActivityMs < Date.now() - WAITING_STALE_THRESHOLD_MS
-            ) {
-              throw new Error("Candidate heartbeat stale");
-            }
-
-            const roomRef = doc(collection(db, "rooms"));
-
-            transaction.set(roomRef, {
-              status: "active",
-              mode,
-              participants: [currentUser.uid, candidate.uid],
-              participantProfiles: [
-                {
-                  uid: currentUser.uid,
-                  gender: myData.profile.gender,
-                  age: myData.profile.age,
-                  countryCode: myData.profile.countryCode ?? null,
-                },
-                {
-                  uid: candidate.uid,
-                  gender: candidateData.profile.gender,
-                  age: candidateData.profile.age,
-                  countryCode: candidateData.profile.countryCode ?? null,
-                },
-              ],
-              createdAt: serverTimestamp(),
-            });
-
-            transaction.update(myWaitingRef, {
-              status: "matched",
-              roomId: roomRef.id,
-              matchedAt: serverTimestamp(),
-            });
-
-            transaction.update(candidateWaitingRef, {
-              status: "matched",
-              roomId: roomRef.id,
-              matchedAt: serverTimestamp(),
-            });
-
-            return roomRef.id;
-          });
-
-          setConnectingStatus("Stranger found. Connecting...");
-          console.log("[matchmaking] SUCCESS! matched with", candidate.uid, "room:", matchedRoomId);
-          setActiveRoomId(matchedRoomId);
-          return;
-        } catch (txError) {
-          console.warn("[matchmaking] transaction failed for candidate", candidate.uid, txError instanceof Error ? txError.message : txError);
-        }
-      }
-
-      setConnectingStatus("Retrying match...");
-    } catch (error) {
-      console.error("[matchmaking] match lookup failed for", currentUser.uid, formatFirebaseError(error), error);
-      setConnectingStatus("Matching service is busy. Retrying...");
-    }
-  };
-
   const startSearching = async (filters: ChatFilters, modeOverride?: ChatMode, nickname?: string) => {
     const effectiveMode = modeOverride ?? chatMode;
     if (!user || !profile || !effectiveMode) {
@@ -2867,11 +2368,20 @@ export default function Home() {
 
       console.log("[matchmaking] queue entry written for", user.uid, "mode:", effectiveMode, "filters:", filters);
 
-      if (effectiveMode === "group") {
-        await tryMatchGroup(filters, user, profile);
-      } else {
-        await tryMatchWithAvailableUser(filters, effectiveMode, user, profile);
-      }
+      // Listen for when the server (or another client's trigger) matches us
+      waitingUnsubRef.current?.();
+      waitingUnsubRef.current = onSnapshot(waitingRef, (snapshot) => {
+        if (!snapshot.exists()) {
+          return;
+        }
+        const data = snapshot.data() as { status?: string; roomId?: string };
+        if (data.status === "matched" && data.roomId && !activeRoomIdRef.current) {
+          console.log("[matchmaking] matched by server, room:", data.roomId);
+          setConnectingStatus("Stranger found. Connecting...");
+          activeRoomIdRef.current = data.roomId;
+          setActiveRoomId(data.roomId);
+        }
+      });
     } catch (error) {
       console.error("Failed to enter matchmaking queue", {
         uid: user.uid,
@@ -2880,13 +2390,25 @@ export default function Home() {
       setConnectingStatus("Could not reach matchmaking right now. Retrying...");
     }
 
+    // Periodically call the server-side retryMatch as a fallback in case
+    // the initial Firestore trigger didn't find a match (e.g. this user
+    // was the first one in the queue).
+    const functions = getFunctions(firebaseApp, "us-central1");
+    const retryMatchFn = httpsCallable(functions, "retryMatch");
+
     retryMatchIntervalRef.current = window.setInterval(() => {
-      if (effectiveMode === "group") {
-        void tryMatchGroup(filters, user, profile);
-      } else {
-        void tryMatchWithAvailableUser(filters, effectiveMode, user, profile);
+      if (activeRoomIdRef.current) {
+        return;
       }
-    }, 2500);
+      void retryMatchFn().then((result) => {
+        const data = result.data as { matched?: boolean } | null;
+        if (data?.matched) {
+          console.log("[matchmaking] server retryMatch succeeded");
+        }
+      }).catch((error) => {
+        console.warn("[matchmaking] retryMatch call failed:", error instanceof Error ? error.message : error);
+      });
+    }, 3000);
 
     heartbeatIntervalRef.current = window.setInterval(() => {
       void (async () => {

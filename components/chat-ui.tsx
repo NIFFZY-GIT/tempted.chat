@@ -1634,7 +1634,7 @@ export function ChatRoomView({
                 Next
                 <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 6 6 6-6 6"/></svg>
               </button>
-            ) : (
+            ) : !isConnecting ? (
               <>
                 {!showLeaveConfirm ? (
                   <button
@@ -1651,7 +1651,7 @@ export function ChatRoomView({
                   </div>
                 )}
               </>
-            )}
+            ) : null}
           </div>
         </header>
 
@@ -1894,7 +1894,7 @@ export function ChatRoomView({
               Next
               <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 6 6 6-6 6"/></svg>
             </button>
-          ) : (
+          ) : !isConnecting ? (
             <>
               {!showLeaveConfirm ? (
                 <button
@@ -1911,7 +1911,7 @@ export function ChatRoomView({
                 </div>
               )}
             </>
-          )}
+          ) : null}
           <button
             onClick={toggleFullscreen}
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white/30 transition hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.95]"
