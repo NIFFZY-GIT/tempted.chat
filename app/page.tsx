@@ -1,5 +1,3 @@
-
-
 "use client";
 
 import { auth, db, firebaseApp, googleProvider, storage } from "@/lib/firebase";
@@ -1136,52 +1134,55 @@ export default function Home() {
     // Only start the camera once the user has actually entered the video chat UI
     // (clicked Quick Start and has filters set), not while still on the mode selection menu.
     if (!chatFilters || (!isConnecting && !activeRoomId)) {
+      setVideoError(null);
       return;
     }
 
     // If a stream already exists (e.g. from WebRTC setup), skip.
     if (localMediaStreamRef.current) {
+      setVideoError(null);
       return;
     }
 
     let cancelled = false;
-
     const startPreview = async () => {
       try {
+        // Check Permissions API first
+        let permission: PermissionState | null = null;
+        try {
+          const camPerm = await navigator.permissions.query({ name: "camera" as PermissionName });
+          permission = camPerm.state;
+        } catch {}
+        if (permission === "denied") {
+          setVideoError("Camera or microphone permission is blocked. Allow access in your browser settings and reload.");
+          return;
+        }
+        // Try to get the stream (will prompt if needed)
         const localStream = await getPreferredLocalMediaStream(cameraFacingMode);
-
         if (cancelled) {
           localStream.getTracks().forEach((track) => track.stop());
           return;
         }
-
         localMediaStreamRef.current = localStream;
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = localStream;
           localVideoRef.current.muted = true;
-          void localVideoRef.current.play().catch(() => {
-            // Ignore autoplay restrictions.
-          });
+          void localVideoRef.current.play().catch(() => {});
         }
-
         setLocalVideoEnabled(true);
         setLocalAudioEnabled(localStream.getAudioTracks().some((track) => track.enabled));
-
         const currentFacingMode = localStream.getVideoTracks()[0]?.getSettings().facingMode;
         if (currentFacingMode === "environment" || currentFacingMode === "user") {
           setCameraFacingMode(currentFacingMode);
         }
+        setVideoError(null);
       } catch {
         setVideoError("Camera or microphone permission is required for video mode.");
       }
     };
-
     void startPreview();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [chatMode, chatFilters, isConnecting, activeRoomId]);
+    return () => { cancelled = true; };
+  }, [chatMode, chatFilters, isConnecting, activeRoomId, cameraFacingMode]);
 
   useEffect(() => {
     if (chatMode !== "video" || !activeRoomId || !user) {
