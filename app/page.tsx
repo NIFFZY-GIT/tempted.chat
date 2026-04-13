@@ -1,3 +1,5 @@
+
+
 "use client";
 
 import { auth, db, firebaseApp, googleProvider, storage } from "@/lib/firebase";
@@ -360,6 +362,7 @@ export default function Home() {
   const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("user");
   const [isAdmin, setIsAdmin] = useState(false);
   const [adminRoleLoading, setAdminRoleLoading] = useState(false);
+
   const [e2eeReadyVersion, setE2eeReadyVersion] = useState(0);
   const [subscriptionExpiresAt, setSubscriptionExpiresAt] = useState<number | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState<"vip" | "vvip" | null>(null);
@@ -381,6 +384,25 @@ export default function Home() {
   const pendingSendRetryIntervalRef = useRef<number | null>(null);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
+
+
+
+
+    // Prompt for camera/mic permission as soon as user selects video mode
+    useEffect(() => {
+      if (chatMode !== "video") return;
+      navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+        .then((stream) => {
+          stream.getTracks().forEach((track) => track.stop());
+          setVideoError(null);
+        })
+        .catch(() => {
+          setVideoError("Camera and microphone permission is required for video chat.");
+          setChatMode(null);
+        });
+      // Only run on chatMode change
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chatMode]);
   const hasAttemptedSessionRestoreRef = useRef(false);
   const [sessionRestoreComplete, setSessionRestoreComplete] = useState(false);
   const disconnectHandledRoomRef = useRef<string | null>(null);
@@ -766,7 +788,22 @@ export default function Home() {
       return null;
     }
 
-    const peerPublicJwk = roomData.e2eePublicKeys?.[peerUid];
+    let peerPublicJwk = roomData.e2eePublicKeys?.[peerUid];
+
+    // If peer key is missing from the snapshot data, try a fresh server read
+    // to avoid staying stuck on a stale local cache.
+    if (!peerPublicJwk) {
+      try {
+        const freshSnapshot = await getDoc(doc(db, "rooms", roomId));
+        if (freshSnapshot.exists()) {
+          const freshData = freshSnapshot.data() as { e2eePublicKeys?: Record<string, JsonWebKey> };
+          peerPublicJwk = freshData.e2eePublicKeys?.[peerUid];
+        }
+      } catch {
+        // Ignore transient read failures.
+      }
+    }
+
     if (!peerPublicJwk) {
       return null;
     }
@@ -781,12 +818,39 @@ export default function Home() {
     return cipherKey;
   };
 
+  const retryE2EENegotiation = async (): Promise<CryptoKey | null> => {
+    const roomId = activeRoomIdRef.current;
+    if (!roomId || !user) {
+      return null;
+    }
+
+    try {
+      const roomSnapshot = await getDoc(doc(db, "rooms", roomId));
+      if (!roomSnapshot.exists()) {
+        return null;
+      }
+
+      const roomData = roomSnapshot.data() as {
+        participants?: string[];
+        e2eePublicKeys?: Record<string, JsonWebKey>;
+      };
+
+      return await ensureRoomE2EEKey(roomId, user.uid, {
+        participants: roomData.participants,
+        e2eePublicKeys: roomData.e2eePublicKeys,
+      });
+    } catch {
+      return null;
+    }
+  };
+
   const waitForRoomCipherKey = async (timeoutMs = 12000): Promise<CryptoKey | null> => {
     if (roomCipherKeyRef.current) {
       return roomCipherKeyRef.current;
     }
 
     const startedAt = Date.now();
+    let lastRetryAt = 0;
 
     return new Promise((resolve) => {
       const intervalId = window.setInterval(() => {
@@ -799,6 +863,13 @@ export default function Home() {
         if (Date.now() - startedAt >= timeoutMs) {
           window.clearInterval(intervalId);
           resolve(null);
+          return;
+        }
+
+        // Actively re-attempt E2EE negotiation every 2 seconds
+        if (Date.now() - lastRetryAt >= 2000) {
+          lastRetryAt = Date.now();
+          void retryE2EENegotiation();
         }
       }, 120);
     });
@@ -817,6 +888,7 @@ export default function Home() {
     }
 
     const startedAt = Date.now();
+    let lastRetryAt = 0;
     pendingSendRetryIntervalRef.current = window.setInterval(() => {
       if (!activeRoomIdRef.current) {
         clearPendingSendRetry();
@@ -827,6 +899,12 @@ export default function Home() {
         clearPendingSendRetry();
         void sendFn();
         return;
+      }
+
+      // Actively re-attempt E2EE negotiation every 2 seconds
+      if (Date.now() - lastRetryAt >= 2000) {
+        lastRetryAt = Date.now();
+        void retryE2EENegotiation();
       }
 
       if (Date.now() - startedAt > 30000) {
@@ -1730,59 +1808,6 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
-    if (!user) {
-      waitingUnsubRef.current?.();
-      waitingUnsubRef.current = null;
-      setIsConnecting(false);
-      setActiveRoomId(null);
-      setMessages([]);
-      return;
-    }
-
-    if (!sessionRestoreComplete) {
-      return;
-    }
-
-    if (activeRoomId) {
-      waitingUnsubRef.current?.();
-      waitingUnsubRef.current = null;
-      return;
-    }
-
-    if (showNextStrangerPrompt) {
-      setIsConnecting(false);
-      return;
-    }
-
-    const waitingRef = doc(db, "waitingUsers", user.uid);
-    setIsConnecting(true);
-    setConnectingStatus("Checking availability...");
-
-    waitingUnsubRef.current?.();
-    waitingUnsubRef.current = onSnapshot(waitingRef, (snapshot) => {
-      if (!snapshot.exists()) {
-        if (!activeRoomIdRef.current) {
-          setConnectingStatus("Waiting for available strangers...");
-        }
-        return;
-      }
-
-      const data = snapshot.data() as WaitingUser;
-      const matchedRoomId = data.roomId;
-      if (data.status === "matched" && typeof matchedRoomId === "string" && matchedRoomId.length > 0) {
-        if (activeRoomIdRef.current !== matchedRoomId) {
-          setActiveRoomId(matchedRoomId);
-        }
-      }
-    });
-
-    return () => {
-      waitingUnsubRef.current?.();
-      waitingUnsubRef.current = null;
-    };
-  }, [activeRoomId, sessionRestoreComplete, showNextStrangerPrompt, user]);
-
-  useEffect(() => {
     if (!user || !activeRoomId) {
       return;
     }
@@ -1843,7 +1868,7 @@ export default function Home() {
 
         updateRoomParticipants(Array.isArray(roomData.participants) ? roomData.participants : []);
 
-        // Populate group participants with nicknames and colors
+        // Populate group participants
         if (roomData.mode === "group" && roomData.participantProfiles) {
           setGroupParticipants(
             roomData.participantProfiles.map((p, i) => ({
@@ -3712,7 +3737,7 @@ export default function Home() {
             void startSearching(chatFilters);
           }}
         />
-        <DevelopedBy />
+        <DevelopedBy disableLink />
       </main>
     </>
   );
