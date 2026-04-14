@@ -27,6 +27,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.url === "/status") {
+    const status = {
+      connectedUids: clientsByUid.size,
+      queues: {
+        text: inMemoryQueues.text.size,
+        video: inMemoryQueues.video.size,
+        group: inMemoryQueues.group.size,
+      },
+      openGroupRooms: Array.from(openGroupRooms.values()).map((room) => ({
+        roomId: room.roomId,
+        members: room.entries.size,
+        uids: Array.from(room.entries.keys()),
+        createdAt: room.createdAt,
+        lastJoinAt: room.lastJoinAt,
+      })),
+    };
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(status, null, 2));
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
@@ -462,17 +483,24 @@ const attemptMatch = async (entry) => {
       return false;
     }
 
+    // Create the room and register it in openGroupRooms BEFORE the async
+    // dequeue step.  This eliminates a race where a new arrival's
+    // tryJoinOpenGroupRoom runs during the dequeueRedis await and can't
+    // find the room yet.
+    const room = createGroupRoom(selected);
+    if (room.entries.size < GROUP_ROOM_SIZE) {
+      openGroupRooms.set(room.roomId, room);
+    }
+
+    // Now dequeue (sync in-memory is instant, Redis is async but the
+    // room is already visible to concurrent joiners).
     await Promise.all(selected.map(async (participant) => {
       dequeueInMemory(participant.uid, participant.mode);
       await dequeueRedis(participant.uid, participant.mode);
     }));
 
-    const room = createGroupRoom(selected);
     const snapshot = getGroupRoomSnapshot(room);
     console.log(`[group] new room ${room.roomId} created with ${selected.length} members: ${selected.map((s) => s.uid).join(", ")}`);
-    if (room.entries.size < GROUP_ROOM_SIZE) {
-      openGroupRooms.set(room.roomId, room);
-    }
 
     selected.forEach((participant) => {
       sendGroupMatchFound(participant, snapshot);
@@ -610,8 +638,17 @@ wss.on("connection", (ws) => {
       socketState.set(ws, nextState);
       send(ws, "queue_joined", { mode });
 
-      const matched = await attemptMatch(entry);
-      if (!matched) {
+      if (mode === "group") {
+        console.log(`[group] ${state.uid} joined queue (group queue size: ${inMemoryQueues.group.size}, open rooms: ${openGroupRooms.size})`);
+      }
+
+      try {
+        const matched = await attemptMatch(entry);
+        if (!matched) {
+          send(ws, "queue_waiting", { mode });
+        }
+      } catch (err) {
+        console.error(`[matchmaking] attemptMatch error for ${state.uid}:`, err);
         send(ws, "queue_waiting", { mode });
       }
       return;

@@ -1214,6 +1214,7 @@ export default function Home() {
             : [user.uid];
 
         if (roomId && mode === "group" && activeRoomIdRef.current === roomId) {
+          console.log(`[group] roster update: ${participants.length} members in room ${roomId}`);
           updateRoomParticipants(participants);
           if (participantProfiles.length > 0) {
             setGroupParticipants(
@@ -1276,6 +1277,9 @@ export default function Home() {
         setConnectingStatus("Stranger found. Connecting...");
         activeRoomIdRef.current = roomId;
         setActiveRoomId(roomId);
+        if (mode === "group") {
+          console.log(`[group] joined room ${roomId} with ${participants.length} members`);
+        }
         return;
       }
 
@@ -1914,6 +1918,13 @@ export default function Home() {
         window.clearTimeout(noShowTimeoutRef.current);
         noShowTimeoutRef.current = null;
       }
+      return;
+    }
+
+    // Skip no-show check for group mode — group rooms start with 2+
+    // members and grow over time. The 1-on-1 no-show logic would
+    // incorrectly destroy the room.
+    if (chatMode === "group") {
       return;
     }
 
