@@ -3314,8 +3314,17 @@ export default function Home() {
       setAuthNotice(null);
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
+      const authCode =
+        typeof error === "object" && error !== null && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : "";
+
       const message =
-        error instanceof Error ? error.message : "Google login failed. Try again.";
+        authCode === "auth/unauthorized-domain"
+          ? "Google sign-in is not enabled for this domain yet. Add this domain in Firebase Console > Authentication > Settings > Authorized domains, then retry."
+          : error instanceof Error
+            ? error.message
+            : "Google login failed. Try again.";
       setAuthError(message);
     } finally {
       setAuthBusy(false);

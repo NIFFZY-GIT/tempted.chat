@@ -159,11 +159,11 @@ export function ParticleBackground() {
 
     // ── Animate ──
     let animationId: number;
-    const clock = new THREE.Clock();
+    const startTime = performance.now();
 
     const animate = () => {
       animationId = requestAnimationFrame(animate);
-      const elapsed = clock.getElapsedTime();
+      const elapsed = (performance.now() - startTime) / 1000;
       material.uniforms.uTime.value = elapsed;
 
       // Slow rotation following mouse
