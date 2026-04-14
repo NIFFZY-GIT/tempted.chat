@@ -42,6 +42,8 @@ const inMemoryQueues = {
 };
 
 const WAITING_TTL_MS = 20000;
+const GROUP_ROOM_SIZE = 10;
+const GROUP_MIN_SIZE = 2;
 
 const send = (ws, event, payload) => {
   if (ws.readyState !== ws.OPEN) return;
@@ -155,6 +157,30 @@ const pickCandidateInMemory = (entry) => {
   return candidates[Math.floor(Math.random() * candidates.length)];
 };
 
+const pickCandidatesInMemory = (entry, maxCount) => {
+  pruneInMemory();
+  const queue = inMemoryQueues[entry.mode];
+  const candidates = [];
+  for (const [uid, candidate] of queue) {
+    if (uid === entry.uid) continue;
+    if (candidate.lastSeenAt < now() - WAITING_TTL_MS) continue;
+    if (!areUsersCompatible(entry, candidate)) continue;
+    candidates.push(candidate);
+  }
+
+  if (candidates.length <= maxCount) {
+    return candidates;
+  }
+
+  // Shuffle before slicing to keep candidate selection fair.
+  for (let i = candidates.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+  }
+
+  return candidates.slice(0, maxCount);
+};
+
 const pickCandidateRedis = async (entry) => {
   if (!redis) return null;
   const key = queueKey(entry.mode);
@@ -170,6 +196,29 @@ const pickCandidateRedis = async (entry) => {
     return candidate;
   }
   return null;
+};
+
+const pickCandidatesRedis = async (entry, maxCount) => {
+  if (!redis) return [];
+  const key = queueKey(entry.mode);
+  const cutoff = now() - WAITING_TTL_MS;
+  await redis.zremrangebyscore(key, 0, cutoff);
+  const candidateUids = await redis.zrevrangebyscore(key, "+inf", cutoff, "LIMIT", 0, 200);
+  const candidates = [];
+
+  for (const uid of candidateUids) {
+    if (uid === entry.uid) continue;
+    const member = await redis.hgetall(queueMemberKey(uid));
+    if (!member.payload) continue;
+    const candidate = JSON.parse(member.payload);
+    if (!areUsersCompatible(entry, candidate)) continue;
+    candidates.push(candidate);
+    if (candidates.length >= maxCount) {
+      break;
+    }
+  }
+
+  return candidates;
 };
 
 const detachSocket = async (ws) => {
@@ -215,6 +264,21 @@ const createRoomPayload = (a, b) => {
   return { roomId, offererUid, participants, participantProfiles: profiles };
 };
 
+const toParticipantProfile = (entry) => ({
+  uid: entry.uid,
+  gender: entry.profile.gender,
+  age: entry.profile.age,
+  countryCode: entry.profile.countryCode || null,
+  nickname: entry.nickname,
+});
+
+const createGroupRoomPayload = (entries) => {
+  const roomId = crypto.randomUUID();
+  const participants = entries.map((entry) => entry.uid);
+  const participantProfiles = entries.map(toParticipantProfile);
+  return { roomId, participants, participantProfiles };
+};
+
 const broadcastToUid = (uid, event, payload) => {
   const sockets = clientsByUid.get(uid);
   if (!sockets || sockets.size === 0) return;
@@ -222,6 +286,56 @@ const broadcastToUid = (uid, event, payload) => {
 };
 
 const attemptMatch = async (entry) => {
+  if (entry.mode === "group") {
+    const rawCandidates = redis
+      ? await pickCandidatesRedis(entry, GROUP_ROOM_SIZE - 1)
+      : pickCandidatesInMemory(entry, GROUP_ROOM_SIZE - 1);
+
+    const selected = [entry];
+    rawCandidates.forEach((candidate) => {
+      if (selected.length >= GROUP_ROOM_SIZE) {
+        return;
+      }
+
+      const unique = selected.every((existing) => existing.uid !== candidate.uid);
+      if (!unique) {
+        return;
+      }
+
+      const compatibleWithGroup = selected.every((existing) => areUsersCompatible(existing, candidate));
+      if (!compatibleWithGroup) {
+        return;
+      }
+
+      selected.push(candidate);
+    });
+
+    if (selected.length < GROUP_MIN_SIZE) {
+      return false;
+    }
+
+    await Promise.all(selected.map(async (participant) => {
+      dequeueInMemory(participant.uid, participant.mode);
+      await dequeueRedis(participant.uid, participant.mode);
+    }));
+
+    const room = createGroupRoomPayload(selected);
+
+    selected.forEach((participant) => {
+      const peerUid = room.participants.find((uid) => uid !== participant.uid) || participant.uid;
+      broadcastToUid(participant.uid, "match_found", {
+        roomId: room.roomId,
+        mode: participant.mode,
+        peerUid,
+        isOfferer: false,
+        participants: room.participants,
+        participantProfiles: room.participantProfiles,
+      });
+    });
+
+    return true;
+  }
+
   const candidate = (await pickCandidateRedis(entry)) || pickCandidateInMemory(entry);
   if (!candidate) return false;
 
