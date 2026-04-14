@@ -1213,6 +1213,20 @@ export default function Home() {
             ? [user.uid, peerUid]
             : [user.uid];
 
+        if (roomId && mode === "group" && activeRoomIdRef.current === roomId) {
+          updateRoomParticipants(participants);
+          if (participantProfiles.length > 0) {
+            setGroupParticipants(
+              participantProfiles.map((p, i) => ({
+                uid: p.uid,
+                nickname: p.nickname || `User${p.uid.slice(0, 4)}`,
+                color: GROUP_COLORS[i % GROUP_COLORS.length],
+              })),
+            );
+          }
+          return;
+        }
+
         if (!roomId || !peerUid || !mode || activeRoomIdRef.current) {
           return;
         }

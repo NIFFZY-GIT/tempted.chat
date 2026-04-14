@@ -365,7 +365,12 @@ const tryJoinOpenGroupRoom = async (entry) => {
     await dequeueRedis(entry.uid, entry.mode);
 
     const snapshot = getGroupRoomSnapshot(room);
-    sendGroupMatchFound(entry, snapshot);
+    snapshot.participants.forEach((participantUid) => {
+      const participantEntry = room.entries.get(participantUid);
+      if (participantEntry) {
+        sendGroupMatchFound(participantEntry, snapshot);
+      }
+    });
 
     if (room.entries.size >= GROUP_ROOM_SIZE) {
       openGroupRooms.delete(room.roomId);
