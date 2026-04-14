@@ -95,7 +95,7 @@ export default function PlansPage() {
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, idToken: token }),
       });
       const data = await res.json();
       if (!res.ok) {

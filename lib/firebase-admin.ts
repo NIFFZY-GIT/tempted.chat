@@ -7,17 +7,22 @@ function getAdminApp() {
 
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (serviceAccount) {
-    // Normalize literal \n sequences produced by .env file readers
-    const normalized = serviceAccount.replace(/\\n/g, "\n");
-    let parsed: object;
+    let parsed: Record<string, unknown>;
     try {
-      parsed = JSON.parse(normalized) as object;
+      // Parse raw JSON first. For .env values that contain escaped newlines
+      // (\n), normalize only the private_key field after parsing.
+      parsed = JSON.parse(serviceAccount) as Record<string, unknown>;
     } catch (err) {
       throw new Error(
         `FIREBASE_SERVICE_ACCOUNT_KEY is set but contains invalid JSON. ` +
         `Check that the value is a single-line JSON string. Original error: ${String(err)}`
       );
     }
+
+    if (typeof parsed.private_key === "string") {
+      parsed.private_key = parsed.private_key.replace(/\\n/g, "\n");
+    }
+
     return initializeApp({ credential: cert(parsed) });
   }
 
@@ -64,6 +69,19 @@ export async function verifyAuthToken(
     return decoded.uid;
   } catch (error) {
     console.error("verifyAuthToken failed:", error);
+
+    if (error instanceof Error) {
+      const message = error.message.toLowerCase();
+      if (
+        message.includes("firebase admin credentials") ||
+        message.includes("contains invalid json") ||
+        message.includes("private key") ||
+        message.includes("application default credentials")
+      ) {
+        throw error;
+      }
+    }
+
     return null;
   }
 }

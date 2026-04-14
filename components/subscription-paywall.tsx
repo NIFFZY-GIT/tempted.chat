@@ -84,7 +84,7 @@ export function SubscriptionPaywall({
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId }),
+        body: JSON.stringify({ planId, idToken: token }),
       });
 
       const data = await response.json();

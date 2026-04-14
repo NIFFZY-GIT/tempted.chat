@@ -6,15 +6,18 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
+    const body = await request.json();
+    const { planId, idToken } = body as { planId?: string; idToken?: string };
+
+    const authHeader = request.headers.get("authorization");
+    const effectiveAuthHeader = authHeader ?? (idToken ? `Bearer ${idToken}` : null);
+
     const authenticatedUid = await verifyAuthToken(
-      request.headers.get("authorization"),
+      effectiveAuthHeader,
     );
     if (!authenticatedUid) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    const body = await request.json();
-    const { planId } = body as { planId?: string };
 
     if (!planId) {
       return NextResponse.json({ error: "Missing planId" }, { status: 400 });
