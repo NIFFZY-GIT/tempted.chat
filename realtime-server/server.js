@@ -365,6 +365,7 @@ const tryJoinOpenGroupRoom = async (entry) => {
     await dequeueRedis(entry.uid, entry.mode);
 
     const snapshot = getGroupRoomSnapshot(room);
+    console.log(`[group] ${entry.uid} joined open room ${room.roomId} (now ${snapshot.participants.length} members)`);
     snapshot.participants.forEach((participantUid) => {
       const participantEntry = room.entries.get(participantUid);
       if (participantEntry) {
@@ -429,6 +430,7 @@ const attemptMatch = async (entry) => {
 
     const room = createGroupRoom(selected);
     const snapshot = getGroupRoomSnapshot(room);
+    console.log(`[group] new room ${room.roomId} created with ${selected.length} members: ${selected.map((s) => s.uid).join(", ")}`);
     if (room.entries.size < GROUP_ROOM_SIZE) {
       openGroupRooms.set(room.roomId, room);
     }
@@ -485,6 +487,10 @@ const heartbeatQueue = async (uid, mode) => {
     if (redis) {
       await enqueueRedis(current);
     }
+    // Re-attempt matching on each heartbeat so queued users can
+    // discover open group rooms (or new queue arrivals) that appeared
+    // after their initial attemptMatch call.
+    await attemptMatch(current);
   }
 };
 
@@ -639,9 +645,27 @@ wss.on("connection", (ws) => {
   });
 });
 
-setInterval(() => {
+// Periodic sweep: prune stale entries and re-attempt matching for all
+// queued users so they can discover open group rooms or new arrivals.
+const sweepQueues = async () => {
   pruneInMemory();
   pruneOpenGroupRooms();
+
+  // Re-attempt matching for every queued user (group mode benefits most).
+  for (const mode of ["group", "text", "video"]) {
+    const queue = inMemoryQueues[mode];
+    for (const [, entry] of queue) {
+      try {
+        await attemptMatch(entry);
+      } catch (err) {
+        console.error("[sweep] attemptMatch error", entry.uid, err);
+      }
+    }
+  }
+};
+
+setInterval(() => {
+  void sweepQueues();
 }, 3000);
 
 server.listen(PORT, () => {

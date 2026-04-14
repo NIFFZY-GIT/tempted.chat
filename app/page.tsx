@@ -1259,6 +1259,19 @@ export default function Home() {
           });
         }
 
+        // Initialize group participant list immediately so the UI shows
+        // member count from the very first match (instead of waiting for
+        // the Firestore snapshot roundtrip).
+        if (mode === "group" && participantProfiles.length > 0) {
+          setGroupParticipants(
+            participantProfiles.map((p, i) => ({
+              uid: p.uid,
+              nickname: p.nickname || `User${p.uid.slice(0, 4)}`,
+              color: GROUP_COLORS[i % GROUP_COLORS.length],
+            })),
+          );
+        }
+
         cleanupWaitIntervals();
         setConnectingStatus("Stranger found. Connecting...");
         activeRoomIdRef.current = roomId;
