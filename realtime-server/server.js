@@ -1,0 +1,435 @@
+const http = require("http");
+const { WebSocketServer } = require("ws");
+const Redis = require("ioredis");
+const admin = require("firebase-admin");
+const crypto = require("crypto");
+
+const PORT = Number(process.env.REALTIME_PORT || 8787);
+const REDIS_URL = process.env.REDIS_URL || "";
+const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "";
+
+if (!admin.apps.length) {
+  admin.initializeApp(FIREBASE_PROJECT_ID ? { projectId: FIREBASE_PROJECT_ID } : undefined);
+}
+
+const redis = REDIS_URL
+  ? new Redis(REDIS_URL, {
+      maxRetriesPerRequest: 2,
+      enableReadyCheck: true,
+      lazyConnect: false,
+    })
+  : null;
+
+const server = http.createServer((req, res) => {
+  if (req.url === "/healthz") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  res.writeHead(404);
+  res.end();
+});
+
+const wss = new WebSocketServer({ server });
+
+const clientsByUid = new Map();
+const socketState = new WeakMap();
+const inMemoryQueues = {
+  text: new Map(),
+  video: new Map(),
+  group: new Map(),
+};
+
+const WAITING_TTL_MS = 20000;
+
+const send = (ws, event, payload) => {
+  if (ws.readyState !== ws.OPEN) return;
+  ws.send(JSON.stringify({ event, payload }));
+};
+
+const ageGroupMatches = (ageGroup, age) => {
+  if (ageGroup === "Any age") return true;
+  if (ageGroup === "Under 18") return age < 18;
+  if (ageGroup === "18-25") return age >= 18 && age <= 25;
+  return age >= 25;
+};
+
+const countryMatches = (country, countryCode) => {
+  if (country === "Any") return true;
+  return (countryCode || "").toUpperCase() === country;
+};
+
+const styleMatches = (a, b) => a === "Any style" || b === "Any style" || a === b;
+
+const profileMatchesFilters = (filters, profile) => {
+  const genderOk = filters.gender === "Any" || filters.gender === profile.gender;
+  const ageOk = ageGroupMatches(filters.ageGroup, profile.age);
+  const countryOk = countryMatches(filters.country, profile.countryCode);
+  return genderOk && ageOk && countryOk;
+};
+
+const areUsersCompatible = (a, b) => {
+  return (
+    styleMatches(a.filters.style, b.filters.style) &&
+    profileMatchesFilters(a.filters, b.profile) &&
+    profileMatchesFilters(b.filters, a.profile)
+  );
+};
+
+const now = () => Date.now();
+
+const queueKey = (mode) => `queue:${mode}`;
+const queueMemberKey = (uid) => `queue:member:${uid}`;
+
+const normalizeEntry = (uid, payload) => ({
+  uid,
+  mode: payload.mode,
+  filters: payload.filters,
+  profile: payload.profile,
+  nickname: payload.nickname || `User${uid.slice(0, 4)}`,
+  queuedAt: now(),
+  lastSeenAt: now(),
+});
+
+const enqueueInMemory = (entry) => {
+  inMemoryQueues[entry.mode].set(entry.uid, entry);
+};
+
+const dequeueInMemory = (uid, modeHint) => {
+  if (modeHint) {
+    inMemoryQueues[modeHint].delete(uid);
+    return;
+  }
+  ["text", "video", "group"].forEach((mode) => inMemoryQueues[mode].delete(uid));
+};
+
+const pruneInMemory = () => {
+  const cutoff = now() - WAITING_TTL_MS;
+  ["text", "video", "group"].forEach((mode) => {
+    for (const [uid, entry] of inMemoryQueues[mode]) {
+      if (entry.lastSeenAt < cutoff) {
+        inMemoryQueues[mode].delete(uid);
+      }
+    }
+  });
+};
+
+const enqueueRedis = async (entry) => {
+  if (!redis) return;
+  const key = queueKey(entry.mode);
+  await redis.multi()
+    .hset(queueMemberKey(entry.uid), {
+      uid: entry.uid,
+      mode: entry.mode,
+      payload: JSON.stringify(entry),
+      updatedAt: String(entry.lastSeenAt),
+    })
+    .expire(queueMemberKey(entry.uid), Math.ceil(WAITING_TTL_MS / 1000))
+    .zadd(key, entry.lastSeenAt, entry.uid)
+    .exec();
+};
+
+const dequeueRedis = async (uid, modeHint) => {
+  if (!redis) return;
+  const member = await redis.hgetall(queueMemberKey(uid));
+  const mode = modeHint || member.mode;
+  const multi = redis.multi().del(queueMemberKey(uid));
+  if (mode) {
+    multi.zrem(queueKey(mode), uid);
+  }
+  await multi.exec();
+};
+
+const pickCandidateInMemory = (entry) => {
+  pruneInMemory();
+  const queue = inMemoryQueues[entry.mode];
+  const candidates = [];
+  for (const [uid, candidate] of queue) {
+    if (uid === entry.uid) continue;
+    if (candidate.lastSeenAt < now() - WAITING_TTL_MS) continue;
+    if (!areUsersCompatible(entry, candidate)) continue;
+    candidates.push(candidate);
+  }
+  if (candidates.length === 0) return null;
+  return candidates[Math.floor(Math.random() * candidates.length)];
+};
+
+const pickCandidateRedis = async (entry) => {
+  if (!redis) return null;
+  const key = queueKey(entry.mode);
+  const cutoff = now() - WAITING_TTL_MS;
+  await redis.zremrangebyscore(key, 0, cutoff);
+  const candidateUids = await redis.zrevrangebyscore(key, "+inf", cutoff, "LIMIT", 0, 100);
+  for (const uid of candidateUids) {
+    if (uid === entry.uid) continue;
+    const member = await redis.hgetall(queueMemberKey(uid));
+    if (!member.payload) continue;
+    const candidate = JSON.parse(member.payload);
+    if (!areUsersCompatible(entry, candidate)) continue;
+    return candidate;
+  }
+  return null;
+};
+
+const detachSocket = async (ws) => {
+  const state = socketState.get(ws);
+  if (!state?.uid) return;
+
+  const uid = state.uid;
+  const clients = clientsByUid.get(uid);
+  if (clients) {
+    clients.delete(ws);
+    if (clients.size === 0) clientsByUid.delete(uid);
+  }
+
+  const modeHint = state.queueMode || null;
+  dequeueInMemory(uid, modeHint);
+  await dequeueRedis(uid, modeHint);
+  socketState.set(ws, { ...state, queueMode: null });
+};
+
+const createRoomPayload = (a, b) => {
+  const roomId = crypto.randomUUID();
+  const chooser = Math.random() < 0.5;
+  const offererUid = chooser ? a.uid : b.uid;
+
+  const participants = [a.uid, b.uid];
+  const profiles = [
+    {
+      uid: a.uid,
+      gender: a.profile.gender,
+      age: a.profile.age,
+      countryCode: a.profile.countryCode || null,
+      nickname: a.nickname,
+    },
+    {
+      uid: b.uid,
+      gender: b.profile.gender,
+      age: b.profile.age,
+      countryCode: b.profile.countryCode || null,
+      nickname: b.nickname,
+    },
+  ];
+
+  return { roomId, offererUid, participants, participantProfiles: profiles };
+};
+
+const broadcastToUid = (uid, event, payload) => {
+  const sockets = clientsByUid.get(uid);
+  if (!sockets || sockets.size === 0) return;
+  sockets.forEach((ws) => send(ws, event, payload));
+};
+
+const attemptMatch = async (entry) => {
+  const candidate = (await pickCandidateRedis(entry)) || pickCandidateInMemory(entry);
+  if (!candidate) return false;
+
+  dequeueInMemory(entry.uid, entry.mode);
+  dequeueInMemory(candidate.uid, candidate.mode);
+  await Promise.all([
+    dequeueRedis(entry.uid, entry.mode),
+    dequeueRedis(candidate.uid, candidate.mode),
+  ]);
+
+  const room = createRoomPayload(entry, candidate);
+
+  const payloadForA = {
+    roomId: room.roomId,
+    mode: entry.mode,
+    peerUid: candidate.uid,
+    isOfferer: room.offererUid === entry.uid,
+    participants: room.participants,
+    participantProfiles: room.participantProfiles,
+  };
+
+  const payloadForB = {
+    roomId: room.roomId,
+    mode: candidate.mode,
+    peerUid: entry.uid,
+    isOfferer: room.offererUid === candidate.uid,
+    participants: room.participants,
+    participantProfiles: room.participantProfiles,
+  };
+
+  broadcastToUid(entry.uid, "match_found", payloadForA);
+  broadcastToUid(candidate.uid, "match_found", payloadForB);
+  return true;
+};
+
+const heartbeatQueue = async (uid, mode) => {
+  if (!mode) return;
+  const queue = inMemoryQueues[mode];
+  const current = queue.get(uid);
+  if (current) {
+    current.lastSeenAt = now();
+    queue.set(uid, current);
+    if (redis) {
+      await enqueueRedis(current);
+    }
+  }
+};
+
+const verifyToken = async (token) => {
+  const decoded = await admin.auth().verifyIdToken(token, true);
+  return decoded.uid;
+};
+
+const parseMessage = (raw) => {
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return null;
+  }
+};
+
+wss.on("connection", (ws) => {
+  socketState.set(ws, { uid: null, queueMode: null, roomId: null });
+  send(ws, "hello", { ts: now() });
+
+  ws.on("message", async (raw) => {
+    const msg = parseMessage(raw);
+    if (!msg || typeof msg !== "object") {
+      send(ws, "error", { code: "bad-payload" });
+      return;
+    }
+
+    const { event, payload } = msg;
+    const state = socketState.get(ws) || { uid: null, queueMode: null, roomId: null };
+
+    if (event === "auth") {
+      const token = payload?.token;
+      if (!token || typeof token !== "string") {
+        send(ws, "error", { code: "missing-token" });
+        return;
+      }
+
+      try {
+        const uid = await verifyToken(token);
+        const nextState = { ...state, uid };
+        socketState.set(ws, nextState);
+
+        const existing = clientsByUid.get(uid) || new Set();
+        existing.add(ws);
+        clientsByUid.set(uid, existing);
+        send(ws, "auth_ok", { uid });
+      } catch {
+        send(ws, "error", { code: "auth-failed" });
+      }
+      return;
+    }
+
+    if (!state.uid) {
+      send(ws, "error", { code: "unauthenticated" });
+      return;
+    }
+
+    if (event === "queue_join") {
+      const mode = payload?.mode;
+      if (mode !== "text" && mode !== "video" && mode !== "group") {
+        send(ws, "error", { code: "invalid-mode" });
+        return;
+      }
+
+      if (!payload?.filters || !payload?.profile) {
+        send(ws, "error", { code: "invalid-filters" });
+        return;
+      }
+
+      const entry = normalizeEntry(state.uid, payload);
+      dequeueInMemory(state.uid, state.queueMode || null);
+      await dequeueRedis(state.uid, state.queueMode || null);
+
+      enqueueInMemory(entry);
+      await enqueueRedis(entry);
+
+      const nextState = { ...state, queueMode: mode };
+      socketState.set(ws, nextState);
+      send(ws, "queue_joined", { mode });
+
+      const matched = await attemptMatch(entry);
+      if (!matched) {
+        send(ws, "queue_waiting", { mode });
+      }
+      return;
+    }
+
+    if (event === "queue_ping") {
+      await heartbeatQueue(state.uid, state.queueMode);
+      return;
+    }
+
+    if (event === "queue_leave") {
+      dequeueInMemory(state.uid, state.queueMode || null);
+      await dequeueRedis(state.uid, state.queueMode || null);
+      socketState.set(ws, { ...state, queueMode: null });
+      send(ws, "queue_left", { ok: true });
+      return;
+    }
+
+    if (event === "signal") {
+      const roomId = payload?.roomId;
+      const toUid = payload?.toUid;
+      const kind = payload?.kind;
+      const signalPayload = payload?.payload;
+
+      if (!roomId || !toUid || !kind || !signalPayload) {
+        send(ws, "error", { code: "invalid-signal" });
+        return;
+      }
+
+      if (kind !== "offer" && kind !== "answer" && kind !== "ice") {
+        send(ws, "error", { code: "invalid-signal-kind" });
+        return;
+      }
+
+      broadcastToUid(toUid, "signal", {
+        roomId,
+        fromUid: state.uid,
+        kind,
+        payload: signalPayload,
+      });
+      return;
+    }
+
+    if (event === "chat") {
+      const roomId = payload?.roomId;
+      const toUid = payload?.toUid;
+      const data = payload?.data;
+      if (!roomId || !toUid || !data) {
+        send(ws, "error", { code: "invalid-chat" });
+        return;
+      }
+
+      broadcastToUid(toUid, "chat", {
+        roomId,
+        fromUid: state.uid,
+        data,
+      });
+      return;
+    }
+
+    send(ws, "error", { code: "unknown-event" });
+  });
+
+  ws.on("close", () => {
+    void detachSocket(ws);
+  });
+
+  ws.on("error", () => {
+    void detachSocket(ws);
+  });
+});
+
+setInterval(() => {
+  pruneInMemory();
+}, 3000);
+
+server.listen(PORT, () => {
+  console.log(`[realtime] websocket server listening on :${PORT}`);
+  if (REDIS_URL) {
+    console.log("[realtime] redis enabled");
+  } else {
+    console.log("[realtime] redis disabled (in-memory fallback)");
+  }
+});

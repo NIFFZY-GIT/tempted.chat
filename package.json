@@ -6,15 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "realtime:dev": "npm --prefix realtime-server run dev"
   },
   "dependencies": {
     "@stripe/stripe-js": "^9.1.0",
     "@types/three": "^0.183.1",
     "firebase": "^12.11.0",
-    "firebase-admin": "^13.8.0",
     "lucide-react": "^1.7.0",
-    "next": "16.2.2",
+    "next": "^16.2.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "stripe": "^22.0.1",

@@ -100,7 +100,7 @@ const deleteRoomAndArtifacts = async (db, roomRef) => {
 // Server-side matchmaking (Omegle-style)
 // ──────────────────────────────────────────────────────────────
 
-const WAITING_STALE_THRESHOLD_MS = 30_000;
+const WAITING_STALE_THRESHOLD_MS = 12_000;
 const MAX_GROUP_SIZE = 5;
 
 const ageGroupMatches = (ageGroup, age) => {
