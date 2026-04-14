@@ -62,7 +62,8 @@ export async function verifyAuthToken(
   try {
     const decoded = await getAdminAuth().verifyIdToken(idToken);
     return decoded.uid;
-  } catch {
+  } catch (error) {
+    console.error("verifyAuthToken failed:", error);
     return null;
   }
 }

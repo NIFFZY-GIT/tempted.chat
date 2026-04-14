@@ -79,7 +79,7 @@ export function SubscriptionPaywall({
     setError(null);
 
     try {
-      const token = await auth.currentUser?.getIdToken();
+      const token = await auth.currentUser?.getIdToken(true);
       if (!token) { setError("Please sign in again."); setLoading(null); return; }
       const response = await fetch("/api/checkout", {
         method: "POST",
@@ -90,6 +90,11 @@ export function SubscriptionPaywall({
       const data = await response.json();
 
       if (!response.ok) {
+        if (response.status === 401) {
+          setError("Session expired. Please sign in again and retry.");
+          setLoading(null);
+          return;
+        }
         setError(data.error ?? "Something went wrong");
         setLoading(null);
         return;

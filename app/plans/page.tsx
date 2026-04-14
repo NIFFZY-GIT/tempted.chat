@@ -91,14 +91,23 @@ export default function PlansPage() {
     setLoading(planId);
     setError(null);
     try {
-      const token = await user.getIdToken();
+      const token = await user.getIdToken(true);
       const res = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({ planId }),
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Something went wrong"); setLoading(null); return; }
+      if (!res.ok) {
+        if (res.status === 401) {
+          setError("Session expired. Please sign in again and retry.");
+          setLoading(null);
+          return;
+        }
+        setError(data.error ?? "Something went wrong");
+        setLoading(null);
+        return;
+      }
       window.location.href = data.url;
     } catch {
       setError("Network error. Please try again.");
