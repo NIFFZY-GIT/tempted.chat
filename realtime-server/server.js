@@ -40,10 +40,12 @@ const inMemoryQueues = {
   video: new Map(),
   group: new Map(),
 };
+const openGroupRooms = new Map();
 
 const WAITING_TTL_MS = 20000;
 const GROUP_ROOM_SIZE = 10;
 const GROUP_MIN_SIZE = 2;
+const GROUP_ROOM_IDLE_TTL_MS = 10 * 60 * 1000;
 
 const send = (ws, event, payload) => {
   if (ws.readyState !== ws.OPEN) return;
@@ -80,6 +82,11 @@ const areUsersCompatible = (a, b) => {
 };
 
 const now = () => Date.now();
+
+const isUidConnected = (uid) => {
+  const sockets = clientsByUid.get(uid);
+  return Boolean(sockets && sockets.size > 0);
+};
 
 const queueKey = (mode) => `queue:${mode}`;
 const queueMemberKey = (uid) => `queue:member:${uid}`;
@@ -279,6 +286,88 @@ const createGroupRoomPayload = (entries) => {
   return { roomId, participants, participantProfiles };
 };
 
+const createGroupRoom = (entries) => {
+  const roomId = crypto.randomUUID();
+  return {
+    roomId,
+    entries: new Map(entries.map((entry) => [entry.uid, entry])),
+    createdAt: now(),
+    lastJoinAt: now(),
+  };
+};
+
+const getGroupRoomSnapshot = (room) => {
+  const entries = Array.from(room.entries.values());
+  return {
+    roomId: room.roomId,
+    participants: entries.map((entry) => entry.uid),
+    participantProfiles: entries.map(toParticipantProfile),
+  };
+};
+
+const pruneOpenGroupRooms = () => {
+  const staleCutoff = now() - GROUP_ROOM_IDLE_TTL_MS;
+
+  for (const [roomId, room] of openGroupRooms) {
+    for (const uid of room.entries.keys()) {
+      if (!isUidConnected(uid)) {
+        room.entries.delete(uid);
+      }
+    }
+
+    if (room.entries.size === 0 || room.lastJoinAt < staleCutoff) {
+      openGroupRooms.delete(roomId);
+      continue;
+    }
+
+    if (room.entries.size >= GROUP_ROOM_SIZE) {
+      openGroupRooms.delete(roomId);
+    }
+  }
+};
+
+const sendGroupMatchFound = (entry, roomSnapshot) => {
+  const peerUid = roomSnapshot.participants.find((uid) => uid !== entry.uid) || entry.uid;
+  broadcastToUid(entry.uid, "match_found", {
+    roomId: roomSnapshot.roomId,
+    mode: "group",
+    peerUid,
+    isOfferer: false,
+    participants: roomSnapshot.participants,
+    participantProfiles: roomSnapshot.participantProfiles,
+  });
+};
+
+const tryJoinOpenGroupRoom = async (entry) => {
+  pruneOpenGroupRooms();
+
+  for (const room of openGroupRooms.values()) {
+    if (room.entries.has(entry.uid)) continue;
+    if (room.entries.size >= GROUP_ROOM_SIZE) continue;
+
+    const existingEntries = Array.from(room.entries.values());
+    const compatible = existingEntries.every((existing) => areUsersCompatible(existing, entry));
+    if (!compatible) continue;
+
+    room.entries.set(entry.uid, entry);
+    room.lastJoinAt = now();
+
+    dequeueInMemory(entry.uid, entry.mode);
+    await dequeueRedis(entry.uid, entry.mode);
+
+    const snapshot = getGroupRoomSnapshot(room);
+    sendGroupMatchFound(entry, snapshot);
+
+    if (room.entries.size >= GROUP_ROOM_SIZE) {
+      openGroupRooms.delete(room.roomId);
+    }
+
+    return true;
+  }
+
+  return false;
+};
+
 const broadcastToUid = (uid, event, payload) => {
   const sockets = clientsByUid.get(uid);
   if (!sockets || sockets.size === 0) return;
@@ -287,6 +376,11 @@ const broadcastToUid = (uid, event, payload) => {
 
 const attemptMatch = async (entry) => {
   if (entry.mode === "group") {
+    const joinedExistingRoom = await tryJoinOpenGroupRoom(entry);
+    if (joinedExistingRoom) {
+      return true;
+    }
+
     const rawCandidates = redis
       ? await pickCandidatesRedis(entry, GROUP_ROOM_SIZE - 1)
       : pickCandidatesInMemory(entry, GROUP_ROOM_SIZE - 1);
@@ -319,18 +413,14 @@ const attemptMatch = async (entry) => {
       await dequeueRedis(participant.uid, participant.mode);
     }));
 
-    const room = createGroupRoomPayload(selected);
+    const room = createGroupRoom(selected);
+    const snapshot = getGroupRoomSnapshot(room);
+    if (room.entries.size < GROUP_ROOM_SIZE) {
+      openGroupRooms.set(room.roomId, room);
+    }
 
     selected.forEach((participant) => {
-      const peerUid = room.participants.find((uid) => uid !== participant.uid) || participant.uid;
-      broadcastToUid(participant.uid, "match_found", {
-        roomId: room.roomId,
-        mode: participant.mode,
-        peerUid,
-        isOfferer: false,
-        participants: room.participants,
-        participantProfiles: room.participantProfiles,
-      });
+      sendGroupMatchFound(participant, snapshot);
     });
 
     return true;
@@ -537,6 +627,7 @@ wss.on("connection", (ws) => {
 
 setInterval(() => {
   pruneInMemory();
+  pruneOpenGroupRooms();
 }, 3000);
 
 server.listen(PORT, () => {
