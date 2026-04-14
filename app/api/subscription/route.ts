@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb, verifyAuthToken } from "@/lib/firebase-admin";
+import { getAdminDb, verifyAuthToken } from "@/lib/firebase-admin";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
   const uid = authenticatedUid;
 
   try {
-    const doc = await adminDb.collection("subscriptions").doc(uid).get();
+    const doc = await getAdminDb().collection("subscriptions").doc(uid).get();
 
     if (!doc.exists) {
       return NextResponse.json({ active: false, expiresAt: null });
