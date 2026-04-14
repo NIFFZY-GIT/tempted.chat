@@ -81,6 +81,15 @@ const areUsersCompatible = (a, b) => {
   );
 };
 
+const areUsersCompatibleForMode = (mode, a, b) => {
+  if (mode === "group") {
+    // Group rooms should remain joinable and social; do not hard-block joins by
+    // strict pairwise filters used for 1:1 matching.
+    return true;
+  }
+  return areUsersCompatible(a, b);
+};
+
 const now = () => Date.now();
 
 const isUidConnected = (uid) => {
@@ -157,7 +166,7 @@ const pickCandidateInMemory = (entry) => {
   for (const [uid, candidate] of queue) {
     if (uid === entry.uid) continue;
     if (candidate.lastSeenAt < now() - WAITING_TTL_MS) continue;
-    if (!areUsersCompatible(entry, candidate)) continue;
+    if (!areUsersCompatibleForMode(entry.mode, entry, candidate)) continue;
     candidates.push(candidate);
   }
   if (candidates.length === 0) return null;
@@ -171,7 +180,7 @@ const pickCandidatesInMemory = (entry, maxCount) => {
   for (const [uid, candidate] of queue) {
     if (uid === entry.uid) continue;
     if (candidate.lastSeenAt < now() - WAITING_TTL_MS) continue;
-    if (!areUsersCompatible(entry, candidate)) continue;
+    if (!areUsersCompatibleForMode(entry.mode, entry, candidate)) continue;
     candidates.push(candidate);
   }
 
@@ -199,7 +208,7 @@ const pickCandidateRedis = async (entry) => {
     const member = await redis.hgetall(queueMemberKey(uid));
     if (!member.payload) continue;
     const candidate = JSON.parse(member.payload);
-    if (!areUsersCompatible(entry, candidate)) continue;
+    if (!areUsersCompatibleForMode(entry.mode, entry, candidate)) continue;
     return candidate;
   }
   return null;
@@ -218,7 +227,7 @@ const pickCandidatesRedis = async (entry, maxCount) => {
     const member = await redis.hgetall(queueMemberKey(uid));
     if (!member.payload) continue;
     const candidate = JSON.parse(member.payload);
-    if (!areUsersCompatible(entry, candidate)) continue;
+    if (!areUsersCompatibleForMode(entry.mode, entry, candidate)) continue;
     candidates.push(candidate);
     if (candidates.length >= maxCount) {
       break;
@@ -346,7 +355,7 @@ const tryJoinOpenGroupRoom = async (entry) => {
     if (room.entries.size >= GROUP_ROOM_SIZE) continue;
 
     const existingEntries = Array.from(room.entries.values());
-    const compatible = existingEntries.every((existing) => areUsersCompatible(existing, entry));
+    const compatible = existingEntries.every((existing) => areUsersCompatibleForMode("group", existing, entry));
     if (!compatible) continue;
 
     room.entries.set(entry.uid, entry);
@@ -396,7 +405,7 @@ const attemptMatch = async (entry) => {
         return;
       }
 
-      const compatibleWithGroup = selected.every((existing) => areUsersCompatible(existing, candidate));
+      const compatibleWithGroup = selected.every((existing) => areUsersCompatibleForMode("group", existing, candidate));
       if (!compatibleWithGroup) {
         return;
       }
