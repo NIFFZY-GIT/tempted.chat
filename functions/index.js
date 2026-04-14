@@ -1,7 +1,7 @@
 const admin = require("firebase-admin");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onDocumentCreated, onDocumentUpdated } = require("firebase-functions/v2/firestore");
 const { defineSecret } = require("firebase-functions/params");
 const { logger } = require("firebase-functions");
 
@@ -391,6 +391,53 @@ exports.matchUsers = onDocumentCreated(
       }
     } catch (err) {
       logger.warn("matchUsers: failed", {
+        uid,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  },
+);
+
+/**
+ * Fallback trigger for matchmaking retries.
+ * This runs when a waiting user document is updated (for example, heartbeat
+ * updates to lastSeenAt), so matching can continue even if callable retries
+ * fail on the client side.
+ */
+exports.matchUsersOnUpdate = onDocumentUpdated(
+  {
+    document: "waitingUsers/{uid}",
+    region: "us-central1",
+    memory: "256MiB",
+    minInstances: 1,
+    timeoutSeconds: 30,
+  },
+  async (event) => {
+    const db = admin.firestore();
+    const uid = event.params.uid;
+
+    const beforeData = event.data?.before?.data();
+    const afterData = event.data?.after?.data();
+
+    if (!afterData || afterData.status !== "searching") {
+      return;
+    }
+
+    const beforeSeen = toMillis(beforeData?.lastSeenAt) ?? null;
+    const afterSeen = toMillis(afterData.lastSeenAt) ?? null;
+
+    // Only retry matching on meaningful queue-heartbeat updates.
+    if (beforeSeen === afterSeen) {
+      return;
+    }
+
+    try {
+      const matched = await attemptMatch(db, uid);
+      if (!matched) {
+        logger.info("matchUsersOnUpdate: no match", { uid });
+      }
+    } catch (err) {
+      logger.warn("matchUsersOnUpdate: failed", {
         uid,
         error: err instanceof Error ? err.message : String(err),
       });

@@ -1613,20 +1613,7 @@ export function ChatRoomView({
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Filter button (video mode) */}
-            <button
-              type="button"
-              onClick={() => setShowChatFilters(true)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition hover:bg-black/60 active:scale-[0.96]"
-              aria-label="Filters"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
-              {chatFilterActiveCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-pink-500 text-[9px] font-bold text-white">{chatFilterActiveCount}</span>
-              )}
-            </button>
-
+          <div className="flex flex-col items-end gap-2">
             {showNextStrangerPrompt ? (
               <button
                 onClick={onNextStranger}
@@ -1653,6 +1640,19 @@ export function ChatRoomView({
                 )}
               </>
             ) : null}
+
+            {/* Filter button (video mode) */}
+            <button
+              type="button"
+              onClick={() => setShowChatFilters(true)}
+              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition hover:bg-black/60 active:scale-[0.96]"
+              aria-label="Filters"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
+              {chatFilterActiveCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-pink-500 text-[9px] font-bold text-white">{chatFilterActiveCount}</span>
+              )}
+            </button>
           </div>
         </header>
 

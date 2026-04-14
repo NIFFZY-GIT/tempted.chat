@@ -255,6 +255,7 @@ export default function Home() {
   const videoRoomUnsubRef = useRef<(() => void) | null>(null);
   const videoCandidatesUnsubRef = useRef<(() => void) | null>(null);
   const retryMatchIntervalRef = useRef<number | null>(null);
+  const retryMatchFailureCountRef = useRef(0);
   const heartbeatIntervalRef = useRef<number | null>(null);
   const roomPresenceIntervalRef = useRef<number | null>(null);
   const typingIdleTimeoutRef = useRef<number | null>(null);
@@ -646,12 +647,14 @@ export default function Home() {
         // Ignore races while publishing key.
       }
 
+      console.log("[e2ee] published local key, waiting for peer key", { roomId, uid });
       roomCipherKeyRef.current = null;
       return null;
     }
 
     const peerUid = roomData.participants?.find((participantId) => participantId !== uid);
     if (!peerUid) {
+      console.log("[e2ee] waiting for second participant", { roomId, uid });
       return null;
     }
 
@@ -672,6 +675,7 @@ export default function Home() {
     }
 
     if (!peerPublicJwk) {
+      console.log("[e2ee] peer key not available yet", { roomId, uid, peerUid });
       return null;
     }
 
@@ -1778,8 +1782,12 @@ export default function Home() {
           void ensureRoomE2EEKey(activeRoomId, user.uid, {
             participants: roomData.participants,
             e2eePublicKeys: roomData.e2eePublicKeys,
-          }).catch(() => {
-            // Ignore key negotiation races.
+          }).catch((error) => {
+            console.warn("[e2ee] negotiation retry failed", {
+              roomId: activeRoomId,
+              uid: user.uid,
+              error: formatFirebaseError(error),
+            });
           });
         }
 
@@ -2385,18 +2393,24 @@ export default function Home() {
     // was the first one in the queue).
     const functions = getFunctions(firebaseApp, "us-central1");
     const retryMatchFn = httpsCallable(functions, "retryMatch");
+    retryMatchFailureCountRef.current = 0;
 
     retryMatchIntervalRef.current = window.setInterval(() => {
       if (activeRoomIdRef.current) {
         return;
       }
       void retryMatchFn().then((result) => {
+        retryMatchFailureCountRef.current = 0;
         const data = result.data as { matched?: boolean } | null;
         if (data?.matched) {
           console.log("[matchmaking] server retryMatch succeeded");
         }
       }).catch((error) => {
-        console.warn("[matchmaking] retryMatch call failed:", error instanceof Error ? error.message : error);
+        retryMatchFailureCountRef.current += 1;
+        console.warn("[matchmaking] retryMatch call failed", {
+          attempts: retryMatchFailureCountRef.current,
+          error: formatFirebaseError(error),
+        });
       });
     }, 3000);
 
@@ -2595,7 +2609,7 @@ export default function Home() {
       }
 
       if (!roomKey) {
-        setSendError("Secure channel is still negotiating. Message will send automatically when ready.");
+        setSendError("Waiting for stranger secure key exchange. Message will send automatically once ready.");
         schedulePendingSendRetry(sendMessage);
         return;
       }
