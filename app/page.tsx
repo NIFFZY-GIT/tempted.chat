@@ -303,6 +303,8 @@ export default function Home() {
   const localMediaStreamRef = useRef<MediaStream | null>(null);
   const remoteMediaStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const videoSenderRef = useRef<RTCRtpSender | null>(null);
+  const audioSenderRef = useRef<RTCRtpSender | null>(null);
   const videoOfferSentRef = useRef(false);
   const videoAnswerSentRef = useRef(false);
   const processedCandidateIdsRef = useRef<Set<string>>(new Set());
@@ -356,6 +358,9 @@ export default function Home() {
       peerConnectionRef.current = null;
     }
 
+    videoSenderRef.current = null;
+    audioSenderRef.current = null;
+
     if (localMediaStreamRef.current) {
       localMediaStreamRef.current.getTracks().forEach((track) => track.stop());
       localMediaStreamRef.current = null;
@@ -396,6 +401,15 @@ export default function Home() {
     videoTracks.forEach((track) => {
       track.enabled = shouldEnable;
     });
+
+    const videoSender = videoSenderRef.current;
+    if (videoSender) {
+      const nextTrack = shouldEnable ? videoTracks[0] : null;
+      void videoSender.replaceTrack(nextTrack).catch(() => {
+        // Ignore transient sender replacement races.
+      });
+    }
+
     setLocalVideoEnabled(shouldEnable);
   };
 
@@ -414,6 +428,15 @@ export default function Home() {
     audioTracks.forEach((track) => {
       track.enabled = shouldEnable;
     });
+
+    const audioSender = audioSenderRef.current;
+    if (audioSender) {
+      const nextTrack = shouldEnable ? audioTracks[0] : null;
+      void audioSender.replaceTrack(nextTrack).catch(() => {
+        // Ignore transient sender replacement races.
+      });
+    }
+
     setLocalAudioEnabled(shouldEnable);
   };
 
@@ -458,10 +481,9 @@ export default function Home() {
       localStream.addTrack(newVideoTrack);
       newVideoTrack.enabled = localVideoEnabled;
 
-      const peerConnection = peerConnectionRef.current;
-      const videoSender = peerConnection?.getSenders().find((sender) => sender.track?.kind === "video");
+      const videoSender = videoSenderRef.current;
       if (videoSender) {
-        await videoSender.replaceTrack(newVideoTrack);
+        await videoSender.replaceTrack(localVideoEnabled ? newVideoTrack : null);
       }
 
       if (localVideoRef.current) {
@@ -1455,7 +1477,13 @@ export default function Home() {
         }
 
         localStream.getTracks().forEach((track) => {
-          peerConnection.addTrack(track, localStream);
+          const sender = peerConnection.addTrack(track, localStream);
+          if (track.kind === "video") {
+            videoSenderRef.current = sender;
+          }
+          if (track.kind === "audio") {
+            audioSenderRef.current = sender;
+          }
         });
 
         peerConnection.ontrack = (event) => {
