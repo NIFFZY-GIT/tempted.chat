@@ -245,7 +245,18 @@ const detachSocket = async (ws) => {
   const clients = clientsByUid.get(uid);
   if (clients) {
     clients.delete(ws);
-    if (clients.size === 0) clientsByUid.delete(uid);
+    if (clients.size === 0) {
+      clientsByUid.delete(uid);
+
+      // When the last socket for a uid disconnects, remove them from any
+      // open group rooms so remaining members get an updated roster.
+      for (const [roomId, room] of openGroupRooms) {
+        if (room.entries.has(uid)) {
+          removeFromGroupRoom(uid, roomId);
+          break; // A uid can only be in one open room at a time.
+        }
+      }
+    }
   }
 
   const modeHint = state.queueMode || null;
@@ -381,6 +392,34 @@ const tryJoinOpenGroupRoom = async (entry) => {
   }
 
   return false;
+};
+
+const removeFromGroupRoom = (uid, roomId) => {
+  const room = openGroupRooms.get(roomId);
+  if (!room) return;
+
+  const existed = room.entries.has(uid);
+  room.entries.delete(uid);
+
+  if (room.entries.size === 0) {
+    openGroupRooms.delete(roomId);
+    console.log(`[group] room ${roomId} deleted (empty after ${uid} left)`);
+    return;
+  }
+
+  if (existed) {
+    const snapshot = getGroupRoomSnapshot(room);
+    console.log(`[group] ${uid} left room ${roomId} (now ${snapshot.participants.length} members)`);
+    // Notify remaining members about the updated roster
+    snapshot.participants.forEach((participantUid) => {
+      broadcastToUid(participantUid, "group_member_left", {
+        roomId: room.roomId,
+        leftUid: uid,
+        participants: snapshot.participants,
+        participantProfiles: snapshot.participantProfiles,
+      });
+    });
+  }
 };
 
 const broadcastToUid = (uid, event, payload) => {
@@ -630,6 +669,17 @@ wss.on("connection", (ws) => {
         fromUid: state.uid,
         data,
       });
+      return;
+    }
+
+    if (event === "room_leave") {
+      const roomId = payload?.roomId;
+      if (!roomId) {
+        send(ws, "error", { code: "invalid-room-leave" });
+        return;
+      }
+      removeFromGroupRoom(state.uid, roomId);
+      send(ws, "room_left", { roomId });
       return;
     }
 

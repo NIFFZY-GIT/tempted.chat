@@ -1284,6 +1284,31 @@ export default function Home() {
         return;
       }
 
+      if (eventName === "group_member_left") {
+        const roomId = typeof payload?.roomId === "string" ? payload.roomId : null;
+        const leftUid = typeof payload?.leftUid === "string" ? payload.leftUid : null;
+        const updatedParticipants = Array.isArray(payload?.participants)
+          ? payload?.participants as string[]
+          : [];
+        const updatedProfiles = Array.isArray(payload?.participantProfiles)
+          ? payload?.participantProfiles as Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string }>
+          : [];
+
+        if (roomId && activeRoomIdRef.current === roomId) {
+          updateRoomParticipants(updatedParticipants);
+          if (updatedProfiles.length > 0) {
+            setGroupParticipants(
+              updatedProfiles.map((p, i) => ({
+                uid: p.uid,
+                nickname: p.nickname || `User${p.uid.slice(0, 4)}`,
+                color: GROUP_COLORS[i % GROUP_COLORS.length],
+              })),
+            );
+          }
+        }
+        return;
+      }
+
       if (eventName === "signal") {
         const roomId = typeof payload?.roomId === "string" ? payload.roomId : null;
         const fromUid = typeof payload?.fromUid === "string" ? payload.fromUid : null;
@@ -2158,7 +2183,56 @@ export default function Home() {
         }
 
         if (roomData.status === "ended") {
+          // For group mode, "ended" means the room is fully shut down
+          // (e.g., last member left). Individual departures are handled
+          // via participant list updates, not status: "ended".
           if (roomData.endedBy && roomData.endedBy !== user.uid) {
+            setShowNextStrangerPrompt(roomData.mode !== "group");
+            setConnectingStatus(STRANGER_LEFT_PROMPT);
+            setIsConnecting(false);
+            setStrangerIsTyping(false);
+            setMessages((current) => {
+              const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
+              if (alreadyNotified) {
+                return current;
+              }
+
+              const now = new Date();
+              return [
+                ...current,
+                {
+                  id: `system-${Date.now()}`,
+                  author: "stranger",
+                  text: STRANGER_LEFT_PROMPT,
+                  sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+                },
+              ];
+            });
+            setActiveRoomId(null);
+            if (roomData.mode === "group") {
+              setGroupParticipants([]);
+            }
+            void deleteAllRoomData(activeRoomId, roomData.participants ?? [user.uid]);
+            return;
+          }
+        }
+
+        // Presence timeout: only for 1-on-1 modes. Group rooms use
+        // explicit leave events and Firestore participant list updates.
+        if (roomData.mode !== "group") {
+          const otherParticipant = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
+          const otherUid = otherParticipant?.uid;
+          const otherPresenceMs = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
+          const otherTimedOut =
+            typeof otherPresenceMs === "number" && Date.now() - otherPresenceMs > ROOM_PRESENCE_TIMEOUT_MS;
+
+          if (
+            otherUid &&
+            otherTimedOut &&
+            roomData.status !== "ended" &&
+            disconnectHandledRoomRef.current !== activeRoomId
+          ) {
+            disconnectHandledRoomRef.current = activeRoomId;
             setShowNextStrangerPrompt(true);
             setConnectingStatus(STRANGER_LEFT_PROMPT);
             setIsConnecting(false);
@@ -2181,59 +2255,20 @@ export default function Home() {
               ];
             });
             setActiveRoomId(null);
+
             void deleteAllRoomData(activeRoomId, roomData.participants ?? [user.uid]);
+
+            void updateDoc(roomRef, {
+              status: "ended",
+              endedBy: user.uid,
+              endedAt: serverTimestamp(),
+              endedReason: "presence-timeout",
+            }).catch(() => {
+              // Ignore timeout end race conditions.
+            });
+
             return;
           }
-        }
-
-        const otherParticipant = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
-        const otherUid = otherParticipant?.uid;
-        const otherPresenceMs = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
-        const otherTimedOut =
-          typeof otherPresenceMs === "number" && Date.now() - otherPresenceMs > ROOM_PRESENCE_TIMEOUT_MS;
-
-        if (
-          otherUid &&
-          otherTimedOut &&
-          roomData.status !== "ended" &&
-          disconnectHandledRoomRef.current !== activeRoomId
-        ) {
-          disconnectHandledRoomRef.current = activeRoomId;
-          setShowNextStrangerPrompt(true);
-          setConnectingStatus(STRANGER_LEFT_PROMPT);
-          setIsConnecting(false);
-          setStrangerIsTyping(false);
-          setMessages((current) => {
-            const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
-            if (alreadyNotified) {
-              return current;
-            }
-
-            const now = new Date();
-            return [
-              ...current,
-              {
-                id: `system-${Date.now()}`,
-                author: "stranger",
-                text: STRANGER_LEFT_PROMPT,
-                sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-              },
-            ];
-          });
-          setActiveRoomId(null);
-
-          void deleteAllRoomData(activeRoomId, roomData.participants ?? [user.uid]);
-
-          void updateDoc(roomRef, {
-            status: "ended",
-            endedBy: user.uid,
-            endedAt: serverTimestamp(),
-            endedReason: "presence-timeout",
-          }).catch(() => {
-            // Ignore timeout end race conditions.
-          });
-
-          return;
         }
 
         const isOtherUserTyping = Object.entries(roomData.typingBy ?? {}).some(
@@ -2683,6 +2718,56 @@ export default function Home() {
       return;
     }
 
+    const isGroupMode = chatMode === "group";
+
+    // For group chat: just remove ourselves and notify the server.
+    // Do NOT destroy the room — others are still chatting.
+    if (isGroupMode) {
+      // Tell the server to remove us from the open group room
+      sendRealtimeEvent("room_leave", { roomId: activeRoomId });
+
+      // Remove ourselves from Firestore participants
+      try {
+        const roomSnapshot = await getDoc(doc(db, "rooms", activeRoomId));
+        if (roomSnapshot.exists()) {
+          const roomData = roomSnapshot.data() as { participants?: string[]; participantProfiles?: Array<{ uid: string }> };
+          const remainingParticipants = (roomData.participants ?? []).filter((uid) => uid !== user.uid);
+          const remainingProfiles = (roomData.participantProfiles ?? []).filter((p) => p.uid !== user.uid);
+
+          if (remainingParticipants.length > 0) {
+            await updateDoc(doc(db, "rooms", activeRoomId), {
+              participants: remainingParticipants,
+              participantProfiles: remainingProfiles,
+            });
+            // Add a system message so others see we left
+            await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
+              senderId: "system",
+              text: `${myNickname || `User${user.uid.slice(0, 4)}`} left the chat`,
+              createdAt: serverTimestamp(),
+              system: true,
+            });
+          } else {
+            // Last person — end and clean up
+            await updateDoc(doc(db, "rooms", activeRoomId), {
+              status: "ended",
+              endedBy: user.uid,
+              endedAt: serverTimestamp(),
+            });
+            await deleteAllRoomData(activeRoomId, [user.uid]);
+          }
+        }
+      } catch {
+        // Ignore cleanup failures.
+      }
+
+      setShowNextStrangerPrompt(false);
+      setActiveRoomId(null);
+      setMessages([]);
+      setGroupParticipants([]);
+      return;
+    }
+
+    // 1-on-1 mode: end the whole room
     let participantUids: string[] = [user.uid];
     try {
       const roomSnapshot = await getDoc(doc(db, "rooms", activeRoomId));
