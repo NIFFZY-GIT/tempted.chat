@@ -7,24 +7,36 @@ function getAdminApp() {
 
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (serviceAccount) {
+    // Normalize literal \n sequences produced by .env file readers
+    const normalized = serviceAccount.replace(/\\n/g, "\n");
+    let parsed: object;
     try {
-      // Normalize escaped newlines that may come from .env files
-      const normalized = serviceAccount.replace(/\\n/g, "\n");
-      return initializeApp({ credential: cert(JSON.parse(normalized)) });
-    } catch {
-      // Fall through to project-only init if JSON is malformed at build time
+      parsed = JSON.parse(normalized) as object;
+    } catch (err) {
+      throw new Error(
+        `FIREBASE_SERVICE_ACCOUNT_KEY is set but contains invalid JSON. ` +
+        `Check that the value is a single-line JSON string. Original error: ${String(err)}`
+      );
     }
+    return initializeApp({ credential: cert(parsed) });
   }
+
+  // No service account key — this will only work if Application Default
+  // Credentials are configured (e.g. on Cloud Run / GCE). Locally you must
+  // set FIREBASE_SERVICE_ACCOUNT_KEY in .env.
   return initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
 }
 
-function getAdminAppLazy() {
+let _adminApp: ReturnType<typeof getAdminApp> | null = null;
+
+function getAdminAppCached() {
   if (getApps().length > 0) return getApp();
-  return getAdminApp();
+  if (!_adminApp) _adminApp = getAdminApp();
+  return _adminApp;
 }
 
-export const adminAuth = getAuth(getAdminAppLazy());
-export const adminDb = getFirestore(getAdminAppLazy());
+export const adminAuth = getAuth(getAdminAppCached());
+export const adminDb = getFirestore(getAdminAppCached());
 
 /**
  * Extracts and verifies a Firebase ID token from the Authorization header.
