@@ -7,15 +7,24 @@ function getAdminApp() {
 
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (serviceAccount) {
-    return initializeApp({ credential: cert(JSON.parse(serviceAccount)) });
+    try {
+      // Normalize escaped newlines that may come from .env files
+      const normalized = serviceAccount.replace(/\\n/g, "\n");
+      return initializeApp({ credential: cert(JSON.parse(normalized)) });
+    } catch {
+      // Fall through to project-only init if JSON is malformed at build time
+    }
   }
   return initializeApp({ projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID });
 }
 
-const adminApp = getAdminApp();
+function getAdminAppLazy() {
+  if (getApps().length > 0) return getApp();
+  return getAdminApp();
+}
 
-export const adminAuth = getAuth(adminApp);
-export const adminDb = getFirestore(adminApp);
+export const adminAuth = getAuth(getAdminAppLazy());
+export const adminDb = getFirestore(getAdminAppLazy());
 
 /**
  * Extracts and verifies a Firebase ID token from the Authorization header.
