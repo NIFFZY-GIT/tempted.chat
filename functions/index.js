@@ -220,6 +220,7 @@ const attemptMatch = async (db, uid) => {
           gender: d.profile.gender,
           age: d.profile.age,
           countryCode: d.profile.countryCode || null,
+          interests: Array.isArray(d.profile.interests) ? d.profile.interests : [],
         });
         if (verifiedMembers.length >= MAX_GROUP_SIZE - 1) break;
       }
@@ -237,6 +238,7 @@ const attemptMatch = async (db, uid) => {
           gender: myTxData.profile.gender,
           age: myTxData.profile.age,
           countryCode: myTxData.profile.countryCode || null,
+          interests: Array.isArray(myTxData.profile.interests) ? myTxData.profile.interests : [],
           nickname: myTxData.nickname || `User${uid.slice(0, 4)}`,
         },
         ...verifiedMembers.map((m) => ({
@@ -244,6 +246,7 @@ const attemptMatch = async (db, uid) => {
           gender: m.gender,
           age: m.age,
           countryCode: m.countryCode,
+          interests: Array.isArray(m.interests) ? m.interests : [],
           nickname: m.nickname,
         })),
       ];
@@ -326,12 +329,14 @@ const attemptMatch = async (db, uid) => {
               gender: myTxData.profile.gender,
               age: myTxData.profile.age,
               countryCode: myTxData.profile.countryCode || null,
+              interests: Array.isArray(myTxData.profile.interests) ? myTxData.profile.interests : [],
             },
             {
               uid: candidate.uid,
               gender: candidateData.profile.gender,
               age: candidateData.profile.age,
               countryCode: candidateData.profile.countryCode || null,
+              interests: Array.isArray(candidateData.profile.interests) ? candidateData.profile.interests : [],
             },
           ],
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
