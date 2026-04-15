@@ -631,12 +631,24 @@ export function ModeAndFiltersView({
     }
   };
 
+  const collectInterests = () => {
+    const all = [...interests];
+    // Also grab any uncommitted text from the input (may contain commas)
+    interestsInput.split(",").forEach((s) => {
+      const tag = s.trim().toLowerCase();
+      if (tag && !all.includes(tag) && all.length < 10) {
+        all.push(tag);
+      }
+    });
+    return all.length > 0 ? all : undefined;
+  };
+
   const handleStart = () => {
-    onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, undefined, interests.length > 0 ? interests : undefined);
+    onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, undefined, collectInterests());
   };
 
   const handleQuickStart = () => {
-    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry }, undefined, interests.length > 0 ? interests : undefined);
+    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry }, undefined, collectInterests());
   };
 
   const activeFiltersCount = [
