@@ -32,8 +32,8 @@ export type ChatMessage = {
 };
 
 export type ProfileGender = "Male" | "Female" | "Other";
-export type UserProfile = { gender: ProfileGender; age: number; country?: string; countryCode?: string };
-export type ChatMode = "text" | "video" | "group";
+export type UserProfile = { gender: ProfileGender; age: number; country?: string; countryCode?: string; interests?: string[] };
+export type ChatMode = "text" | "video";
 export type GenderFilter = "Any" | ProfileGender;
 export type AgeGroupFilter = "Any age" | "Under 18" | "18-25" | "25+";
 export type ChatStyleFilter = "Any style" | "Casual" | "Intimate";
@@ -581,14 +581,15 @@ export function ModeAndFiltersView({
   subscriptionTier = null,
   onShowPaywall,
 }: {
-  onStart: (mode: ChatMode, filters: ChatFilters, nickname?: string) => void;
+  onStart: (mode: ChatMode, filters: ChatFilters, nickname?: string, interests?: string[]) => void;
   onBack: () => void;
   hasActiveSubscription?: boolean;
   subscriptionTier?: "vip" | "vvip" | null;
   onShowPaywall?: () => void;
 }) {
   const [selectedMode, setSelectedMode] = useState<ChatMode>("text");
-  const [nickname, setNickname] = useState("");
+  const [interestsInput, setInterestsInput] = useState("");
+  const [interests, setInterests] = useState<string[]>([]);
   const [showFilters, setShowFilters] = useState(false);
   const [gender, setGender] = useState<GenderFilter>("Any");
   const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("Any age");
@@ -609,18 +610,33 @@ export function ModeAndFiltersView({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [countryMenuOpen]);
 
-  const groupNickRequired = selectedMode === "group" && !nickname.trim();
+  const addInterest = (value: string) => {
+    const tag = value.trim().toLowerCase();
+    if (tag && interests.length < 10 && !interests.includes(tag)) {
+      setInterests((prev) => [...prev, tag]);
+    }
+    setInterestsInput("");
+  };
+
+  const removeInterest = (tag: string) => {
+    setInterests((prev) => prev.filter((t) => t !== tag));
+  };
+
+  const handleInterestsKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addInterest(interestsInput);
+    } else if (e.key === "Backspace" && !interestsInput && interests.length > 0) {
+      setInterests((prev) => prev.slice(0, -1));
+    }
+  };
 
   const handleStart = () => {
-    if (groupNickRequired) return;
-    const trimmedNick = selectedMode === "group" ? nickname.trim() || undefined : undefined;
-    onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, trimmedNick);
+    onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, undefined, interests.length > 0 ? interests : undefined);
   };
 
   const handleQuickStart = () => {
-    if (groupNickRequired) return;
-    const trimmedNick = selectedMode === "group" ? nickname.trim() || undefined : undefined;
-    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry }, trimmedNick);
+    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry }, undefined, interests.length > 0 ? interests : undefined);
   };
 
   const activeFiltersCount = [
@@ -693,22 +709,6 @@ export function ModeAndFiltersView({
       iconBg: "bg-gradient-to-br from-violet-500/20 to-violet-600/10",
       badgeBg: "bg-violet-500",
       chipColor: "violet",
-    },
-    {
-      id: "group",
-      emoji: "👥",
-      title: "Group Chat",
-      sub: "Chat with a crowd",
-      desc: "Join rooms with multiple strangers at once",
-      accent: "text-blue-400",
-      accentRgb: "59,130,246",
-      bg: "bg-blue-500/[0.06]",
-      border: "border-blue-500/30",
-      glow: "shadow-[0_0_40px_rgba(59,130,246,0.15),0_4px_24px_rgba(59,130,246,0.1)]",
-      ring: "ring-blue-500/20",
-      iconBg: "bg-gradient-to-br from-blue-500/20 to-blue-600/10",
-      badgeBg: "bg-blue-500",
-      chipColor: "blue",
     },
   ];
 
@@ -826,38 +826,47 @@ export function ModeAndFiltersView({
           })}
         </div>
 
-        {/* Nickname (group only) - animated entry */}
-        {selectedMode === "group" && (
-          <div className="mb-6 animate-fade-in-up">
-            <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">
-              Nickname
-            </label>
-            <div className="relative">
+        {/* Interests (optional) */}
+        <div className="mb-6 animate-fade-in-up">
+          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">
+            Interests <span className="text-white/15 normal-case">(optional · press Enter to add)</span>
+          </label>
+          <div className={`flex flex-wrap items-center gap-1.5 rounded-xl border bg-white/[0.03] px-3 py-2.5 transition-all duration-300 focus-within:border-pink-500/40 focus-within:ring-1 focus-within:ring-pink-500/20 focus-within:bg-white/[0.04] ${interests.length >= 10 ? "border-white/[0.04]" : "border-white/[0.08]"}`}>
+            {interests.map((tag) => (
+              <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-pink-500/10 pl-2.5 pr-1.5 py-1 text-[11px] font-medium text-pink-300 border border-pink-500/20 animate-pop-in">
+                {tag}
+                <button
+                  type="button"
+                  onClick={() => removeInterest(tag)}
+                  className="flex h-4 w-4 items-center justify-center rounded-full text-pink-400/60 transition-colors hover:bg-pink-500/20 hover:text-pink-300"
+                >
+                  <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6 6 18M6 6l12 12"/></svg>
+                </button>
+              </span>
+            ))}
+            {interests.length < 10 && (
               <input
                 type="text"
-                value={nickname}
-                onChange={(e) => setNickname(e.target.value.slice(0, 20))}
-                placeholder="What should they call you?"
-                maxLength={20}
-                className={`w-full rounded-xl border bg-white/[0.03] px-4 py-3.5 text-sm text-white outline-none placeholder:text-white/20 transition-all duration-300 focus:border-blue-500/40 focus:ring-1 focus:ring-blue-500/20 focus:bg-white/[0.04] ${groupNickRequired ? "border-rose-500/30" : "border-white/[0.08]"}`}
+                value={interestsInput}
+                onChange={(e) => setInterestsInput(e.target.value.slice(0, 30))}
+                onKeyDown={handleInterestsKeyDown}
+                onBlur={() => { if (interestsInput.trim()) addInterest(interestsInput); }}
+                placeholder={interests.length === 0 ? "e.g. music, gaming, travel" : "Add more..."}
+                className="min-w-[80px] flex-1 bg-transparent py-1 text-sm text-white outline-none placeholder:text-white/20"
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] text-white/15 font-medium tabular-nums">
-                {nickname.length}/20
-              </span>
-            </div>
-            {groupNickRequired && (
-              <p className="mt-1.5 text-[11px] text-rose-400/70">A nickname is required for group chat</p>
             )}
           </div>
-        )}
+          <div className="mt-1.5 flex items-center justify-between">
+            <span className="text-[10px] text-white/15">{interests.length}/10 interests</span>
+          </div>
+        </div>
 
         {/* Start button */}
         <div className="animate-mode-card-in mode-stagger-4">
           <button
             type="button"
             onClick={handleQuickStart}
-            disabled={groupNickRequired}
-            className={`group relative mb-5 flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl py-4.5 text-[15px] font-extrabold text-white transition-all duration-300 active:scale-[0.97] ${groupNickRequired ? "opacity-40 cursor-not-allowed" : ""}`}
+            className="group relative mb-5 flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl py-4.5 text-[15px] font-extrabold text-white transition-all duration-300 active:scale-[0.97]"
           >
             {/* Base gradient */}
             <span
@@ -1084,8 +1093,7 @@ export function ModeAndFiltersView({
               <button
                 type="button"
                 onClick={handleStart}
-                disabled={groupNickRequired}
-                className={`group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl py-3.5 text-[14px] font-bold text-white transition-all duration-300 active:scale-[0.97] ${groupNickRequired ? "opacity-40 cursor-not-allowed" : ""}`}
+                className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl py-3.5 text-[14px] font-bold text-white transition-all duration-300 active:scale-[0.97]"
                 style={{
                   background: `linear-gradient(135deg, rgba(${activeModeConfig.accentRgb}, 0.9), rgba(${activeModeConfig.accentRgb}, 1))`,
                   boxShadow: `0 8px 24px rgba(${activeModeConfig.accentRgb}, 0.3)`,
@@ -1127,7 +1135,6 @@ export function ChatRoomView({
   onLeaveChat,
   onChangeMode,
   onNextStranger,
-  groupParticipants,
   imagePreview,
   selectedFileName,
   imageTimerSeconds,
@@ -1172,7 +1179,6 @@ export function ChatRoomView({
   onLeaveChat: (filters: ChatFilters) => void;
   onChangeMode: () => void;
   onNextStranger: () => void;
-  groupParticipants?: Array<{ uid: string; nickname: string; color: string }>;
   imagePreview: string | null;
   selectedFileName: string | null;
   imageTimerSeconds: number;
@@ -1611,6 +1617,15 @@ export function ChatRoomView({
                 </span>
               )}
             </p>
+            {hasResolvedStrangerProfile && strangerProfile.interests && strangerProfile.interests.length > 0 && (
+              <div className="mt-0.5 flex flex-wrap gap-1">
+                {strangerProfile.interests.map((tag) => (
+                  <span key={tag} className="inline-flex items-center rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-medium text-white/70 border border-white/15 backdrop-blur-sm">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col items-end gap-2">
@@ -1830,48 +1845,41 @@ export function ChatRoomView({
 
         <div className="relative flex-shrink-0">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/[0.06] text-white/60 ring-1 ring-white/[0.08]">
-            {chatMode === "group" ? (
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            ) : (
-              <GenderIcon gender={strangerProfile.gender} />
-            )}
+            <GenderIcon gender={strangerProfile.gender} />
           </div>
           <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0d0d14] ${isConnecting ? "bg-amber-400" : "bg-emerald-400"}`} style={isConnecting ? { animation: "ripple 1.5s ease-out infinite" } : {}} />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            {chatMode === "group" ? (
-              <>
-                <span className="text-sm font-semibold text-white/90">Group Chat</span>
-                {groupParticipants && groupParticipants.length > 0 && (
-                  <span className="text-[11px] text-white/40">{groupParticipants.length} members</span>
-                )}
-              </>
+            {hasResolvedStrangerProfile ? (
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-white/90">
+                <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
+                {strangerProfile.gender}, {strangerProfile.age}
+              </span>
             ) : (
-              <>
-                {hasResolvedStrangerProfile ? (
-                  <span className="flex items-center gap-1.5 text-sm font-semibold text-white/90">
-                    <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3.5 w-5 rounded-[2px] object-cover" />
-                    {strangerProfile.gender}, {strangerProfile.age}
-                  </span>
-                ) : (
-                  <span className="text-sm font-semibold text-white/50">Connecting...</span>
-                )}
-                {subscriptionTier && (
-                  <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
-                    {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
-                  </span>
-                )}
-              </>
+              <span className="text-sm font-semibold text-white/50">Connecting...</span>
+            )}
+            {subscriptionTier && (
+              <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
+                {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
+              </span>
             )}
           </div>
-          <p className="truncate text-[11px] text-white/30">
-            {isConnecting
-              ? connectingStatus
-              : chatMode === "group" && groupParticipants && groupParticipants.length > 0
-                ? groupParticipants.map((p) => p.nickname).join(", ")
+          {hasResolvedStrangerProfile && strangerProfile.interests && strangerProfile.interests.length > 0 ? (
+            <div className="mt-0.5 flex flex-wrap gap-1">
+              {strangerProfile.interests.map((tag) => (
+                <span key={tag} className="inline-flex items-center rounded-full bg-pink-500/10 px-2 py-0.5 text-[10px] font-medium text-pink-300/80 border border-pink-500/15">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="truncate text-[11px] text-white/30">
+              {isConnecting
+                ? connectingStatus
                 : `${modeLabel} · ${genderLabel} · ${ageLabel}`}
-          </p>
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5">
@@ -1995,24 +2003,13 @@ export function ChatRoomView({
               (typeof msg.imageExpiresAtMs === "number" || typeof msg.imageRevealAtMs === "number");
 
             const isYou = msg.author === "you";
-            const isGroup = chatMode === "group";
             const hasReactions = msg.reactions && Object.keys(msg.reactions).length > 0;
-            const bubbleBg = isGroup && !isYou && msg.senderColor
-              ? undefined
-              : isYou ? "bg-pink-950" : "bg-blue-950";
-            const bubbleStyle = isGroup && !isYou && msg.senderColor
-              ? { backgroundColor: `${msg.senderColor}22` }
-              : undefined;
+            const bubbleBg = isYou ? "bg-pink-950" : "bg-blue-950";
+            const bubbleStyle = undefined;
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
                 <div className={`group/msg relative flex max-w-[82%] flex-col gap-1 sm:max-w-[70%] ${isYou ? "items-end" : "items-start"}`}>
-                  {/* Sender nickname for group mode */}
-                  {isGroup && !isYou && msg.senderNickname && (
-                    <span className="ml-1 text-[11px] font-semibold" style={{ color: msg.senderColor ?? "#60a5fa" }}>
-                      {msg.senderNickname}
-                    </span>
-                  )}
                   {/* Reply quote */}
                   {msg.replyToId && msg.replyToText && (
                     <button
@@ -2031,7 +2028,7 @@ export function ChatRoomView({
                           : "bg-blue-400/20 text-white/70 text-left"
                       }`}
                     >
-                      <span className={`block text-[10px] font-semibold ${isYou ? "text-pink-300/80" : "text-blue-300/80"}`}>{msg.replyToAuthor === "you" ? "You" : (isGroup && msg.senderNickname ? msg.senderNickname : "Stranger")}</span>
+                      <span className={`block text-[10px] font-semibold ${isYou ? "text-pink-300/80" : "text-blue-300/80"}`}>{msg.replyToAuthor === "you" ? "You" : "Stranger"}</span>
                       <span className="block truncate">{msg.replyToText}</span>
                     </button>
                   )}

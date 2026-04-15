@@ -76,8 +76,6 @@ declare global {
 
 const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!;
 
-const GROUP_COLORS = ["#f472b6", "#60a5fa", "#34d399", "#fbbf24", "#a78bfa"];
-
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
 const ROOM_PRESENCE_TIMEOUT_MS = 45000;
@@ -245,8 +243,7 @@ export default function Home() {
   const [roomParticipants, setRoomParticipants] = useState<string[]>([]);
   const [strangerIsTyping, setStrangerIsTyping] = useState(false);
   const [showNextStrangerPrompt, setShowNextStrangerPrompt] = useState(false);
-  const [myNickname, setMyNickname] = useState<string | null>(null);
-  const [groupParticipants, setGroupParticipants] = useState<Array<{ uid: string; nickname: string; color: string }>>([]);
+  const [myInterests, setMyInterests] = useState<string[]>([]);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
@@ -1205,28 +1202,13 @@ export default function Home() {
         const isOfferer = Boolean(payload?.isOfferer);
         const mode = payload?.mode as ChatMode | undefined;
         const participantProfiles = Array.isArray(payload?.participantProfiles)
-          ? payload?.participantProfiles as Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string }>
+          ? payload?.participantProfiles as Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string; interests?: string[] }>
           : [];
         const participants = Array.isArray(payload?.participants)
           ? payload?.participants as string[]
           : peerUid
             ? [user.uid, peerUid]
             : [user.uid];
-
-        if (roomId && mode === "group" && activeRoomIdRef.current === roomId) {
-          console.log(`[group] roster update: ${participants.length} members in room ${roomId}`);
-          updateRoomParticipants(participants);
-          if (participantProfiles.length > 0) {
-            setGroupParticipants(
-              participantProfiles.map((p, i) => ({
-                uid: p.uid,
-                nickname: p.nickname || `User${p.uid.slice(0, 4)}`,
-                color: GROUP_COLORS[i % GROUP_COLORS.length],
-              })),
-            );
-          }
-          return;
-        }
 
         if (!roomId || !peerUid || !mode || activeRoomIdRef.current) {
           return;
@@ -1257,59 +1239,19 @@ export default function Home() {
             gender: stranger.gender,
             age: stranger.age,
             countryCode: stranger.countryCode,
+            interests: stranger.interests,
           });
-        }
-
-        // Initialize group participant list immediately so the UI shows
-        // member count from the very first match (instead of waiting for
-        // the Firestore snapshot roundtrip).
-        if (mode === "group" && participantProfiles.length > 0) {
-          setGroupParticipants(
-            participantProfiles.map((p, i) => ({
-              uid: p.uid,
-              nickname: p.nickname || `User${p.uid.slice(0, 4)}`,
-              color: GROUP_COLORS[i % GROUP_COLORS.length],
-            })),
-          );
         }
 
         cleanupWaitIntervals();
         setConnectingStatus("Stranger found. Connecting...");
         activeRoomIdRef.current = roomId;
         setActiveRoomId(roomId);
-        if (mode === "group") {
-          console.log(`[group] joined room ${roomId} with ${participants.length} members`);
-        }
         return;
       }
 
       if (eventName === "queue_waiting") {
         setConnectingStatus("Looking for an available stranger...");
-        return;
-      }
-
-      if (eventName === "group_member_left") {
-        const roomId = typeof payload?.roomId === "string" ? payload.roomId : null;
-        const leftUid = typeof payload?.leftUid === "string" ? payload.leftUid : null;
-        const updatedParticipants = Array.isArray(payload?.participants)
-          ? payload?.participants as string[]
-          : [];
-        const updatedProfiles = Array.isArray(payload?.participantProfiles)
-          ? payload?.participantProfiles as Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string }>
-          : [];
-
-        if (roomId && activeRoomIdRef.current === roomId) {
-          updateRoomParticipants(updatedParticipants);
-          if (updatedProfiles.length > 0) {
-            setGroupParticipants(
-              updatedProfiles.map((p, i) => ({
-                uid: p.uid,
-                nickname: p.nickname || `User${p.uid.slice(0, 4)}`,
-                color: GROUP_COLORS[i % GROUP_COLORS.length],
-              })),
-            );
-          }
-        }
         return;
       }
 
@@ -1921,13 +1863,6 @@ export default function Home() {
       return;
     }
 
-    // Skip no-show check for group mode — group rooms start with 2+
-    // members and grow over time. The 1-on-1 no-show logic would
-    // incorrectly destroy the room.
-    if (chatMode === "group") {
-      return;
-    }
-
     const roomId = activeRoomId;
 
     noShowTimeoutRef.current = window.setTimeout(async () => {
@@ -2006,7 +1941,7 @@ export default function Home() {
       try {
         const parsed = JSON.parse(sessionRaw) as Partial<PersistedChatSession>;
         const hasRoom = typeof parsed.roomId === "string" && parsed.roomId.length > 0;
-        const modeValid = parsed.chatMode === "text" || parsed.chatMode === "video" || parsed.chatMode === "group";
+        const modeValid = parsed.chatMode === "text" || parsed.chatMode === "video";
         const filtersValid = typeof parsed.chatFilters === "object" && parsed.chatFilters !== null;
 
         if (!hasRoom || !modeValid || !filtersValid) {
@@ -2033,7 +1968,7 @@ export default function Home() {
     }
 
     const savedMode = window.localStorage.getItem(getChatModeStorageKey(user.uid));
-    if (savedMode === "text" || savedMode === "video" || savedMode === "group") {
+    if (savedMode === "text" || savedMode === "video") {
       setChatMode(savedMode);
       setChatFilters(null);
     }
@@ -2148,7 +2083,7 @@ export default function Home() {
 
         const roomData = snapshot.data() as {
           participants?: string[];
-          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string }>;
+          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string; interests?: string[] }>;
           typingBy?: Record<string, boolean>;
           presenceBy?: Record<string, number>;
           e2eePublicKeys?: Record<string, JsonWebKey>;
@@ -2157,32 +2092,19 @@ export default function Home() {
           mode?: string;
         };
 
-        // Skip E2EE for group mode (ECDH is 2-party only)
-        if (roomData.mode !== "group") {
-          void ensureRoomE2EEKey(activeRoomId, user.uid, {
-            participants: roomData.participants,
-            e2eePublicKeys: roomData.e2eePublicKeys,
-          }).catch((error) => {
-            console.warn("[e2ee] negotiation retry failed", {
-              roomId: activeRoomId,
-              uid: user.uid,
-              error: formatFirebaseError(error),
-            });
+        // E2EE negotiation
+        void ensureRoomE2EEKey(activeRoomId, user.uid, {
+          participants: roomData.participants,
+          e2eePublicKeys: roomData.e2eePublicKeys,
+        }).catch((error) => {
+          console.warn("[e2ee] negotiation retry failed", {
+            roomId: activeRoomId,
+            uid: user.uid,
+            error: formatFirebaseError(error),
           });
-        }
+        });
 
         updateRoomParticipants(Array.isArray(roomData.participants) ? roomData.participants : []);
-
-        // Populate group participants
-        if (roomData.mode === "group" && roomData.participantProfiles) {
-          setGroupParticipants(
-            roomData.participantProfiles.map((p, i) => ({
-              uid: p.uid,
-              nickname: p.nickname || `User${p.uid.slice(0, 4)}`,
-              color: GROUP_COLORS[i % GROUP_COLORS.length],
-            })),
-          );
-        }
 
         const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
         if (stranger) {
@@ -2190,15 +2112,13 @@ export default function Home() {
             gender: stranger.gender,
             age: stranger.age,
             countryCode: stranger.countryCode,
+            interests: stranger.interests,
           });
         }
 
         if (roomData.status === "ended") {
-          // For group mode, "ended" means the room is fully shut down
-          // (e.g., last member left). Individual departures are handled
-          // via participant list updates, not status: "ended".
           if (roomData.endedBy && roomData.endedBy !== user.uid) {
-            setShowNextStrangerPrompt(roomData.mode !== "group");
+            setShowNextStrangerPrompt(true);
             setConnectingStatus(STRANGER_LEFT_PROMPT);
             setIsConnecting(false);
             setStrangerIsTyping(false);
@@ -2220,17 +2140,13 @@ export default function Home() {
               ];
             });
             setActiveRoomId(null);
-            if (roomData.mode === "group") {
-              setGroupParticipants([]);
-            }
             void deleteAllRoomData(activeRoomId, roomData.participants ?? [user.uid]);
             return;
           }
         }
 
-        // Presence timeout: only for 1-on-1 modes. Group rooms use
-        // explicit leave events and Firestore participant list updates.
-        if (roomData.mode !== "group") {
+        // Presence timeout
+        {
           const otherParticipant = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
           const otherUid = otherParticipant?.uid;
           const otherPresenceMs = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
@@ -2439,16 +2355,12 @@ export default function Home() {
                     ? "Message unavailable"
                     : undefined;
 
-              const senderParticipant = chatMode === "group" && data.senderId
-                ? groupParticipants.find((p) => p.uid === data.senderId)
-                : undefined;
-
               return {
                 id: messageDoc.id,
                 author: data.senderId === user.uid ? "you" as const : "stranger" as const,
                 senderId: data.senderId,
-                senderNickname: senderParticipant?.nickname ?? data.senderNickname,
-                senderColor: senderParticipant?.color,
+                senderNickname: data.senderNickname,
+                senderColor: undefined,
                 clientMessageId: data.clientMessageId,
                 text: fallbackText,
                 image: displayImageUrl,
@@ -2729,55 +2641,6 @@ export default function Home() {
       return;
     }
 
-    const isGroupMode = chatMode === "group";
-
-    // For group chat: just remove ourselves and notify the server.
-    // Do NOT destroy the room — others are still chatting.
-    if (isGroupMode) {
-      // Tell the server to remove us from the open group room
-      sendRealtimeEvent("room_leave", { roomId: activeRoomId });
-
-      // Remove ourselves from Firestore participants
-      try {
-        const roomSnapshot = await getDoc(doc(db, "rooms", activeRoomId));
-        if (roomSnapshot.exists()) {
-          const roomData = roomSnapshot.data() as { participants?: string[]; participantProfiles?: Array<{ uid: string }> };
-          const remainingParticipants = (roomData.participants ?? []).filter((uid) => uid !== user.uid);
-          const remainingProfiles = (roomData.participantProfiles ?? []).filter((p) => p.uid !== user.uid);
-
-          if (remainingParticipants.length > 0) {
-            await updateDoc(doc(db, "rooms", activeRoomId), {
-              participants: remainingParticipants,
-              participantProfiles: remainingProfiles,
-            });
-            // Add a system message so others see we left
-            await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
-              senderId: "system",
-              text: `${myNickname || `User${user.uid.slice(0, 4)}`} left the chat`,
-              createdAt: serverTimestamp(),
-              system: true,
-            });
-          } else {
-            // Last person — end and clean up
-            await updateDoc(doc(db, "rooms", activeRoomId), {
-              status: "ended",
-              endedBy: user.uid,
-              endedAt: serverTimestamp(),
-            });
-            await deleteAllRoomData(activeRoomId, [user.uid]);
-          }
-        }
-      } catch {
-        // Ignore cleanup failures.
-      }
-
-      setShowNextStrangerPrompt(false);
-      setActiveRoomId(null);
-      setMessages([]);
-      setGroupParticipants([]);
-      return;
-    }
-
     // 1-on-1 mode: end the whole room
     let participantUids: string[] = [user.uid];
     try {
@@ -2811,7 +2674,7 @@ export default function Home() {
     setMessages([]);
   };
 
-  const startSearching = async (filters: ChatFilters, modeOverride?: ChatMode, nickname?: string) => {
+  const startSearching = async (filters: ChatFilters, modeOverride?: ChatMode, nickname?: string, interests?: string[]) => {
     const effectiveMode = modeOverride ?? chatMode;
     if (!user || !profile || !effectiveMode) {
       return;
@@ -2826,9 +2689,6 @@ export default function Home() {
     setText("");
     clearAttachment();
     setActiveRoomId(null);
-    if (effectiveMode === "group") {
-      setGroupParticipants([]);
-    }
 
     realtimeRoomIdRef.current = null;
     realtimePeerUidRef.current = null;
@@ -2846,8 +2706,8 @@ export default function Home() {
         gender: profile.gender,
         age: profile.age,
         countryCode: filters.hideCountry ? null : (profile.countryCode ?? null),
+        interests: interests ?? myInterests,
       },
-      nickname: nickname || myNickname || `User${user.uid.slice(0, 4)}`,
     });
 
     if (wsQueued) {
@@ -2868,8 +2728,8 @@ export default function Home() {
           gender: profile.gender,
           age: profile.age,
           countryCode: filters.hideCountry ? null : (profile.countryCode ?? null),
+          interests: interests ?? myInterests,
         },
-        ...(effectiveMode === "group" && { nickname: nickname || myNickname || `User${user.uid.slice(0, 4)}` }),
         createdAt: serverTimestamp(),
         lastSeenAt: Date.now(),
       });
@@ -3106,7 +2966,7 @@ export default function Home() {
       return;
     }
 
-    const isGroupMode = chatMode === "group";
+    const isGroupMode = false;
     let roomKey = roomCipherKeyRef.current;
 
     if (!isGroupMode) {
@@ -3273,10 +3133,6 @@ export default function Home() {
         text: isGroupMode ? (outgoingText ?? null) : null,
         createdAt: serverTimestamp(),
       };
-
-      if (isGroupMode && myNickname) {
-        messagePayload.senderNickname = myNickname;
-      }
 
       if (currentReply) {
         messagePayload.replyToId = currentReply.id;
@@ -3777,11 +3633,11 @@ export default function Home() {
             onGoToAdmin={() => router.push("/admin")}
           />
           <ModeAndFiltersView
-            onStart={(mode, filters, nickname) => {
+            onStart={(mode, filters, nickname, interests) => {
               setChatMode(mode);
               setChatFilters(filters);
-              if (nickname) setMyNickname(nickname);
-              void startSearching(filters, mode, nickname);
+              if (interests) setMyInterests(interests);
+              void startSearching(filters, mode, nickname, interests);
             }}
             onBack={logout}
             hasActiveSubscription={hasActiveSubscription}
@@ -3834,7 +3690,6 @@ export default function Home() {
           selectedFileName={selectedFileName}
           imageTimerSeconds={imageTimerSeconds}
           setImageTimerSeconds={setImageTimerSeconds}
-          groupParticipants={groupParticipants}
           isSendingMessage={isSendingMessage}
           imageUploadProgress={imageUploadProgress}
           sendError={sendError}

@@ -298,6 +298,7 @@ const createRoomPayload = (a, b) => {
       gender: a.profile.gender,
       age: a.profile.age,
       countryCode: a.profile.countryCode || null,
+      interests: a.profile.interests || [],
       nickname: a.nickname,
     },
     {
@@ -305,6 +306,7 @@ const createRoomPayload = (a, b) => {
       gender: b.profile.gender,
       age: b.profile.age,
       countryCode: b.profile.countryCode || null,
+      interests: b.profile.interests || [],
       nickname: b.nickname,
     },
   ];
@@ -317,6 +319,7 @@ const toParticipantProfile = (entry) => ({
   gender: entry.profile.gender,
   age: entry.profile.age,
   countryCode: entry.profile.countryCode || null,
+  interests: entry.profile.interests || [],
   nickname: entry.nickname,
 });
 
