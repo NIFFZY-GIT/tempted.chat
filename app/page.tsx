@@ -2636,6 +2636,64 @@ export default function Home() {
     }, 1500);
   };
 
+  const upsertOwnRoomProfile = useCallback(async (roomId: string) => {
+    if (!user || !profile) {
+      return;
+    }
+
+    const ownProfile = {
+      uid: user.uid,
+      gender: profile.gender,
+      age: profile.age,
+      countryCode: profile.countryCode ?? null,
+      interests: myInterests,
+    };
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const roomRef = doc(db, "rooms", roomId);
+        const roomSnapshot = await transaction.get(roomRef);
+        if (!roomSnapshot.exists()) {
+          return;
+        }
+
+        const roomData = roomSnapshot.data() as {
+          participantProfiles?: Array<Record<string, unknown>>;
+        };
+
+        const profiles = Array.isArray(roomData.participantProfiles)
+          ? roomData.participantProfiles
+          : [];
+
+        const existingIndex = profiles.findIndex((p) => p.uid === user.uid);
+        const nextProfiles = [...profiles];
+
+        if (existingIndex >= 0) {
+          nextProfiles[existingIndex] = {
+            ...nextProfiles[existingIndex],
+            ...ownProfile,
+          };
+        } else {
+          nextProfiles.push(ownProfile);
+        }
+
+        transaction.update(roomRef, {
+          participantProfiles: nextProfiles,
+        });
+      });
+    } catch {
+      // Ignore profile upsert races while room is being initialized.
+    }
+  }, [myInterests, profile, user]);
+
+  useEffect(() => {
+    if (!activeRoomId || !user || !profile) {
+      return;
+    }
+
+    void upsertOwnRoomProfile(activeRoomId);
+  }, [activeRoomId, profile, upsertOwnRoomProfile, user]);
+
   const markRoomEnded = async () => {
     if (!activeRoomId || !user) {
       return;
@@ -3636,7 +3694,7 @@ export default function Home() {
             onStart={(mode, filters, nickname, interests) => {
               setChatMode(mode);
               setChatFilters(filters);
-              if (interests) setMyInterests(interests);
+              setMyInterests(interests ?? []);
               void startSearching(filters, mode, nickname, interests);
             }}
             onBack={logout}
