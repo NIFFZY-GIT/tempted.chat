@@ -1866,13 +1866,20 @@ export function ChatRoomView({
             )}
           </div>
           {hasResolvedStrangerProfile && strangerProfile.interests && strangerProfile.interests.length > 0 ? (
-            <div className="mt-0.5 flex flex-wrap gap-1">
-              {strangerProfile.interests.map((tag) => (
-                <span key={tag} className="inline-flex items-center rounded-full bg-pink-500/10 px-2 py-0.5 text-[10px] font-medium text-pink-300/80 border border-pink-500/15">
-                  {tag}
-                </span>
-              ))}
-            </div>
+            <>
+              <p className="truncate text-[11px] text-white/30">
+                {isConnecting
+                  ? connectingStatus
+                  : `${modeLabel} · ${genderLabel} · ${ageLabel}`}
+              </p>
+              <div className="mt-0.5 flex flex-wrap gap-1">
+                {strangerProfile.interests.map((tag) => (
+                  <span key={tag} className="inline-flex items-center rounded-full bg-pink-500/10 px-2 py-0.5 text-[10px] font-medium text-pink-300/80 border border-pink-500/15">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </>
           ) : (
             <p className="truncate text-[11px] text-white/30">
               {isConnecting
