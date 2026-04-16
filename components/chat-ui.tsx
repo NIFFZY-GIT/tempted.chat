@@ -688,7 +688,7 @@ export function ModeAndFiltersView({
     ring: string;
     iconBg: string;
     badgeBg: string;
-    chipColor: "pink" | "violet" | "blue";
+    chipColor: "blue" | "violet" | "pink";
   }> = [
     {
       id: "text",
@@ -696,15 +696,15 @@ export function ModeAndFiltersView({
       title: "Text Chat",
       sub: "Messages, photos & fun",
       desc: "Send messages, share photos, and have fun conversations",
-      accent: "text-pink-400",
-      accentRgb: "236,72,153",
-      bg: "bg-pink-500/[0.06]",
-      border: "border-pink-500/30",
-      glow: "shadow-[0_0_40px_rgba(236,72,153,0.15),0_4px_24px_rgba(236,72,153,0.1)]",
-      ring: "ring-pink-500/20",
-      iconBg: "bg-gradient-to-br from-pink-500/20 to-pink-600/10",
-      badgeBg: "bg-pink-500",
-      chipColor: "pink",
+      accent: "text-blue-400",
+      accentRgb: "59,130,246",
+      bg: "bg-blue-500/[0.06]",
+      border: "border-blue-500/30",
+      glow: "shadow-[0_0_40px_rgba(59,130,246,0.15),0_4px_24px_rgba(59,130,246,0.1)]",
+      ring: "ring-blue-500/20",
+      iconBg: "bg-gradient-to-br from-blue-500/20 to-blue-600/10",
+      badgeBg: "bg-blue-500",
+      chipColor: "blue",
     },
     {
       id: "video",
