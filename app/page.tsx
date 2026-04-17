@@ -1543,7 +1543,11 @@ export default function Home() {
           if (!isOfferer) return;
           void (async () => {
             try {
-              peerConnection.restartIce();
+              // Safari on some Apple devices may not expose restartIce reliably.
+              // createOffer({ iceRestart: true }) is the compatibility-safe fallback.
+              if (typeof peerConnection.restartIce === "function") {
+                peerConnection.restartIce();
+              }
               const restartOffer = await peerConnection.createOffer({ iceRestart: true });
               await peerConnection.setLocalDescription(restartOffer);
               videoOfferSentRef.current = true;

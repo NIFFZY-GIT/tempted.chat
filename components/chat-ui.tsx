@@ -1229,6 +1229,14 @@ export function ChatRoomView({
   const [revealedTimedImageIds, setRevealedTimedImageIds] = useState<Set<string>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [activeEmojiPickerMsgId, setActiveEmojiPickerMsgId] = useState<string | null>(null);
+  const [swipePreview, setSwipePreview] = useState<{ id: string; offset: number } | null>(null);
+  const swipeStateRef = useRef<{ id: string | null; startX: number; startY: number; dragging: boolean; triggered: boolean }>({
+    id: null,
+    startX: 0,
+    startY: 0,
+    dragging: false,
+    triggered: false,
+  });
   const [showChatFilters, setShowChatFilters] = useState(false);
   const [filterGender, setFilterGender] = useState<GenderFilter>(chatFilters?.gender ?? "Any");
   const [filterAgeGroup, setFilterAgeGroup] = useState<AgeGroupFilter>(chatFilters?.ageGroup ?? "Any age");
@@ -1239,6 +1247,9 @@ export function ChatRoomView({
   const filterCountryMenuRef = useRef<HTMLDivElement | null>(null);
   const filterSelectedCountryCode = filterCountry !== "Any" ? filterCountry : undefined;
   const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
+
+  const SWIPE_REPLY_TRIGGER_PX = 56;
+  const SWIPE_REPLY_MAX_PX = 84;
 
   const modeLabel = chatMode === "text" ? "Text" : chatMode === "video" ? "Video" : "Group";
   const ageLabel = chatFilters?.ageGroup ?? "Any age";
@@ -1492,6 +1503,66 @@ export function ChatRoomView({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   };
 
+  const resetSwipeState = () => {
+    swipeStateRef.current = {
+      id: null,
+      startX: 0,
+      startY: 0,
+      dragging: false,
+      triggered: false,
+    };
+    setSwipePreview(null);
+  };
+
+  const handleMessagePointerDown = (messageId: string, event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    swipeStateRef.current = {
+      id: messageId,
+      startX: event.clientX,
+      startY: event.clientY,
+      dragging: false,
+      triggered: false,
+    };
+  };
+
+  const handleMessagePointerMove = (messageId: string, event: React.PointerEvent<HTMLDivElement>) => {
+    const swipeState = swipeStateRef.current;
+    if (swipeState.id !== messageId) {
+      return;
+    }
+
+    const deltaX = event.clientX - swipeState.startX;
+    const deltaY = event.clientY - swipeState.startY;
+
+    if (!swipeState.dragging) {
+      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) {
+        return;
+      }
+
+      if (Math.abs(deltaX) <= Math.abs(deltaY) || deltaX <= 0) {
+        resetSwipeState();
+        return;
+      }
+
+      swipeState.dragging = true;
+    }
+
+    const clampedOffset = Math.max(0, Math.min(deltaX, SWIPE_REPLY_MAX_PX));
+    setSwipePreview({ id: messageId, offset: clampedOffset });
+
+    if (!swipeState.triggered && clampedOffset >= SWIPE_REPLY_TRIGGER_PX) {
+      swipeState.triggered = true;
+      onReplyToMessage(messageId);
+    }
+  };
+
+  const handleMessagePointerEnd = () => {
+    resetSwipeState();
+  };
+
   useEffect(() => {
     const timerId = window.setInterval(() => {
       setNowMs(Date.now());
@@ -1577,7 +1648,7 @@ export function ChatRoomView({
 
           {/* Your video panel */}
           <div className="relative h-[calc(var(--vh,1dvh)*50)] w-full shrink-0 overflow-hidden sm:h-full sm:w-1/2 sm:shrink">
-            <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover" />
+            <video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover [transform:scaleX(-1)]" />
             {!localVideoEnabled && (
               <div className="absolute inset-0 grid place-items-center bg-black/85">
                 <svg className="h-8 w-8 text-white/25" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="m2 2 20 20" /><rect x="3" y="7" width="12" height="10" rx="2" /><path d="m15 10 6-3v10l-6-3" /></svg>
@@ -2023,8 +2094,10 @@ export function ChatRoomView({
 
             const isYou = msg.author === "you";
             const hasReactions = msg.reactions && Object.keys(msg.reactions).length > 0;
+            const canDeleteForEveryone = isYou && typeof msg.createdAtMs === "number" && (nowMs - msg.createdAtMs) < 30000;
             const bubbleBg = isYou ? "bg-pink-950" : "bg-blue-950";
-            const bubbleStyle = undefined;
+            const swipeOffset = swipePreview?.id === msg.id ? swipePreview.offset : 0;
+            const bubbleStyle = swipeOffset > 0 ? { transform: `translateX(${swipeOffset}px)` } : undefined;
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
@@ -2056,12 +2129,25 @@ export function ChatRoomView({
                   <div
                     id={`msg-${msg.id}`}
                     onDoubleClick={() => setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id)}
+                    onPointerDown={(event) => handleMessagePointerDown(msg.id, event)}
+                    onPointerMove={(event) => handleMessagePointerMove(msg.id, event)}
+                    onPointerUp={handleMessagePointerEnd}
+                    onPointerCancel={handleMessagePointerEnd}
+                    onPointerLeave={handleMessagePointerEnd}
                     style={bubbleStyle}
                     className={`relative rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed break-words transition-all [overflow-wrap:anywhere] sm:text-[15px] ${
                     isYou
                       ? "rounded-br-sm bg-pink-950 text-white"
                       : `rounded-bl-sm ${bubbleBg ?? ""} text-white`
                   } ${msg.isPending ? "opacity-50" : ""}`}>
+                    {!msg.isPending && (
+                      <div
+                        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-xs font-semibold text-white/35 transition ${isYou ? "-left-8" : "-right-8"}`}
+                        style={{ opacity: swipeOffset > 10 ? 1 : 0 }}
+                      >
+                        Reply
+                      </div>
+                    )}
                     {msg.text}
                     {msg.image && isYou && !msg.imageDeleted && !senderImageExpired && (
                       <div className="mt-2 space-y-1">
@@ -2129,7 +2215,7 @@ export function ChatRoomView({
 
                     {/* Action buttons — shows on hover */}
                     {!msg.isPending && (
-                      <div className={`absolute top-1/2 -translate-y-1/2 flex gap-0.5 opacity-0 transition group-hover/msg:opacity-100 ${isYou ? "-left-[4.5rem]" : "-right-[4.5rem]"}`}>
+                      <div className={`absolute top-1/2 -translate-y-1/2 hidden gap-0.5 opacity-0 transition group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 sm:flex ${isYou ? "-left-[4.5rem]" : "-right-[4.5rem]"}`}>
                         <button
                           type="button"
                           onClick={() => onReplyToMessage(msg.id)}
@@ -2138,7 +2224,7 @@ export function ChatRoomView({
                         >
                           <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
                         </button>
-                        {isYou && typeof msg.createdAtMs === "number" && (nowMs - msg.createdAtMs) < 30000 && (
+                        {canDeleteForEveryone && (
                           <button
                             type="button"
                             onClick={() => onDeleteMessage(msg.id)}
@@ -2151,6 +2237,32 @@ export function ChatRoomView({
                       </div>
                     )}
                   </div>
+
+                  {/* Mobile actions */}
+                  {!msg.isPending && (
+                    <div className={`flex items-center gap-1 sm:hidden ${isYou ? "justify-end" : "justify-start"}`}>
+                      <button
+                        type="button"
+                        onClick={() => onReplyToMessage(msg.id)}
+                        className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium text-white/55 transition hover:bg-white/[0.1] hover:text-white/80"
+                        aria-label="Reply"
+                      >
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
+                        Reply
+                      </button>
+                      {canDeleteForEveryone && (
+                        <button
+                          type="button"
+                          onClick={() => onDeleteMessage(msg.id)}
+                          className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-300/90 transition hover:bg-rose-500/20"
+                          aria-label="Delete for everyone"
+                        >
+                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  )}
 
                   {/* Emoji picker */}
                   {activeEmojiPickerMsgId === msg.id && (

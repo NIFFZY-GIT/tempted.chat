@@ -118,6 +118,14 @@ export default function PlansPage() {
   const vipLoading = loading === `vip_${duration}`;
   const vvipLoading = loading === `vvip_${duration}`;
 
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+    router.push("/");
+  };
+
   return (
     <div className="min-h-dvh bg-[#08080e]">
       <TopNav
@@ -128,6 +136,17 @@ export default function PlansPage() {
       />
 
       <main className="mx-auto max-w-3xl px-4 pb-20 pt-24 sm:px-6">
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={handleGoBack}
+            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-white/70 transition hover:bg-white/[0.06] hover:text-white"
+          >
+            <span aria-hidden="true">&larr;</span>
+            Back
+          </button>
+        </div>
+
         {/* Header */}
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
