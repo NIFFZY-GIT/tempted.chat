@@ -1158,6 +1158,7 @@ export function ChatRoomView({
   localVideoRef,
   remoteVideoRef,
   hasRemoteVideo,
+  remoteAudioEnabled,
   localVideoEnabled,
   localAudioEnabled,
   toggleLocalVideo,
@@ -1202,6 +1203,7 @@ export function ChatRoomView({
   localVideoRef: RefObject<HTMLVideoElement | null>;
   remoteVideoRef: RefObject<HTMLVideoElement | null>;
   hasRemoteVideo: boolean;
+  remoteAudioEnabled: boolean;
   localVideoEnabled: boolean;
   localAudioEnabled: boolean;
   toggleLocalVideo: () => void;
@@ -1700,6 +1702,22 @@ export function ChatRoomView({
                 </span>
               )}
             </p>
+            {!isConnecting && hasResolvedStrangerProfile && (!hasRemoteVideo || !remoteAudioEnabled) && (
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {!remoteAudioEnabled && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200">
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 4 16 16" /><path d="M9 9v3a3 3 0 0 0 5.14 2.14" /><path d="M15 6a3 3 0 0 0-5.08-2.2" /></svg>
+                    Muted
+                  </span>
+                )}
+                {!hasRemoteVideo && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
+                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m2 2 20 20" /><rect x="3" y="7" width="12" height="10" rx="2" /></svg>
+                    Camera off
+                  </span>
+                )}
+              </div>
+            )}
             {hasResolvedStrangerProfile && strangerProfile.interests && strangerProfile.interests.length > 0 && (
               <div className="mt-0.5 flex flex-wrap gap-1">
                 {strangerProfile.interests.map((tag) => (

@@ -85,6 +85,7 @@ const MATCH_HEARTBEAT_INTERVAL_MS = 3000;
 const E2EE_WAIT_BEFORE_QUEUE_MS = 1800;
 const REALTIME_QUEUE_PING_MS = 2000;
 const REALTIME_WS_URL = process.env.NEXT_PUBLIC_REALTIME_WS_URL || "ws://localhost:8787";
+const REALTIME_WS_ENABLED = process.env.NEXT_PUBLIC_DISABLE_REALTIME_WS !== "true";
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const PENDING_STRANGER_PROFILE: UserProfile = {
   gender: "Other",
@@ -246,6 +247,7 @@ export default function Home() {
   const [myInterests, setMyInterests] = useState<string[]>([]);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
+  const [hasRemoteAudio, setHasRemoteAudio] = useState(false);
   const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
   const [localAudioEnabled, setLocalAudioEnabled] = useState(true);
   const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("user");
@@ -283,6 +285,9 @@ export default function Home() {
   const realtimeIsOffererRef = useRef(false);
   const realtimeSignalBufferRef = useRef<RealtimeSignalEvent[]>([]);
   const realtimeSignalHandlerRef = useRef<((event: RealtimeSignalEvent) => void) | null>(null);
+  const realtimeWsDisabledRef = useRef(!REALTIME_WS_ENABLED);
+  const realtimeWsConnectedOnceRef = useRef(false);
+  const realtimeWsFailureHandledRef = useRef(false);
 
 
 
@@ -377,6 +382,7 @@ export default function Home() {
     }
 
     setHasRemoteVideo(false);
+    setHasRemoteAudio(false);
     setLocalVideoEnabled(true);
     setLocalAudioEnabled(true);
     setCameraFacingMode("user");
@@ -1166,8 +1172,30 @@ export default function Home() {
       return;
     }
 
+    if (realtimeWsDisabledRef.current) {
+      realtimeConnectedRef.current = false;
+      realtimeQueueModeRef.current = null;
+      stopRealtimeQueueHeartbeat();
+      return;
+    }
+
     const socket = new WebSocket(REALTIME_WS_URL);
     realtimeSocketRef.current = socket;
+
+    const disableRealtimeWs = (reason: string) => {
+      if (realtimeWsFailureHandledRef.current || realtimeWsConnectedOnceRef.current) {
+        return;
+      }
+
+      realtimeWsFailureHandledRef.current = true;
+      realtimeWsDisabledRef.current = true;
+      realtimeQueueModeRef.current = null;
+      stopRealtimeQueueHeartbeat();
+      console.warn("[realtime] websocket unavailable; using Firestore matchmaking fallback", {
+        reason,
+        url: REALTIME_WS_URL,
+      });
+    };
 
     socket.onopen = () => {
       void user.getIdToken(true).then((token) => {
@@ -1193,6 +1221,7 @@ export default function Home() {
 
       if (eventName === "auth_ok") {
         realtimeConnectedRef.current = true;
+        realtimeWsConnectedOnceRef.current = true;
         return;
       }
 
@@ -1284,10 +1313,12 @@ export default function Home() {
 
     socket.onerror = () => {
       realtimeConnectedRef.current = false;
+      disableRealtimeWs("socket_error");
     };
 
     socket.onclose = () => {
       realtimeConnectedRef.current = false;
+      disableRealtimeWs("closed_before_auth");
     };
 
     return () => {
@@ -1490,6 +1521,21 @@ export default function Home() {
             return;
           }
 
+          const track = event.track;
+          if (track.kind === "video") {
+            setHasRemoteVideo(!track.muted && track.readyState === "live");
+            track.onmute = () => setHasRemoteVideo(false);
+            track.onunmute = () => setHasRemoteVideo(true);
+            track.onended = () => setHasRemoteVideo(false);
+          }
+
+          if (track.kind === "audio") {
+            setHasRemoteAudio(!track.muted && track.readyState === "live");
+            track.onmute = () => setHasRemoteAudio(false);
+            track.onunmute = () => setHasRemoteAudio(true);
+            track.onended = () => setHasRemoteAudio(false);
+          }
+
           stream.getTracks().forEach((track) => {
             const exists = remoteStream.getTracks().some((existingTrack) => existingTrack.id === track.id);
             if (!exists) {
@@ -1498,6 +1544,7 @@ export default function Home() {
           });
 
           setHasRemoteVideo(remoteStream.getVideoTracks().length > 0);
+          setHasRemoteAudio(remoteStream.getAudioTracks().length > 0);
           if (remoteVideoRef.current) {
             remoteVideoRef.current.srcObject = remoteStream;
             void remoteVideoRef.current.play().catch(() => {
@@ -3759,6 +3806,7 @@ export default function Home() {
           localVideoRef={localVideoRef}
           remoteVideoRef={remoteVideoRef}
           hasRemoteVideo={hasRemoteVideo}
+          remoteAudioEnabled={hasRemoteAudio}
           localVideoEnabled={localVideoEnabled}
           localAudioEnabled={localAudioEnabled}
           toggleLocalVideo={toggleLocalVideo}
