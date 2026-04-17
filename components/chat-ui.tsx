@@ -2161,10 +2161,10 @@ export function ChatRoomView({
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
-                <div className={`group/msg relative flex max-w-[82%] items-end gap-2 sm:max-w-[70%] ${isYou ? "flex-row" : "flex-row-reverse"}`}>
-                  <div className={`flex flex-col gap-1 ${isYou ? "order-1" : "order-2"}`}>
+                <div className="group/msg relative flex max-w-[86%] items-end gap-2 sm:max-w-[74%]">
+                  <div className="flex flex-col gap-1">
                     {showActionRail && (
-                      <div className={`flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-white/[0.03] px-1.5 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.28)] backdrop-blur-md transition-opacity duration-200 ${isYou ? "opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100"}`}>
+                      <div className="flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[#12121a]/88 px-1.5 py-2 shadow-[0_14px_32px_rgba(0,0,0,0.34)] backdrop-blur-md transition-opacity duration-200 opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100">
                         <button
                           type="button"
                           onClick={() => onReplyToMessage(msg.id)}
@@ -2195,7 +2195,7 @@ export function ChatRoomView({
                     )}
                   </div>
 
-                  <div className={`flex min-w-0 flex-1 flex-col gap-1 ${isYou ? "order-2 items-end" : "order-1 items-start"}`}>
+                  <div className={`flex min-w-0 flex-1 flex-col gap-1 ${isYou ? "items-end" : "items-start"}`}>
                   {/* Reply quote */}
                   {msg.replyToId && msg.replyToText && (
                     <button
@@ -2208,10 +2208,10 @@ export function ChatRoomView({
                           setTimeout(() => { el.classList.remove("ring-2", "ring-pink-400/50", "ring-blue-400/50"); }, 1500);
                         }
                       }}
-                      className={`max-w-full truncate rounded-xl px-3 py-1.5 text-[12px] leading-snug ${
+                      className={`max-w-full truncate rounded-2xl border px-3 py-1.5 text-[12px] leading-snug backdrop-blur-sm ${
                         isYou
-                          ? "bg-pink-400/20 text-white/70 text-right"
-                          : "bg-blue-400/20 text-white/70 text-left"
+                          ? "border-pink-400/12 bg-pink-400/12 text-white/72 text-right"
+                          : "border-sky-400/12 bg-sky-400/12 text-white/72 text-left"
                       }`}
                     >
                       <span className={`block text-[10px] font-semibold ${isYou ? "text-pink-300/80" : "text-blue-300/80"}`}>{msg.replyToAuthor === "you" ? "You" : "Stranger"}</span>
@@ -2229,22 +2229,25 @@ export function ChatRoomView({
                     onPointerCancel={handleMessagePointerEnd}
                     onPointerLeave={handleMessagePointerEnd}
                     style={bubbleStyle}
-                    className={`relative rounded-2xl px-4 py-2.5 text-[14px] leading-relaxed break-words transition-all [overflow-wrap:anywhere] sm:text-[15px] ${
+                    className={`relative overflow-hidden rounded-[1.35rem] border px-4 py-3 text-[14px] leading-relaxed break-words shadow-[0_18px_36px_rgba(0,0,0,0.18)] transition-all [overflow-wrap:anywhere] sm:text-[15px] ${
                     isYou
-                      ? "rounded-br-sm bg-pink-950 text-white"
-                      : `rounded-bl-sm ${bubbleBg ?? ""} text-white`
+                      ? "rounded-br-md border-pink-300/10 bg-[linear-gradient(180deg,rgba(131,24,67,0.94),rgba(88,17,45,0.96))] text-rose-50"
+                      : `rounded-bl-md border-sky-200/10 bg-[linear-gradient(180deg,rgba(18,44,86,0.96),rgba(10,28,60,0.98))] text-sky-50`
                   } ${msg.isPending ? "opacity-50" : ""}`}>
+                    <div className={`pointer-events-none absolute inset-0 opacity-60 ${isYou ? "bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_42%)]" : "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.1),transparent_42%)]"}`} />
                     {!msg.isPending && (
-                      <div
-                        className={`pointer-events-none absolute top-1/2 -translate-y-1/2 text-xs font-semibold text-white/35 transition ${isYou ? "-left-8" : "-right-8"}`}
-                        style={{ opacity: swipeOffset > 10 ? 1 : 0 }}
+                      <span
+                        className="pointer-events-none absolute left-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/18 text-white/60 backdrop-blur-sm transition"
+                        style={{ opacity: swipeOffset > 10 ? 1 : 0, transform: `translateY(-50%) scale(${swipeOffset > 10 ? 1 : 0.92})` }}
                       >
-                        Reply
-                      </div>
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
+                      </span>
                     )}
-                    {msg.text}
+                    <div className="relative z-[1]">
+                      {msg.text}
+                    </div>
                     {msg.image && isYou && !msg.imageDeleted && !senderImageExpired && (
-                      <div className="mt-2 space-y-1">
+                      <div className="relative z-[1] mt-2 space-y-1">
                         <ChatMedia src={msg.image} alt="Sent" mimeType={msg.imageMimeType} className="max-w-full rounded-xl" />
                         {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && (
                           <p className="text-[11px] font-medium text-white/70">
@@ -2258,7 +2261,7 @@ export function ChatRoomView({
                       </div>
                     )}
                     {!msg.image && msg.linkImageUrl && !msg.imageDeleted && (
-                      <div className="mt-2">
+                      <div className="relative z-[1] mt-2">
                         <ChatMedia src={msg.linkImageUrl} alt="Linked image" mimeType={msg.linkImageMimeType} className="max-w-full rounded-xl" />
                       </div>
                     )}
@@ -2271,7 +2274,7 @@ export function ChatRoomView({
                     {msg.image && isYou && (msg.imageDeleted || senderImageExpired) && null}
                     {msg.image && msg.author === "stranger" && !msg.imageDeleted && (
                       msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && !revealedTimedImageIds.has(msg.id) ? (
-                        <div className="group relative mt-2 block w-full overflow-hidden rounded-xl">
+                        <div className="group relative z-[1] mt-2 block w-full overflow-hidden rounded-xl">
                           <ChatMedia
                             src={msg.image}
                             alt="Timed image"
@@ -2295,7 +2298,7 @@ export function ChatRoomView({
                           </button>
                         </div>
                       ) : (
-                        <div className="mt-2 space-y-1">
+                        <div className="relative z-[1] mt-2 space-y-1">
                           <ChatMedia src={msg.image} alt="Sent" mimeType={msg.imageMimeType} className="max-w-full rounded-xl" />
                           {msg.imageViewTimerSeconds && msg.imageViewTimerSeconds > 0 && remainingSeconds !== null && (
                             <p className="text-[11px] font-medium text-white/60">{remainingSeconds}s left</p>
@@ -2310,7 +2313,7 @@ export function ChatRoomView({
 
                   {/* Emoji picker */}
                   {activeEmojiPickerMsgId === msg.id && (
-                    <div className={`animate-pop-in flex gap-1 rounded-full border border-white/[0.08] bg-[#1a1a25] px-2 py-1.5 shadow-2xl ${isYou ? "self-end" : "self-start"}`}>
+                    <div className={`animate-pop-in flex gap-1 rounded-full border border-white/[0.08] bg-[#14141d]/96 px-2 py-1.5 shadow-[0_18px_40px_rgba(0,0,0,0.45)] backdrop-blur-xl ${isYou ? "self-end" : "self-start"}`}>
                       {QUICK_REACTIONS.map((emoji) => {
                         const reacted = msg.reactions?.[emoji]?.includes(currentUserId);
                         return (
@@ -2359,7 +2362,7 @@ export function ChatRoomView({
                     </div>
                   )}
 
-                  <span className="px-1 text-[11px] text-white/20">{msg.sentAt}</span>
+                  <span className={`px-1 text-[10px] font-medium tracking-[0.08em] ${isYou ? "text-pink-200/28" : "text-sky-200/28"}`}>{msg.sentAt}</span>
                   </div>
                 </div>
               </div>
