@@ -1563,7 +1563,7 @@ export function ChatRoomView({
     }, ACTION_HOLD_MS);
   };
 
-  const handleMessagePointerMove = (messageId: string, event: React.PointerEvent<HTMLDivElement>) => {
+  const handleMessagePointerMove = (messageId: string, authoredByCurrentUser: boolean, event: React.PointerEvent<HTMLDivElement>) => {
     const swipeState = swipeStateRef.current;
     if (swipeState.id !== messageId || swipeState.pointerId !== event.pointerId) {
       return;
@@ -1571,8 +1571,9 @@ export function ChatRoomView({
 
     const deltaX = event.clientX - swipeState.startX;
     const deltaY = event.clientY - swipeState.startY;
+    const directionalDeltaX = authoredByCurrentUser ? -deltaX : deltaX;
 
-    if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+    if (Math.abs(directionalDeltaX) > 8 || Math.abs(deltaY) > 8) {
       if (reactionHoldTimerRef.current) {
         window.clearTimeout(reactionHoldTimerRef.current);
         reactionHoldTimerRef.current = null;
@@ -1580,11 +1581,11 @@ export function ChatRoomView({
     }
 
     if (!swipeState.dragging) {
-      if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) {
+      if (Math.abs(directionalDeltaX) < 8 && Math.abs(deltaY) < 8) {
         return;
       }
 
-      if (Math.abs(deltaX) <= Math.abs(deltaY) || deltaX <= 0) {
+      if (Math.abs(directionalDeltaX) <= Math.abs(deltaY) || directionalDeltaX <= 0) {
         resetSwipeState();
         return;
       }
@@ -1593,8 +1594,8 @@ export function ChatRoomView({
       setExpandedActionMsgId(null);
     }
 
-    const clampedOffset = Math.max(0, Math.min(deltaX, SWIPE_REPLY_MAX_PX));
-    setSwipePreview({ id: messageId, offset: clampedOffset });
+    const clampedOffset = Math.max(0, Math.min(directionalDeltaX, SWIPE_REPLY_MAX_PX));
+    setSwipePreview({ id: messageId, offset: authoredByCurrentUser ? -clampedOffset : clampedOffset });
 
     if (!swipeState.triggered && clampedOffset >= SWIPE_REPLY_TRIGGER_PX) {
       swipeState.triggered = true;
@@ -2186,11 +2187,18 @@ export function ChatRoomView({
             const isYou = msg.author === "you";
             const hasReactions = msg.reactions && Object.keys(msg.reactions).length > 0;
             const canDeleteForEveryone = isYou && typeof msg.createdAtMs === "number" && (nowMs - msg.createdAtMs) < 30000;
-            const bubbleBg = isYou ? "bg-pink-950" : "bg-blue-950";
             const swipeOffset = swipePreview?.id === msg.id ? swipePreview.offset : 0;
             const bubbleStyle = swipeOffset > 0 ? { transform: `translateX(${swipeOffset}px)` } : undefined;
             const showActionRail = !msg.isPending && !isConnecting;
             const isActionRailExpanded = expandedActionMsgId === msg.id;
+            const replyTargetsYou = msg.replyToAuthor === "you";
+            const replyAccentClass = replyTargetsYou
+              ? "border-pink-400/16 bg-pink-400/12 text-white/72"
+              : "border-sky-400/16 bg-sky-400/12 text-white/72";
+            const replyLabelClass = replyTargetsYou ? "text-pink-300/80" : "text-blue-300/80";
+            const replyHighlightRing = replyTargetsYou ? "ring-pink-400/50" : "ring-blue-400/50";
+            const swipeIndicatorPositionClass = isYou ? "right-2.5" : "left-2.5";
+            const bubbleStyleWithDirection = swipeOffset !== 0 ? { transform: `translateX(${swipeOffset}px)` } : undefined;
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
@@ -2240,17 +2248,13 @@ export function ChatRoomView({
                         const el = document.getElementById(`msg-${msg.replyToId}`);
                         if (el) {
                           el.scrollIntoView({ behavior: "smooth", block: "center" });
-                          el.classList.add("ring-2", isYou ? "ring-pink-400/50" : "ring-blue-400/50");
+                          el.classList.add("ring-2", replyHighlightRing);
                           setTimeout(() => { el.classList.remove("ring-2", "ring-pink-400/50", "ring-blue-400/50"); }, 1500);
                         }
                       }}
-                      className={`max-w-full truncate rounded-2xl border px-3 py-1.5 text-[12px] leading-snug backdrop-blur-sm ${
-                        isYou
-                          ? "border-pink-400/12 bg-pink-400/12 text-white/72 text-right"
-                          : "border-sky-400/12 bg-sky-400/12 text-white/72 text-left"
-                      }`}
+                      className={`max-w-full truncate rounded-2xl border px-3 py-1.5 text-[12px] leading-snug backdrop-blur-sm ${replyAccentClass} ${isYou ? "text-right" : "text-left"}`}
                     >
-                      <span className={`block text-[10px] font-semibold ${isYou ? "text-pink-300/80" : "text-blue-300/80"}`}>{msg.replyToAuthor === "you" ? "You" : "Stranger"}</span>
+                      <span className={`block text-[10px] font-semibold ${replyLabelClass}`}>{msg.replyToAuthor === "you" ? "You" : "Stranger"}</span>
                       <span className="block truncate">{msg.replyToText}</span>
                     </button>
                   )}
@@ -2260,10 +2264,10 @@ export function ChatRoomView({
                     id={`msg-${msg.id}`}
                     onDoubleClick={() => setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id)}
                     onPointerDown={(event) => handleMessagePointerDown(msg.id, event)}
-                    onPointerMove={(event) => handleMessagePointerMove(msg.id, event)}
+                    onPointerMove={(event) => handleMessagePointerMove(msg.id, isYou, event)}
                     onPointerUp={(event) => handleMessagePointerEnd(event)}
                     onPointerCancel={(event) => handleMessagePointerEnd(event)}
-                    style={bubbleStyle}
+                    style={bubbleStyleWithDirection}
                     className={`relative overflow-hidden rounded-[1.35rem] border px-4 py-3 text-[14px] leading-relaxed break-words shadow-[0_18px_36px_rgba(0,0,0,0.18)] transition-all [overflow-wrap:anywhere] touch-pan-y sm:text-[15px] ${
                     isYou
                       ? "rounded-br-md border-pink-300/10 bg-[linear-gradient(180deg,rgba(131,24,67,0.94),rgba(88,17,45,0.96))] text-rose-50"
@@ -2272,8 +2276,8 @@ export function ChatRoomView({
                     <div className={`pointer-events-none absolute inset-0 opacity-60 ${isYou ? "bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.12),transparent_42%)]" : "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.1),transparent_42%)]"}`} />
                     {!msg.isPending && (
                       <span
-                        className="pointer-events-none absolute left-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/18 text-white/60 backdrop-blur-sm transition"
-                        style={{ opacity: swipeOffset > 10 ? 1 : 0, transform: `translateY(-50%) scale(${swipeOffset > 10 ? 1 : 0.92})` }}
+                        className={`pointer-events-none absolute top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/18 text-white/60 backdrop-blur-sm transition ${swipeIndicatorPositionClass}`}
+                        style={{ opacity: Math.abs(swipeOffset) > 10 ? 1 : 0, transform: `translateY(-50%) scale(${Math.abs(swipeOffset) > 10 ? 1 : 0.92})` }}
                       >
                         <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
                       </span>
