@@ -2168,6 +2168,9 @@ export function ChatRoomView({
             const replyLabelClass = replyTargetsYou ? "text-pink-300/80" : "text-blue-300/80";
             const replyHighlightRing = replyTargetsYou ? "ring-pink-400/50" : "ring-blue-400/50";
             const swipeIndicatorPositionClass = isYou ? "right-2.5" : "left-2.5";
+            const actionRailPositionClass = isYou
+              ? "right-full mr-2 top-1/2 -translate-y-1/2"
+              : "left-full ml-2 top-1/2 -translate-y-1/2";
             const bubbleStyleWithDirection = {
               transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : undefined,
               userSelect: "none" as const,
@@ -2178,9 +2181,9 @@ export function ChatRoomView({
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
                 <div className="group/msg relative flex max-w-[86%] items-end sm:max-w-[74%]">
-                  <div className="absolute left-2 top-2 z-10 flex flex-col gap-1 sm:left-0 sm:top-1/2 sm:-translate-x-[calc(100%+0.5rem)] sm:-translate-y-1/2">
+                  <div className={`absolute z-10 flex flex-col gap-1 ${actionRailPositionClass}`}>
                     {showActionRail && (
-                      <div className={`flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[#12121a]/92 px-1.5 py-2 shadow-[0_14px_32px_rgba(0,0,0,0.34)] backdrop-blur-md transition-all duration-200 ${isActionRailExpanded ? "opacity-100 translate-x-0" : "pointer-events-none opacity-0 -translate-x-1 sm:pointer-events-auto sm:translate-x-0 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100"}`}>
+                      <div className={`flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[#12121a]/92 px-1.5 py-2 shadow-[0_14px_32px_rgba(0,0,0,0.34)] backdrop-blur-md transition-all duration-200 ${isActionRailExpanded ? "opacity-100 scale-100" : "pointer-events-none opacity-0 scale-95 sm:pointer-events-auto sm:opacity-0 sm:scale-95 sm:group-hover/msg:opacity-100 sm:group-hover/msg:scale-100 sm:group-focus-within/msg:opacity-100 sm:group-focus-within/msg:scale-100"}`}>
                         <button
                           type="button"
                           onClick={() => onReplyToMessage(msg.id)}
