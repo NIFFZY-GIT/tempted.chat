@@ -1231,9 +1231,11 @@ export function ChatRoomView({
   const [revealedTimedImageIds, setRevealedTimedImageIds] = useState<Set<string>>(new Set());
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [activeEmojiPickerMsgId, setActiveEmojiPickerMsgId] = useState<string | null>(null);
+  const [expandedActionMsgId, setExpandedActionMsgId] = useState<string | null>(null);
   const [swipePreview, setSwipePreview] = useState<{ id: string; offset: number } | null>(null);
-  const swipeStateRef = useRef<{ id: string | null; startX: number; startY: number; dragging: boolean; triggered: boolean }>({
+  const swipeStateRef = useRef<{ id: string | null; pointerId: number | null; startX: number; startY: number; dragging: boolean; triggered: boolean }>({
     id: null,
+    pointerId: null,
     startX: 0,
     startY: 0,
     dragging: false,
@@ -1253,7 +1255,7 @@ export function ChatRoomView({
 
   const SWIPE_REPLY_TRIGGER_PX = 56;
   const SWIPE_REPLY_MAX_PX = 84;
-  const REACTION_HOLD_MS = 420;
+  const ACTION_HOLD_MS = 2000;
 
   const modeLabel = chatMode === "text" ? "Text" : chatMode === "video" ? "Video" : "Group";
   const ageLabel = chatFilters?.ageGroup ?? "Any age";
@@ -1515,6 +1517,7 @@ export function ChatRoomView({
 
     swipeStateRef.current = {
       id: null,
+      pointerId: null,
       startX: 0,
       startY: 0,
       dragging: false,
@@ -1528,6 +1531,8 @@ export function ChatRoomView({
       return;
     }
 
+    event.currentTarget.setPointerCapture(event.pointerId);
+
     if (reactionHoldTimerRef.current) {
       window.clearTimeout(reactionHoldTimerRef.current);
       reactionHoldTimerRef.current = null;
@@ -1535,12 +1540,14 @@ export function ChatRoomView({
 
     swipeStateRef.current = {
       id: messageId,
+      pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       dragging: false,
       triggered: false,
     };
 
+    setExpandedActionMsgId(null);
     reactionHoldTimerRef.current = window.setTimeout(() => {
       const swipeState = swipeStateRef.current;
       if (swipeState.id !== messageId || swipeState.dragging) {
@@ -1548,17 +1555,17 @@ export function ChatRoomView({
       }
 
       swipeState.triggered = true;
-      setActiveEmojiPickerMsgId((current) => current === messageId ? null : messageId);
+      setExpandedActionMsgId(messageId);
       if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
         navigator.vibrate(10);
       }
       resetSwipeState();
-    }, REACTION_HOLD_MS);
+    }, ACTION_HOLD_MS);
   };
 
   const handleMessagePointerMove = (messageId: string, event: React.PointerEvent<HTMLDivElement>) => {
     const swipeState = swipeStateRef.current;
-    if (swipeState.id !== messageId) {
+    if (swipeState.id !== messageId || swipeState.pointerId !== event.pointerId) {
       return;
     }
 
@@ -1583,6 +1590,7 @@ export function ChatRoomView({
       }
 
       swipeState.dragging = true;
+      setExpandedActionMsgId(null);
     }
 
     const clampedOffset = Math.max(0, Math.min(deltaX, SWIPE_REPLY_MAX_PX));
@@ -1594,7 +1602,17 @@ export function ChatRoomView({
     }
   };
 
-  const handleMessagePointerEnd = () => {
+  const handleMessagePointerEnd = (event?: React.PointerEvent<HTMLDivElement>) => {
+    if (event) {
+      try {
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+      } catch {
+        // Ignore pointer capture release races.
+      }
+    }
+
     resetSwipeState();
   };
 
@@ -1615,6 +1633,20 @@ export function ChatRoomView({
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!expandedActionMsgId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setExpandedActionMsgId((current) => current === expandedActionMsgId ? null : current);
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [expandedActionMsgId]);
 
   useEffect(() => {
     setRevealedTimedImageIds((current) => {
@@ -2158,13 +2190,14 @@ export function ChatRoomView({
             const swipeOffset = swipePreview?.id === msg.id ? swipePreview.offset : 0;
             const bubbleStyle = swipeOffset > 0 ? { transform: `translateX(${swipeOffset}px)` } : undefined;
             const showActionRail = !msg.isPending && !isConnecting;
+            const isActionRailExpanded = expandedActionMsgId === msg.id;
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
                 <div className="group/msg relative flex max-w-[86%] items-end gap-2 sm:max-w-[74%]">
                   <div className="flex flex-col gap-1">
                     {showActionRail && (
-                      <div className="flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[#12121a]/88 px-1.5 py-2 shadow-[0_14px_32px_rgba(0,0,0,0.34)] backdrop-blur-md transition-opacity duration-200 opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100">
+                      <div className={`flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[#12121a]/88 px-1.5 py-2 shadow-[0_14px_32px_rgba(0,0,0,0.34)] backdrop-blur-md transition-all duration-200 ${isActionRailExpanded ? "opacity-100 translate-x-0" : "pointer-events-none opacity-0 -translate-x-1 sm:pointer-events-auto sm:translate-x-0 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100"}`}>
                         <button
                           type="button"
                           onClick={() => onReplyToMessage(msg.id)}
@@ -2175,7 +2208,10 @@ export function ChatRoomView({
                         </button>
                         <button
                           type="button"
-                          onClick={() => setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id)}
+                          onClick={() => {
+                            setExpandedActionMsgId(msg.id);
+                            setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id);
+                          }}
                           className="flex h-8 w-8 items-center justify-center rounded-full text-white/45 transition hover:bg-white/[0.08] hover:text-white/80 active:scale-[0.94]"
                           aria-label="React"
                         >
@@ -2225,11 +2261,10 @@ export function ChatRoomView({
                     onDoubleClick={() => setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id)}
                     onPointerDown={(event) => handleMessagePointerDown(msg.id, event)}
                     onPointerMove={(event) => handleMessagePointerMove(msg.id, event)}
-                    onPointerUp={handleMessagePointerEnd}
-                    onPointerCancel={handleMessagePointerEnd}
-                    onPointerLeave={handleMessagePointerEnd}
+                    onPointerUp={(event) => handleMessagePointerEnd(event)}
+                    onPointerCancel={(event) => handleMessagePointerEnd(event)}
                     style={bubbleStyle}
-                    className={`relative overflow-hidden rounded-[1.35rem] border px-4 py-3 text-[14px] leading-relaxed break-words shadow-[0_18px_36px_rgba(0,0,0,0.18)] transition-all [overflow-wrap:anywhere] sm:text-[15px] ${
+                    className={`relative overflow-hidden rounded-[1.35rem] border px-4 py-3 text-[14px] leading-relaxed break-words shadow-[0_18px_36px_rgba(0,0,0,0.18)] transition-all [overflow-wrap:anywhere] touch-pan-y sm:text-[15px] ${
                     isYou
                       ? "rounded-br-md border-pink-300/10 bg-[linear-gradient(180deg,rgba(131,24,67,0.94),rgba(88,17,45,0.96))] text-rose-50"
                       : `rounded-bl-md border-sky-200/10 bg-[linear-gradient(180deg,rgba(18,44,86,0.96),rgba(10,28,60,0.98))] text-sky-50`
