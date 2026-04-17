@@ -1249,9 +1249,11 @@ export function ChatRoomView({
   const filterCountryMenuRef = useRef<HTMLDivElement | null>(null);
   const filterSelectedCountryCode = filterCountry !== "Any" ? filterCountry : undefined;
   const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
+  const reactionHoldTimerRef = useRef<number | null>(null);
 
   const SWIPE_REPLY_TRIGGER_PX = 56;
   const SWIPE_REPLY_MAX_PX = 84;
+  const REACTION_HOLD_MS = 420;
 
   const modeLabel = chatMode === "text" ? "Text" : chatMode === "video" ? "Video" : "Group";
   const ageLabel = chatFilters?.ageGroup ?? "Any age";
@@ -1506,6 +1508,11 @@ export function ChatRoomView({
   };
 
   const resetSwipeState = () => {
+    if (reactionHoldTimerRef.current) {
+      window.clearTimeout(reactionHoldTimerRef.current);
+      reactionHoldTimerRef.current = null;
+    }
+
     swipeStateRef.current = {
       id: null,
       startX: 0,
@@ -1521,6 +1528,11 @@ export function ChatRoomView({
       return;
     }
 
+    if (reactionHoldTimerRef.current) {
+      window.clearTimeout(reactionHoldTimerRef.current);
+      reactionHoldTimerRef.current = null;
+    }
+
     swipeStateRef.current = {
       id: messageId,
       startX: event.clientX,
@@ -1528,6 +1540,20 @@ export function ChatRoomView({
       dragging: false,
       triggered: false,
     };
+
+    reactionHoldTimerRef.current = window.setTimeout(() => {
+      const swipeState = swipeStateRef.current;
+      if (swipeState.id !== messageId || swipeState.dragging) {
+        return;
+      }
+
+      swipeState.triggered = true;
+      setActiveEmojiPickerMsgId((current) => current === messageId ? null : messageId);
+      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+        navigator.vibrate(10);
+      }
+      resetSwipeState();
+    }, REACTION_HOLD_MS);
   };
 
   const handleMessagePointerMove = (messageId: string, event: React.PointerEvent<HTMLDivElement>) => {
@@ -1538,6 +1564,13 @@ export function ChatRoomView({
 
     const deltaX = event.clientX - swipeState.startX;
     const deltaY = event.clientY - swipeState.startY;
+
+    if (Math.abs(deltaX) > 8 || Math.abs(deltaY) > 8) {
+      if (reactionHoldTimerRef.current) {
+        window.clearTimeout(reactionHoldTimerRef.current);
+        reactionHoldTimerRef.current = null;
+      }
+    }
 
     if (!swipeState.dragging) {
       if (Math.abs(deltaX) < 8 && Math.abs(deltaY) < 8) {
@@ -1572,6 +1605,14 @@ export function ChatRoomView({
 
     return () => {
       window.clearInterval(timerId);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (reactionHoldTimerRef.current) {
+        window.clearTimeout(reactionHoldTimerRef.current);
+      }
     };
   }, []);
 
@@ -2116,10 +2157,45 @@ export function ChatRoomView({
             const bubbleBg = isYou ? "bg-pink-950" : "bg-blue-950";
             const swipeOffset = swipePreview?.id === msg.id ? swipePreview.offset : 0;
             const bubbleStyle = swipeOffset > 0 ? { transform: `translateX(${swipeOffset}px)` } : undefined;
+            const showActionRail = !msg.isPending && !isConnecting;
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
-                <div className={`group/msg relative flex max-w-[82%] flex-col gap-1 sm:max-w-[70%] ${isYou ? "items-end" : "items-start"}`}>
+                <div className={`group/msg relative flex max-w-[82%] items-end gap-2 sm:max-w-[70%] ${isYou ? "flex-row" : "flex-row-reverse"}`}>
+                  <div className={`flex flex-col gap-1 ${isYou ? "order-1" : "order-2"}`}>
+                    {showActionRail && (
+                      <div className={`flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-white/[0.03] px-1.5 py-2 shadow-[0_10px_28px_rgba(0,0,0,0.28)] backdrop-blur-md transition-opacity duration-200 ${isYou ? "opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100"}`}>
+                        <button
+                          type="button"
+                          onClick={() => onReplyToMessage(msg.id)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-white/45 transition hover:bg-white/[0.08] hover:text-white/80 active:scale-[0.94]"
+                          aria-label="Reply"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id)}
+                          className="flex h-8 w-8 items-center justify-center rounded-full text-white/45 transition hover:bg-white/[0.08] hover:text-white/80 active:scale-[0.94]"
+                          aria-label="React"
+                        >
+                          <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="9"/><path d="M8.5 14s1.2 2 3.5 2 3.5-2 3.5-2"/><path d="M9 10h.01M15 10h.01"/></svg>
+                        </button>
+                        {canDeleteForEveryone && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteMessage(msg.id)}
+                            className="flex h-8 w-8 items-center justify-center rounded-full text-rose-300/80 transition hover:bg-rose-500/15 hover:text-rose-200 active:scale-[0.94]"
+                            aria-label="Delete for everyone"
+                          >
+                            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className={`flex min-w-0 flex-1 flex-col gap-1 ${isYou ? "order-2 items-end" : "order-1 items-start"}`}>
                   {/* Reply quote */}
                   {msg.replyToId && msg.replyToText && (
                     <button
@@ -2230,57 +2306,7 @@ export function ChatRoomView({
                     {msg.isPending && (
                       <p className="mt-1 text-[11px] font-medium text-white/50">Sending...</p>
                     )}
-
-                    {/* Action buttons — shows on hover */}
-                    {!msg.isPending && (
-                      <div className={`absolute top-1/2 -translate-y-1/2 hidden gap-0.5 opacity-0 transition group-hover/msg:opacity-100 group-focus-within/msg:opacity-100 sm:flex ${isYou ? "-left-[4.5rem]" : "-right-[4.5rem]"}`}>
-                        <button
-                          type="button"
-                          onClick={() => onReplyToMessage(msg.id)}
-                          className="rounded-full bg-white/[0.08] p-1.5 text-white/30 transition hover:bg-white/[0.15] hover:text-white/60"
-                          aria-label="Reply"
-                        >
-                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
-                        </button>
-                        {canDeleteForEveryone && (
-                          <button
-                            type="button"
-                            onClick={() => onDeleteMessage(msg.id)}
-                            className="rounded-full bg-white/[0.08] p-1.5 text-white/30 transition hover:bg-rose-500/20 hover:text-rose-400"
-                            aria-label="Delete for everyone"
-                          >
-                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          </button>
-                        )}
-                      </div>
-                    )}
                   </div>
-
-                  {/* Mobile actions */}
-                  {!msg.isPending && (
-                    <div className={`flex items-center gap-1 sm:hidden ${isYou ? "justify-end" : "justify-start"}`}>
-                      <button
-                        type="button"
-                        onClick={() => onReplyToMessage(msg.id)}
-                        className="inline-flex items-center gap-1 rounded-full bg-white/[0.06] px-2.5 py-1 text-[11px] font-medium text-white/55 transition hover:bg-white/[0.1] hover:text-white/80"
-                        aria-label="Reply"
-                      >
-                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m9 14-4-4 4-4"/><path d="M5 10h11a4 4 0 0 1 0 8h-1"/></svg>
-                        Reply
-                      </button>
-                      {canDeleteForEveryone && (
-                        <button
-                          type="button"
-                          onClick={() => onDeleteMessage(msg.id)}
-                          className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2.5 py-1 text-[11px] font-medium text-rose-300/90 transition hover:bg-rose-500/20"
-                          aria-label="Delete for everyone"
-                        >
-                          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  )}
 
                   {/* Emoji picker */}
                   {activeEmojiPickerMsgId === msg.id && (
@@ -2334,6 +2360,7 @@ export function ChatRoomView({
                   )}
 
                   <span className="px-1 text-[11px] text-white/20">{msg.sentAt}</span>
+                  </div>
                 </div>
               </div>
             );
