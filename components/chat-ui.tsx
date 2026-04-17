@@ -1233,6 +1233,7 @@ export function ChatRoomView({
   const [activeEmojiPickerMsgId, setActiveEmojiPickerMsgId] = useState<string | null>(null);
   const [expandedActionMsgId, setExpandedActionMsgId] = useState<string | null>(null);
   const [swipePreview, setSwipePreview] = useState<{ id: string; offset: number } | null>(null);
+  const suppressNextMessageTapRef = useRef(false);
   const swipeStateRef = useRef<{ id: string | null; pointerId: number | null; startX: number; startY: number; dragging: boolean; triggered: boolean }>({
     id: null,
     pointerId: null,
@@ -1251,11 +1252,9 @@ export function ChatRoomView({
   const filterCountryMenuRef = useRef<HTMLDivElement | null>(null);
   const filterSelectedCountryCode = filterCountry !== "Any" ? filterCountry : undefined;
   const QUICK_REACTIONS = ["❤️", "😂", "😮", "😢", "🔥", "👍"];
-  const reactionHoldTimerRef = useRef<number | null>(null);
 
   const SWIPE_REPLY_TRIGGER_PX = 56;
   const SWIPE_REPLY_MAX_PX = 84;
-  const ACTION_HOLD_MS = 2000;
 
   const modeLabel = chatMode === "text" ? "Text" : chatMode === "video" ? "Video" : "Group";
   const ageLabel = chatFilters?.ageGroup ?? "Any age";
@@ -1510,11 +1509,6 @@ export function ChatRoomView({
   };
 
   const resetSwipeState = () => {
-    if (reactionHoldTimerRef.current) {
-      window.clearTimeout(reactionHoldTimerRef.current);
-      reactionHoldTimerRef.current = null;
-    }
-
     swipeStateRef.current = {
       id: null,
       pointerId: null,
@@ -1533,11 +1527,6 @@ export function ChatRoomView({
 
     event.currentTarget.setPointerCapture(event.pointerId);
 
-    if (reactionHoldTimerRef.current) {
-      window.clearTimeout(reactionHoldTimerRef.current);
-      reactionHoldTimerRef.current = null;
-    }
-
     swipeStateRef.current = {
       id: messageId,
       pointerId: event.pointerId,
@@ -1546,21 +1535,6 @@ export function ChatRoomView({
       dragging: false,
       triggered: false,
     };
-
-    setExpandedActionMsgId(null);
-    reactionHoldTimerRef.current = window.setTimeout(() => {
-      const swipeState = swipeStateRef.current;
-      if (swipeState.id !== messageId || swipeState.dragging) {
-        return;
-      }
-
-      swipeState.triggered = true;
-      setExpandedActionMsgId(messageId);
-      if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
-        navigator.vibrate(10);
-      }
-      resetSwipeState();
-    }, ACTION_HOLD_MS);
   };
 
   const handleMessagePointerMove = (messageId: string, authoredByCurrentUser: boolean, event: React.PointerEvent<HTMLDivElement>) => {
@@ -1572,13 +1546,6 @@ export function ChatRoomView({
     const deltaX = event.clientX - swipeState.startX;
     const deltaY = event.clientY - swipeState.startY;
     const directionalDeltaX = authoredByCurrentUser ? -deltaX : deltaX;
-
-    if (Math.abs(directionalDeltaX) > 8 || Math.abs(deltaY) > 8) {
-      if (reactionHoldTimerRef.current) {
-        window.clearTimeout(reactionHoldTimerRef.current);
-        reactionHoldTimerRef.current = null;
-      }
-    }
 
     if (!swipeState.dragging) {
       if (Math.abs(directionalDeltaX) < 8 && Math.abs(deltaY) < 8) {
@@ -1599,8 +1566,19 @@ export function ChatRoomView({
 
     if (!swipeState.triggered && clampedOffset >= SWIPE_REPLY_TRIGGER_PX) {
       swipeState.triggered = true;
+      suppressNextMessageTapRef.current = true;
       onReplyToMessage(messageId);
     }
+  };
+
+  const handleMessageTap = (messageId: string) => {
+    if (suppressNextMessageTapRef.current) {
+      suppressNextMessageTapRef.current = false;
+      return;
+    }
+
+    setActiveEmojiPickerMsgId(null);
+    setExpandedActionMsgId((current) => current === messageId ? null : messageId);
   };
 
   const handleMessagePointerEnd = (event?: React.PointerEvent<HTMLDivElement>) => {
@@ -1624,14 +1602,6 @@ export function ChatRoomView({
 
     return () => {
       window.clearInterval(timerId);
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (reactionHoldTimerRef.current) {
-        window.clearTimeout(reactionHoldTimerRef.current);
-      }
     };
   }, []);
 
@@ -2268,6 +2238,7 @@ export function ChatRoomView({
                   <div
                     id={`msg-${msg.id}`}
                     onDoubleClick={() => setActiveEmojiPickerMsgId(activeEmojiPickerMsgId === msg.id ? null : msg.id)}
+                    onClick={() => handleMessageTap(msg.id)}
                     onPointerDown={(event) => handleMessagePointerDown(msg.id, event)}
                     onPointerMove={(event) => handleMessagePointerMove(msg.id, isYou, event)}
                     onPointerUp={(event) => handleMessagePointerEnd(event)}
