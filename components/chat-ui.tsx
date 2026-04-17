@@ -2198,14 +2198,19 @@ export function ChatRoomView({
             const replyLabelClass = replyTargetsYou ? "text-pink-300/80" : "text-blue-300/80";
             const replyHighlightRing = replyTargetsYou ? "ring-pink-400/50" : "ring-blue-400/50";
             const swipeIndicatorPositionClass = isYou ? "right-2.5" : "left-2.5";
-            const bubbleStyleWithDirection = swipeOffset !== 0 ? { transform: `translateX(${swipeOffset}px)` } : undefined;
+            const bubbleStyleWithDirection = {
+              transform: swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : undefined,
+              userSelect: "none" as const,
+              WebkitUserSelect: "none" as const,
+              WebkitTouchCallout: "none" as const,
+            };
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
-                <div className="group/msg relative flex max-w-[86%] items-end gap-2 sm:max-w-[74%]">
-                  <div className="flex flex-col gap-1">
+                <div className="group/msg relative flex max-w-[86%] items-end sm:max-w-[74%]">
+                  <div className="absolute left-2 top-2 z-10 flex flex-col gap-1 sm:left-0 sm:top-1/2 sm:-translate-x-[calc(100%+0.5rem)] sm:-translate-y-1/2">
                     {showActionRail && (
-                      <div className={`flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[#12121a]/88 px-1.5 py-2 shadow-[0_14px_32px_rgba(0,0,0,0.34)] backdrop-blur-md transition-all duration-200 ${isActionRailExpanded ? "opacity-100 translate-x-0" : "pointer-events-none opacity-0 -translate-x-1 sm:pointer-events-auto sm:translate-x-0 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100"}`}>
+                      <div className={`flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[#12121a]/92 px-1.5 py-2 shadow-[0_14px_32px_rgba(0,0,0,0.34)] backdrop-blur-md transition-all duration-200 ${isActionRailExpanded ? "opacity-100 translate-x-0" : "pointer-events-none opacity-0 -translate-x-1 sm:pointer-events-auto sm:translate-x-0 sm:opacity-0 sm:group-hover/msg:opacity-100 sm:group-focus-within/msg:opacity-100"}`}>
                         <button
                           type="button"
                           onClick={() => onReplyToMessage(msg.id)}
@@ -2267,8 +2272,10 @@ export function ChatRoomView({
                     onPointerMove={(event) => handleMessagePointerMove(msg.id, isYou, event)}
                     onPointerUp={(event) => handleMessagePointerEnd(event)}
                     onPointerCancel={(event) => handleMessagePointerEnd(event)}
+                    onContextMenu={(event) => event.preventDefault()}
+                    onDragStart={(event) => event.preventDefault()}
                     style={bubbleStyleWithDirection}
-                    className={`relative overflow-hidden rounded-[1.35rem] border px-4 py-3 text-[14px] leading-relaxed break-words shadow-[0_18px_36px_rgba(0,0,0,0.18)] transition-all [overflow-wrap:anywhere] touch-pan-y sm:text-[15px] ${
+                    className={`relative overflow-hidden rounded-[1.35rem] border px-4 py-3 text-[14px] leading-relaxed break-words shadow-[0_18px_36px_rgba(0,0,0,0.18)] transition-all [overflow-wrap:anywhere] touch-pan-y select-none sm:text-[15px] ${
                     isYou
                       ? "rounded-br-md border-pink-300/10 bg-[linear-gradient(180deg,rgba(131,24,67,0.94),rgba(88,17,45,0.96))] text-rose-50"
                       : `rounded-bl-md border-sky-200/10 bg-[linear-gradient(180deg,rgba(18,44,86,0.96),rgba(10,28,60,0.98))] text-sky-50`
