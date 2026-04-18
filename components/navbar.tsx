@@ -91,7 +91,7 @@ export function TopNav({
 								alt="TEMPTED.CHAT"
 								width={130}
 								height={26}
-								className="h-5 w-auto transition-transform duration-200 group-hover:scale-[1.02] sm:h-[22px]"
+								className="h-auto w-[100px] transition-transform duration-200 group-hover:scale-[1.02] sm:w-[110px]"
 								priority
 							/>
 						</Link>

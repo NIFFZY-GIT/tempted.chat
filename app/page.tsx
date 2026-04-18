@@ -19,6 +19,7 @@ import {
   ChatFilters,
   ChatMode,
   ChatRoomView,
+  generateRandomStrangerProfile,
   ModeAndFiltersView,
   ProfileGender,
   ProfileSetupView,
@@ -87,6 +88,20 @@ const REALTIME_QUEUE_PING_MS = 2000;
 const REALTIME_WS_URL = process.env.NEXT_PUBLIC_REALTIME_WS_URL || "ws://localhost:8787";
 const REALTIME_WS_ENABLED = process.env.NEXT_PUBLIC_DISABLE_REALTIME_WS !== "true";
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
+const DEMO_FALLBACK_TRIGGER_MS = 9000;
+const DEMO_CONNECT_MIN_MS = 2000;
+const DEMO_CONNECT_MAX_MS = 3000;
+const DEMO_SKIP_AFTER_MS = 3000;
+
+type DemoVideo = {
+  id: string;
+  url: string;
+  gender: ProfileGender;
+  age: number;
+  style: "Casual" | "Intimate";
+  countryCode: string;
+};
+
 const PENDING_STRANGER_PROFILE: UserProfile = {
   gender: "Other",
   age: 0,
@@ -248,6 +263,9 @@ export default function Home() {
   const [videoError, setVideoError] = useState<string | null>(null);
   const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [hasRemoteAudio, setHasRemoteAudio] = useState(false);
+  const [demoFallbackEnabled, setDemoFallbackEnabled] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [demoRemoteVideoUrl, setDemoRemoteVideoUrl] = useState<string | null>(null);
   const [localVideoEnabled, setLocalVideoEnabled] = useState(true);
   const [localAudioEnabled, setLocalAudioEnabled] = useState(true);
   const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("user");
@@ -275,6 +293,13 @@ export default function Home() {
   const imageCleanupIntervalRef = useRef<number | null>(null);
   const pendingSendRetryIntervalRef = useRef<number | null>(null);
   const realtimeQueuePingIntervalRef = useRef<number | null>(null);
+  const demoFallbackTimeoutRef = useRef<number | null>(null);
+  const demoCycleTimeoutRef = useRef<number | null>(null);
+  const demoSearchSessionRef = useRef(0);
+  const demoVideoPoolRef = useRef<DemoVideo[]>([]);
+  const demoVideoPoolPromiseRef = useRef<Promise<DemoVideo[]> | null>(null);
+  const demoLastVideoRef = useRef<string | null>(null);
+  const isDemoModeRef = useRef(false);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
   const realtimeSocketRef = useRef<WebSocket | null>(null);
@@ -288,9 +313,8 @@ export default function Home() {
   const realtimeWsDisabledRef = useRef(!REALTIME_WS_ENABLED);
   const realtimeWsConnectedOnceRef = useRef(false);
   const realtimeWsFailureHandledRef = useRef(false);
-
-
-
+  const [strangerSkipped, setStrangerSkipped] = useState(false);
+  const [waitingForNext, setWaitingForNext] = useState(false);
 
     // Camera/mic permission is checked by the preview useEffect below
     // (which starts the actual stream). No separate probe needed — the
@@ -331,6 +355,264 @@ export default function Home() {
     roomCipherKeyRef.current = null;
   };
 
+  const randomMs = (minMs: number, maxMs: number): number => {
+    if (maxMs <= minMs) {
+      return minMs;
+    }
+
+    return minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
+  };
+
+  const clearDemoTimers = () => {
+    if (demoFallbackTimeoutRef.current) {
+      window.clearTimeout(demoFallbackTimeoutRef.current);
+      demoFallbackTimeoutRef.current = null;
+    }
+
+    if (demoCycleTimeoutRef.current) {
+      window.clearTimeout(demoCycleTimeoutRef.current);
+      demoCycleTimeoutRef.current = null;
+    }
+  };
+
+  const stopDemoMode = useCallback((clearRemoteVideo = true) => {
+    demoSearchSessionRef.current += 1;
+    clearDemoTimers();
+    setIsDemoMode(false);
+    setStrangerSkipped(false);
+    setWaitingForNext(false);
+    setShowNextStrangerPrompt(false);
+    setDemoRemoteVideoUrl(null);
+    demoLastVideoRef.current = null;
+
+    if (clearRemoteVideo && remoteVideoRef.current) {
+      try {
+        remoteVideoRef.current.pause();
+      } catch {
+        // Ignore pause races.
+      }
+      remoteVideoRef.current.srcObject = null;
+      remoteVideoRef.current.removeAttribute("src");
+      remoteVideoRef.current.load();
+    }
+  }, []);
+
+  const getDemoVideoPool = useCallback(async (): Promise<DemoVideo[]> => {
+    if (demoVideoPoolRef.current.length > 0) {
+      return demoVideoPoolRef.current;
+    }
+
+    if (demoVideoPoolPromiseRef.current) {
+      return demoVideoPoolPromiseRef.current;
+    }
+
+    demoVideoPoolPromiseRef.current = getDocs(collection(db, "demoVideos"))
+      .then((snapshot) => {
+        const videos: DemoVideo[] = [];
+        snapshot.forEach((videoDoc) => {
+          const data = videoDoc.data() as {
+            url?: string;
+            gender?: string;
+            age?: number;
+            style?: string;
+            countryCode?: string;
+          };
+          if (typeof data.url === "string" && data.url.length > 0) {
+            videos.push({
+              id: videoDoc.id,
+              url: data.url,
+              gender: (data.gender === "Male" || data.gender === "Female" || data.gender === "Other") ? data.gender : "Other",
+              age: typeof data.age === "number" ? data.age : 22,
+              style: data.style === "Intimate" ? "Intimate" : "Casual",
+              countryCode: typeof data.countryCode === "string" ? data.countryCode : "",
+            });
+          }
+        });
+        demoVideoPoolRef.current = videos;
+        return videos;
+      })
+      .catch(() => [] as DemoVideo[])
+      .finally(() => {
+        demoVideoPoolPromiseRef.current = null;
+      });
+
+    return demoVideoPoolPromiseRef.current;
+  }, []);
+
+  const filterDemoVideos = useCallback((videos: DemoVideo[], filters?: ChatFilters | null): DemoVideo[] => {
+    if (!filters) {
+      return videos;
+    }
+
+    return videos.filter((video) => {
+      if (filters.gender && filters.gender !== "Any" && video.gender !== filters.gender) {
+        return false;
+      }
+
+      if (filters.style && filters.style !== "Any style") {
+        if (video.style !== filters.style) {
+          return false;
+        }
+      }
+
+      if (filters.ageGroup && filters.ageGroup !== "Any age") {
+        if (filters.ageGroup === "Under 18" && video.age >= 18) return false;
+        if (filters.ageGroup === "18-25" && (video.age < 18 || video.age > 25)) return false;
+        if (filters.ageGroup === "25+" && video.age < 25) return false;
+      }
+
+      if (filters.country && filters.country !== "Any" && video.countryCode && video.countryCode !== filters.country) {
+        return false;
+      }
+
+      return true;
+    });
+  }, []);
+
+  const pickDemoVideo = useCallback((videos: DemoVideo[]): DemoVideo | null => {
+    if (videos.length === 0) {
+      return null;
+    }
+
+    if (videos.length === 1) {
+      demoLastVideoRef.current = videos[0].url;
+      return videos[0];
+    }
+
+    let candidate = videos[Math.floor(Math.random() * videos.length)];
+    let safety = 0;
+
+    while (candidate.url === demoLastVideoRef.current && safety < 6) {
+      candidate = videos[Math.floor(Math.random() * videos.length)];
+      safety += 1;
+    }
+
+    demoLastVideoRef.current = candidate.url;
+    return candidate;
+  }, []);
+
+  const runDemoCycle = useCallback((sessionId: number, videos: DemoVideo[], hasConnectedOnce = false) => {
+    if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
+      return;
+    }
+
+    setIsDemoMode(true);
+
+    // Filter videos by current chat filters; fall back to full pool if no matches.
+    const filtered = filterDemoVideos(videos, chatFilters);
+    const pool = filtered.length > 0 ? filtered : videos;
+
+    const startPlayback = () => {
+      if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
+        return;
+      }
+
+      const nextVideo = pickDemoVideo(pool);
+      if (!nextVideo) {
+        setConnectingStatus("No demo clips available for current filters.");
+        return;
+      }
+
+      setDemoRemoteVideoUrl(nextVideo.url);
+      setHasRemoteVideo(true);
+      setHasRemoteAudio(true);
+      setIsConnecting(false);
+      setConnectingStatus("Connected to demo participant. Waiting for a real match...");
+      setStrangerSkipped(false);
+      setWaitingForNext(false);
+      setShowNextStrangerPrompt(false);
+
+      // Set stranger profile from the video metadata
+      setStrangerProfile({
+        gender: nextVideo.gender,
+        age: nextVideo.age,
+        countryCode: nextVideo.countryCode || undefined,
+      });
+
+      // Mimic a real stranger skip after a short watch period, then wait for user to click Next.
+      demoCycleTimeoutRef.current = window.setTimeout(() => {
+        if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
+          return;
+        }
+
+        if (remoteVideoRef.current) {
+          try {
+            remoteVideoRef.current.pause();
+          } catch {
+            // Ignore pause races.
+          }
+
+          remoteVideoRef.current.srcObject = null;
+          remoteVideoRef.current.removeAttribute("src");
+          remoteVideoRef.current.load();
+        }
+
+        setDemoRemoteVideoUrl(null);
+        setHasRemoteVideo(false);
+        setHasRemoteAudio(false);
+
+        // Match the real stranger-leave flow exactly
+        setIsConnecting(false);
+        setStrangerIsTyping(false);
+        setStrangerProfile(PENDING_STRANGER_PROFILE);
+        setStrangerSkipped(true);
+        setWaitingForNext(true);
+        setShowNextStrangerPrompt(true);
+        setConnectingStatus(STRANGER_LEFT_PROMPT);
+        setMessages((current) => {
+          const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
+          if (alreadyNotified) {
+            return current;
+          }
+          const now = new Date();
+          return [
+            ...current,
+            {
+              id: `system-${Date.now()}`,
+              author: "stranger" as const,
+              text: STRANGER_LEFT_PROMPT,
+              sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+            },
+          ];
+        });
+      }, DEMO_SKIP_AFTER_MS);
+    };
+
+    if (hasConnectedOnce) {
+      startPlayback();
+      return;
+    }
+
+    setIsConnecting(true);
+    setConnectingStatus("No users online. Connecting to demo participant...");
+    setHasRemoteVideo(false);
+    setHasRemoteAudio(false);
+    setDemoRemoteVideoUrl(null);
+    setStrangerProfile(generateRandomStrangerProfile(chatFilters ?? undefined));
+
+    demoCycleTimeoutRef.current = window.setTimeout(() => {
+      startPlayback();
+    }, randomMs(DEMO_CONNECT_MIN_MS, DEMO_CONNECT_MAX_MS));
+  }, [chatFilters, filterDemoVideos, pickDemoVideo]);
+
+  const startDemoModeIfNeeded = useCallback(async (sessionId: number) => {
+    if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
+      return;
+    }
+
+    const videos = await getDemoVideoPool();
+    if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
+      return;
+    }
+
+    if (videos.length === 0) {
+      setConnectingStatus("No users online. Upload demo videos from the admin panel.");
+      return;
+    }
+
+    runDemoCycle(sessionId, videos);
+  }, [getDemoVideoPool, runDemoCycle]);
+
   const updateRoomParticipants = (nextParticipants: string[]) => {
     const normalized = Array.from(new Set(nextParticipants));
     setRoomParticipants((current) => {
@@ -341,7 +623,7 @@ export default function Home() {
     });
   };
 
-  const cleanupVideoSession = () => {
+  const cleanupVideoSession = (preserveLocalStream = false) => {
     realtimeSignalHandlerRef.current = null;
     videoRoomUnsubRef.current?.();
     videoRoomUnsubRef.current = null;
@@ -363,18 +645,24 @@ export default function Home() {
     videoSenderRef.current = null;
     audioSenderRef.current = null;
 
-    if (localMediaStreamRef.current) {
-      localMediaStreamRef.current.getTracks().forEach((track) => track.stop());
-      localMediaStreamRef.current = null;
+    if (!preserveLocalStream) {
+      if (localMediaStreamRef.current) {
+        localMediaStreamRef.current.getTracks().forEach((track) => track.stop());
+        localMediaStreamRef.current = null;
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+
+      setLocalVideoEnabled(true);
+      setLocalAudioEnabled(true);
+      setCameraFacingMode("user");
     }
 
     if (remoteMediaStreamRef.current) {
       remoteMediaStreamRef.current.getTracks().forEach((track) => track.stop());
       remoteMediaStreamRef.current = null;
-    }
-
-    if (localVideoRef.current) {
-      localVideoRef.current.srcObject = null;
     }
 
     if (remoteVideoRef.current) {
@@ -383,11 +671,33 @@ export default function Home() {
 
     setHasRemoteVideo(false);
     setHasRemoteAudio(false);
-    setLocalVideoEnabled(true);
-    setLocalAudioEnabled(true);
-    setCameraFacingMode("user");
     setVideoError(null);
   };
+
+  useEffect(() => {
+    isDemoModeRef.current = isDemoMode;
+  }, [isDemoMode]);
+
+  useEffect(() => {
+    const remoteVideoElement = remoteVideoRef.current;
+    if (!remoteVideoElement) {
+      return;
+    }
+
+    if (!demoRemoteVideoUrl) {
+      return;
+    }
+
+    remoteVideoElement.srcObject = null;
+    remoteVideoElement.src = demoRemoteVideoUrl;
+    remoteVideoElement.loop = true;
+    remoteVideoElement.autoplay = true;
+    remoteVideoElement.playsInline = true;
+    remoteVideoElement.muted = false;
+    void remoteVideoElement.play().catch(() => {
+      // Ignore autoplay restrictions.
+    });
+  }, [demoRemoteVideoUrl]);
 
   const toggleLocalVideo = () => {
     const localStream = localMediaStreamRef.current;
@@ -1132,6 +1442,7 @@ export default function Home() {
       if (imageCleanupIntervalRef.current) {
         window.clearInterval(imageCleanupIntervalRef.current);
       }
+      clearDemoTimers();
       cleanupVideoSession();
       clearPendingSendRetry();
 
@@ -1273,6 +1584,7 @@ export default function Home() {
         }
 
         cleanupWaitIntervals();
+        stopDemoMode();
         setConnectingStatus("Stranger found. Connecting...");
         activeRoomIdRef.current = roomId;
         setActiveRoomId(roomId);
@@ -1280,7 +1592,9 @@ export default function Home() {
       }
 
       if (eventName === "queue_waiting") {
-        setConnectingStatus("Looking for an available stranger...");
+        if (!isDemoModeRef.current) {
+          setConnectingStatus("Looking for an available stranger...");
+        }
         return;
       }
 
@@ -1333,20 +1647,38 @@ export default function Home() {
         // Ignore close races.
       }
     };
-  }, [user]);
+  }, [stopDemoMode, user]);
 
   useEffect(() => {
     if (activeRoomId) {
+      stopDemoMode();
       return;
     }
 
     clearPendingSendRetry();
     updateRoomParticipants([]);
-    cleanupVideoSession();
+    // Keep local camera alive when staying in video mode so the user's
+    // panel doesn't flash black between stranger connections.
+    cleanupVideoSession(chatMode === "video");
     setStrangerProfile(PENDING_STRANGER_PROFILE);
 
     clearE2EECaches();
-  }, [activeRoomId]);
+  }, [activeRoomId, stopDemoMode]);
+
+  useEffect(() => {
+    const configRef = doc(db, "appConfig", "matchmaking");
+    const unsubscribe = onSnapshot(configRef, (snapshot) => {
+      if (!snapshot.exists()) {
+        setDemoFallbackEnabled(true);
+        return;
+      }
+
+      const data = snapshot.data() as { demoFallbackEnabled?: unknown };
+      setDemoFallbackEnabled(typeof data.demoFallbackEnabled === "boolean" ? data.demoFallbackEnabled : true);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   // Start local camera preview as soon as video mode is entered and the user has
   // started searching (Quick Start). Without the connecting/room guard the camera
@@ -1423,7 +1755,8 @@ export default function Home() {
 
   useEffect(() => {
     if (chatMode !== "video" || !activeRoomId || !user) {
-      cleanupVideoSession();
+      // Only destroy local stream when actually leaving video mode or unmounting.
+      cleanupVideoSession(chatMode === "video");
       return;
     }
 
@@ -1867,7 +2200,9 @@ export default function Home() {
 
     return () => {
       cancelled = true;
-      cleanupVideoSession();
+      // Preserve the local camera when staying in video mode so the user's
+      // panel doesn't go black between stranger connections.
+      cleanupVideoSession(chatMode === "video");
     };
   }, [activeRoomId, chatMode, roomParticipants, user]);
 
@@ -2134,7 +2469,7 @@ export default function Home() {
 
         const roomData = snapshot.data() as {
           participants?: string[];
-          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string; interests?: string[] }>;
+          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string; interests?: string[] }>
           typingBy?: Record<string, boolean>;
           presenceBy?: Record<string, number>;
           e2eePublicKeys?: Record<string, JsonWebKey>;
@@ -2789,7 +3124,10 @@ export default function Home() {
       return;
     }
 
+    stopDemoMode();
     cleanupWaitIntervals();
+    demoSearchSessionRef.current += 1;
+    const searchSessionId = demoSearchSessionRef.current;
     setIsConnecting(true);
     setConnectingStatus("Checking availability...");
     setShowNextStrangerPrompt(false);
@@ -2823,6 +3161,16 @@ export default function Home() {
       realtimeQueueModeRef.current = effectiveMode;
       startRealtimeQueueHeartbeat();
       setConnectingStatus("Looking for an available stranger...");
+
+      if (effectiveMode === "video" && demoFallbackEnabled) {
+        demoFallbackTimeoutRef.current = window.setTimeout(() => {
+          if (demoSearchSessionRef.current !== searchSessionId || activeRoomIdRef.current) {
+            return;
+          }
+          void startDemoModeIfNeeded(searchSessionId);
+        }, DEMO_FALLBACK_TRIGGER_MS);
+      }
+
       return;
     }
 
@@ -2854,6 +3202,7 @@ export default function Home() {
         const data = snapshot.data() as { status?: string; roomId?: string };
         if (data.status === "matched" && data.roomId && !activeRoomIdRef.current) {
           console.log("[matchmaking] matched by server, room:", data.roomId);
+          stopDemoMode();
           setConnectingStatus("Stranger found. Connecting...");
           activeRoomIdRef.current = data.roomId;
           setActiveRoomId(data.roomId);
@@ -2865,6 +3214,15 @@ export default function Home() {
         error: formatFirebaseError(error),
       });
       setConnectingStatus("Could not reach matchmaking right now. Retrying...");
+    }
+
+    if (effectiveMode === "video" && demoFallbackEnabled) {
+      demoFallbackTimeoutRef.current = window.setTimeout(() => {
+        if (demoSearchSessionRef.current !== searchSessionId || activeRoomIdRef.current) {
+          return;
+        }
+        void startDemoModeIfNeeded(searchSessionId);
+      }, DEMO_FALLBACK_TRIGGER_MS);
     }
 
     // Periodically call the server-side retryMatch as a fallback in case
@@ -2932,6 +3290,7 @@ export default function Home() {
       return;
     }
 
+    stopDemoMode();
     cleanupWaitIntervals();
 
     if (realtimeQueueModeRef.current) {
@@ -2947,6 +3306,26 @@ export default function Home() {
       // Ignore if already removed.
     }
   };
+
+  const handleDemoNext = async () => {
+    if (!chatFilters) {
+      return;
+    }
+
+    setStrangerSkipped(false);
+    setWaitingForNext(false);
+    setShowNextStrangerPrompt(false);
+
+    await startSearching(chatFilters, "video");
+  };
+
+  useEffect(() => {
+    if (demoFallbackEnabled) {
+      return;
+    }
+
+    stopDemoMode();
+  }, [demoFallbackEnabled, stopDemoMode]);
 
   const onSelectImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -3806,6 +4185,7 @@ export default function Home() {
           localVideoRef={localVideoRef}
           remoteVideoRef={remoteVideoRef}
           hasRemoteVideo={hasRemoteVideo}
+          isDemoMode={isDemoMode}
           remoteAudioEnabled={hasRemoteAudio}
           localVideoEnabled={localVideoEnabled}
           localAudioEnabled={localAudioEnabled}
@@ -3830,6 +4210,11 @@ export default function Home() {
             })();
           }}
           onNextStranger={() => {
+            if (isDemoMode && strangerSkipped && waitingForNext) {
+              void handleDemoNext();
+              return;
+            }
+
             void startSearching(chatFilters);
           }}
         />
