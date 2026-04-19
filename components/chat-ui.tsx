@@ -1668,11 +1668,6 @@ export function ChatRoomView({
           {/* Stranger video panel */}
           <div className="relative h-[calc(var(--vh,1dvh)*50)] w-full shrink-0 overflow-hidden border-b border-white/10 sm:h-full sm:w-1/2 sm:shrink sm:border-b-0 sm:border-r">
             <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
-            {isDemoMode && (
-              <span className="absolute left-3 top-3 z-10 rounded-full border border-amber-300/40 bg-amber-500/20 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-amber-100 backdrop-blur-md">
-                Demo Mode - Pre-recorded
-              </span>
-            )}
             {!hasRemoteVideo && (
               <div className="absolute inset-0 grid place-items-center bg-black/90 text-center">
                 <div className="flex flex-col items-center gap-4">
@@ -1692,7 +1687,9 @@ export function ChatRoomView({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm font-medium text-white/35">Waiting for stranger&apos;s camera...</p>
+                    <p className="text-sm font-medium text-white/35">
+                      {showNextStrangerPrompt ? "Stranger has left. Tap Next to continue." : "Waiting for stranger&apos;s camera..."}
+                    </p>
                   )}
                 </div>
               </div>
@@ -1752,15 +1749,8 @@ export function ChatRoomView({
                   {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
                 </span>
               )}
-              {isDemoMode && (
-                <span className="ml-1 inline-flex items-center rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[9px] font-extrabold leading-none text-amber-100">
-                  DEMO
-                </span>
-              )}
             </p>
-            {isDemoMode && (
-              <p className="mt-1 text-[10px] font-medium uppercase tracking-wider text-amber-200/80">Automated pre-recorded fallback</p>
-            )}
+           
             {!isConnecting && hasResolvedStrangerProfile && (!hasRemoteVideo || !remoteAudioEnabled) && (
               <div className="mt-1 flex flex-wrap gap-1.5">
                 {!remoteAudioEnabled && (

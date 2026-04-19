@@ -91,7 +91,6 @@ const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const DEMO_FALLBACK_TRIGGER_MS = 9000;
 const DEMO_CONNECT_MIN_MS = 2000;
 const DEMO_CONNECT_MAX_MS = 3000;
-const DEMO_SKIP_AFTER_MS = 3000;
 
 type DemoVideo = {
   id: string;
@@ -363,6 +362,47 @@ export default function Home() {
     return minMs + Math.floor(Math.random() * (maxMs - minMs + 1));
   };
 
+  const wait = (ms: number): Promise<void> => {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, ms);
+    });
+  };
+
+  const getMediaErrorName = (error: unknown): string => {
+    if (typeof error === "object" && error !== null && "name" in error && typeof error.name === "string") {
+      return error.name;
+    }
+
+    return "";
+  };
+
+  const isTransientCameraError = (error: unknown): boolean => {
+    const name = getMediaErrorName(error);
+    return name === "NotReadableError" || name === "AbortError" || name === "TrackStartError";
+  };
+
+  const getCameraStartErrorMessage = (error: unknown): string => {
+    const name = getMediaErrorName(error);
+
+    if (name === "NotAllowedError" || name === "SecurityError") {
+      return "Camera or microphone permission is blocked. Allow access in your browser settings and retry.";
+    }
+
+    if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+      return "No camera or microphone was found on this device.";
+    }
+
+    if (name === "NotReadableError" || name === "TrackStartError") {
+      return "Camera is busy in another app or browser tab. Close other camera apps/tabs and retry.";
+    }
+
+    if (name === "OverconstrainedError" || name === "ConstraintNotSatisfiedError") {
+      return "Camera could not be started with current settings. Try switching camera or reloading the page.";
+    }
+
+    return "Could not start camera or microphone. Please retry.";
+  };
+
   const clearDemoTimers = () => {
     if (demoFallbackTimeoutRef.current) {
       window.clearTimeout(demoFallbackTimeoutRef.current);
@@ -491,6 +531,53 @@ export default function Home() {
     return candidate;
   }, []);
 
+  const handleDemoVideoEnded = useCallback(() => {
+    if (!isDemoModeRef.current || activeRoomIdRef.current) {
+      return;
+    }
+
+    if (remoteVideoRef.current) {
+      try {
+        remoteVideoRef.current.pause();
+      } catch {
+        // Ignore pause races.
+      }
+
+      remoteVideoRef.current.srcObject = null;
+      remoteVideoRef.current.removeAttribute("src");
+      remoteVideoRef.current.load();
+    }
+
+    setDemoRemoteVideoUrl(null);
+    setHasRemoteVideo(false);
+    setHasRemoteAudio(false);
+
+    // Match the real stranger-leave flow exactly.
+    setIsConnecting(false);
+    setStrangerIsTyping(false);
+    setStrangerProfile(PENDING_STRANGER_PROFILE);
+    setStrangerSkipped(true);
+    setWaitingForNext(true);
+    setShowNextStrangerPrompt(true);
+    setConnectingStatus(STRANGER_LEFT_PROMPT);
+    setMessages((current) => {
+      const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
+      if (alreadyNotified) {
+        return current;
+      }
+      const now = new Date();
+      return [
+        ...current,
+        {
+          id: `system-${Date.now()}`,
+          author: "stranger" as const,
+          text: STRANGER_LEFT_PROMPT,
+          sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+        },
+      ];
+    });
+  }, []);
+
   const runDemoCycle = useCallback((sessionId: number, videos: DemoVideo[], hasConnectedOnce = false) => {
     if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
       return;
@@ -528,54 +615,6 @@ export default function Home() {
         age: nextVideo.age,
         countryCode: nextVideo.countryCode || undefined,
       });
-
-      // Mimic a real stranger skip after a short watch period, then wait for user to click Next.
-      demoCycleTimeoutRef.current = window.setTimeout(() => {
-        if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
-          return;
-        }
-
-        if (remoteVideoRef.current) {
-          try {
-            remoteVideoRef.current.pause();
-          } catch {
-            // Ignore pause races.
-          }
-
-          remoteVideoRef.current.srcObject = null;
-          remoteVideoRef.current.removeAttribute("src");
-          remoteVideoRef.current.load();
-        }
-
-        setDemoRemoteVideoUrl(null);
-        setHasRemoteVideo(false);
-        setHasRemoteAudio(false);
-
-        // Match the real stranger-leave flow exactly
-        setIsConnecting(false);
-        setStrangerIsTyping(false);
-        setStrangerProfile(PENDING_STRANGER_PROFILE);
-        setStrangerSkipped(true);
-        setWaitingForNext(true);
-        setShowNextStrangerPrompt(true);
-        setConnectingStatus(STRANGER_LEFT_PROMPT);
-        setMessages((current) => {
-          const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
-          if (alreadyNotified) {
-            return current;
-          }
-          const now = new Date();
-          return [
-            ...current,
-            {
-              id: `system-${Date.now()}`,
-              author: "stranger" as const,
-              text: STRANGER_LEFT_PROMPT,
-              sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-            },
-          ];
-        });
-      }, DEMO_SKIP_AFTER_MS);
     };
 
     if (hasConnectedOnce) {
@@ -688,16 +727,25 @@ export default function Home() {
       return;
     }
 
+    const onDemoEnded = () => {
+      handleDemoVideoEnded();
+    };
+
     remoteVideoElement.srcObject = null;
     remoteVideoElement.src = demoRemoteVideoUrl;
-    remoteVideoElement.loop = true;
+    remoteVideoElement.loop = false;
     remoteVideoElement.autoplay = true;
     remoteVideoElement.playsInline = true;
     remoteVideoElement.muted = false;
+    remoteVideoElement.addEventListener("ended", onDemoEnded);
     void remoteVideoElement.play().catch(() => {
       // Ignore autoplay restrictions.
     });
-  }, [demoRemoteVideoUrl]);
+
+    return () => {
+      remoteVideoElement.removeEventListener("ended", onDemoEnded);
+    };
+  }, [demoRemoteVideoUrl, handleDemoVideoEnded]);
 
   const toggleLocalVideo = () => {
     const localStream = localMediaStreamRef.current;
@@ -833,8 +881,9 @@ export default function Home() {
   const getPreferredLocalMediaStream = async (
     facingMode: "user" | "environment",
   ): Promise<MediaStream> => {
-    try {
-      return await navigator.mediaDevices.getUserMedia({
+    const fallbackFacingMode: "user" | "environment" = facingMode === "user" ? "environment" : "user";
+    const attempts: Array<() => Promise<MediaStream>> = [
+      () => navigator.mediaDevices.getUserMedia({
         video: {
           facingMode: { ideal: facingMode },
           width: { ideal: 1280 },
@@ -845,20 +894,39 @@ export default function Home() {
           noiseSuppression: true,
           autoGainControl: true,
         },
-      });
-    } catch {
+      }),
+      () => navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: facingMode } },
+        audio: true,
+      }),
+      () => navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: fallbackFacingMode } },
+        audio: true,
+      }),
+      () => navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      }),
+      () => navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false,
+      }),
+    ];
+
+    let lastError: unknown = null;
+
+    for (const createStream of attempts) {
       try {
-        return await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facingMode } },
-          audio: true,
-        });
-      } catch {
-        return await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: facingMode } },
-          audio: false,
-        });
+        return await createStream();
+      } catch (error) {
+        lastError = error;
+        if (isTransientCameraError(error)) {
+          await wait(250);
+        }
       }
     }
+
+    throw lastError ?? new Error("Camera startup failed");
   };
 
   const deleteStorageFolderRecursively = async (folderRef: StorageReference): Promise<void> => {
@@ -1745,8 +1813,8 @@ export default function Home() {
           setCameraFacingMode(currentFacingMode);
         }
         setVideoError(null);
-      } catch {
-        setVideoError("Camera or microphone permission is required for video mode.");
+      } catch (error) {
+        setVideoError(getCameraStartErrorMessage(error));
       }
     };
     void startPreview();
