@@ -82,6 +82,21 @@ type DemoVideoEntry = {
 
 type AdminTab = "overview" | "demo";
 
+const resolveVideoContentType = (file: File): string => {
+  const type = (file.type || "").trim().toLowerCase();
+  if (type.startsWith("video/")) {
+    return type;
+  }
+
+  const lowerName = file.name.toLowerCase();
+  if (lowerName.endsWith(".webm")) return "video/webm";
+  if (lowerName.endsWith(".mov")) return "video/quicktime";
+  if (lowerName.endsWith(".m4v")) return "video/x-m4v";
+  if (lowerName.endsWith(".mkv")) return "video/x-matroska";
+  if (lowerName.endsWith(".avi")) return "video/x-msvideo";
+  return "video/mp4";
+};
+
 const COUNTRY_OPTIONS: { code: string; name: string }[] = [
   { code: "US", name: "United States" },
   { code: "GB", name: "United Kingdom" },
@@ -549,7 +564,7 @@ export default function AdminDashboardPage() {
       const storageRef = ref(storage, storagePath);
 
       const uploadTask = uploadBytesResumable(storageRef, demoUploadFile, {
-        contentType: demoUploadFile.type || "video/mp4",
+        contentType: resolveVideoContentType(demoUploadFile),
       });
 
       await new Promise<void>((resolve, reject) => {
@@ -585,7 +600,11 @@ export default function AdminDashboardPage() {
         demoFileInputRef.current.value = "";
       }
     } catch (error) {
-      setDemoUploadError(error instanceof Error ? error.message : "Upload failed.");
+      if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "storage/unauthorized") {
+        setDemoUploadError("Upload blocked by Storage rules. You are signed in, but this file may be detected as a non-video MIME type. Please retry or use MP4/WebM.");
+      } else {
+        setDemoUploadError(error instanceof Error ? error.message : "Upload failed.");
+      }
     } finally {
       setDemoUploading(false);
     }
@@ -665,7 +684,7 @@ export default function AdminDashboardPage() {
         const storageRef = ref(storage, nextStoragePath);
 
         const uploadTask = uploadBytesResumable(storageRef, editingFile, {
-          contentType: editingFile.type || "video/mp4",
+          contentType: resolveVideoContentType(editingFile),
         });
 
         await new Promise<void>((resolve, reject) => {
