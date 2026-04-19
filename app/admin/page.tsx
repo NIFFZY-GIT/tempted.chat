@@ -1172,9 +1172,9 @@ export default function AdminDashboardPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Feature Toggle</p>
-                <p className="mt-1 text-sm font-semibold text-white/85">Video demo fallback when no real user is found</p>
+                <p className="mt-1 text-sm font-semibold text-white/85">Video demo mode when no real user is found</p>
                 <p className="mt-1 text-[11px] text-white/35">
-                  If enabled, video matchmaking can temporarily connect users to clearly labeled pre-recorded demo clips after queue timeout.
+                  If enabled, video matchmaking can temporarily connect users to demo clips after queue timeout.
                 </p>
               </div>
 
@@ -1206,7 +1206,7 @@ export default function AdminDashboardPage() {
           {/* ── Demo Video Management ── */}
           <div className="mt-6 rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 md:p-6">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Demo Videos</p>
-            <p className="mt-1 text-sm font-semibold text-white/85">Upload & manage pre-recorded demo videos</p>
+            <p className="mt-1 text-sm font-semibold text-white/85">Upload and manage demo videos</p>
             <p className="mt-1 text-[11px] text-white/35">
               Videos are served to users when no real match is available. Each video has metadata (gender, age, style, country) for filter-based matching.
             </p>

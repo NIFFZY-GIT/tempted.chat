@@ -403,6 +403,41 @@ export default function Home() {
     return "Could not start camera or microphone. Please retry.";
   };
 
+  const pauseRealMatchmakingForDemo = useCallback(() => {
+    if (retryMatchIntervalRef.current) {
+      window.clearInterval(retryMatchIntervalRef.current);
+      retryMatchIntervalRef.current = null;
+    }
+
+    if (heartbeatIntervalRef.current) {
+      window.clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+    }
+
+    if (waitingUnsubRef.current) {
+      waitingUnsubRef.current();
+      waitingUnsubRef.current = null;
+    }
+
+    if (realtimeQueuePingIntervalRef.current) {
+      window.clearInterval(realtimeQueuePingIntervalRef.current);
+      realtimeQueuePingIntervalRef.current = null;
+    }
+
+    const queuedMode = realtimeQueueModeRef.current;
+    realtimeQueueModeRef.current = null;
+
+    if (queuedMode && realtimeSocketRef.current?.readyState === WebSocket.OPEN && realtimeConnectedRef.current) {
+      realtimeSocketRef.current.send(JSON.stringify({ event: "queue_leave", payload: { mode: queuedMode } }));
+    }
+
+    if (user) {
+      void deleteDoc(doc(db, "waitingUsers", user.uid)).catch(() => {
+        // Ignore if already removed.
+      });
+    }
+  }, [user]);
+
   const clearDemoTimers = () => {
     if (demoFallbackTimeoutRef.current) {
       window.clearTimeout(demoFallbackTimeoutRef.current);
@@ -584,6 +619,7 @@ export default function Home() {
     }
 
     setIsDemoMode(true);
+    pauseRealMatchmakingForDemo();
 
     // Filter videos by current chat filters; fall back to full pool if no matches.
     const filtered = filterDemoVideos(videos, chatFilters);
@@ -632,7 +668,7 @@ export default function Home() {
     demoCycleTimeoutRef.current = window.setTimeout(() => {
       startPlayback();
     }, randomMs(DEMO_CONNECT_MIN_MS, DEMO_CONNECT_MAX_MS));
-  }, [chatFilters, filterDemoVideos, pickDemoVideo]);
+  }, [chatFilters, filterDemoVideos, pauseRealMatchmakingForDemo, pickDemoVideo]);
 
   const startDemoModeIfNeeded = useCallback(async (sessionId: number) => {
     if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
@@ -1618,7 +1654,7 @@ export default function Home() {
             ? [user.uid, peerUid]
             : [user.uid];
 
-        if (!roomId || !peerUid || !mode || activeRoomIdRef.current) {
+        if (!roomId || !peerUid || !mode || activeRoomIdRef.current || isDemoModeRef.current) {
           return;
         }
 
@@ -3268,7 +3304,7 @@ export default function Home() {
           return;
         }
         const data = snapshot.data() as { status?: string; roomId?: string };
-        if (data.status === "matched" && data.roomId && !activeRoomIdRef.current) {
+        if (data.status === "matched" && data.roomId && !activeRoomIdRef.current && !isDemoModeRef.current) {
           console.log("[matchmaking] matched by server, room:", data.roomId);
           stopDemoMode();
           setConnectingStatus("Stranger found. Connecting...");
