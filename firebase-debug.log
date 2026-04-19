@@ -1,0 +1,67 @@
+[debug] [2026-04-19T22:05:54.889Z] ----------------------------------------------------------------------
+[debug] [2026-04-19T22:05:54.892Z] Command:       C:\Program Files\nodejs\node.exe C:\Users\knipu\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only storage
+[debug] [2026-04-19T22:05:54.892Z] CLI Version:   15.3.1
+[debug] [2026-04-19T22:05:54.892Z] Platform:      win32
+[debug] [2026-04-19T22:05:54.892Z] Node Version:  v25.9.0
+[debug] [2026-04-19T22:05:54.892Z] Time:          Mon Apr 20 2026 03:35:54 GMT+0530 (India Standard Time)
+[debug] [2026-04-19T22:05:54.893Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-04-19T22:05:54.894Z] >>> [apiv2][query] GET https://firebase-public.firebaseio.com/cli.json [none]
+[debug] [2026-04-19T22:05:56.810Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-04-19T22:05:56.810Z] > authorizing via signed-in user (developer.zevarone@gmail.com)
+[debug] [2026-04-19T22:05:56.810Z] [iam] checking project temptedchat for permissions ["firebase.projects.get","firebaserules.releases.create","firebaserules.releases.update","firebaserules.rulesets.create"]
+[debug] [2026-04-19T22:05:56.811Z] Checked if tokens are valid: false, expires at: 1776219361560
+[debug] [2026-04-19T22:05:56.811Z] Checked if tokens are valid: false, expires at: 1776219361560
+[debug] [2026-04-19T22:05:56.811Z] > refreshing access token with scopes: []
+[debug] [2026-04-19T22:05:56.812Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-04-19T22:05:56.812Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-04-19T22:05:57.064Z] <<< [apiv2][status] POST https://www.googleapis.com/oauth2/v3/token 200
+[debug] [2026-04-19T22:05:57.064Z] <<< [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]
+[debug] [2026-04-19T22:05:57.068Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/temptedchat:testIamPermissions [none]
+[debug] [2026-04-19T22:05:57.068Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/temptedchat:testIamPermissions x-goog-quota-user=projects/temptedchat
+[debug] [2026-04-19T22:05:57.068Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/temptedchat:testIamPermissions {"permissions":["firebase.projects.get","firebaserules.releases.create","firebaserules.releases.update","firebaserules.rulesets.create"]}
+[debug] [2026-04-19T22:05:57.362Z] <<< [apiv2][status] GET https://firebase-public.firebaseio.com/cli.json 200
+[debug] [2026-04-19T22:05:57.362Z] <<< [apiv2][body] GET https://firebase-public.firebaseio.com/cli.json {"cloudBuildErrorAfter":1594252800000,"cloudBuildWarnAfter":1590019200000,"defaultNode10After":1594252800000,"minVersion":"3.0.5","node8DeploysDisabledAfter":1613390400000,"node8RuntimeDisabledAfter":1615809600000,"node8WarnAfter":1600128000000}
+[debug] [2026-04-19T22:05:58.397Z] <<< [apiv2][status] POST https://cloudresourcemanager.googleapis.com/v1/projects/temptedchat:testIamPermissions 200
+[debug] [2026-04-19T22:05:58.398Z] <<< [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/temptedchat:testIamPermissions {"permissions":["firebase.projects.get","firebaserules.releases.create","firebaserules.releases.update","firebaserules.rulesets.create"]}
+[info] 
+[info] === Deploying to 'temptedchat'...
+[info] 
+[info] i  deploying storage 
+[info] i  storage: ensuring required API firebasestorage.googleapis.com is enabled... 
+[debug] [2026-04-19T22:05:58.400Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:05:58.400Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:05:58.400Z] >>> [apiv2][query] GET https://firebasestorage.googleapis.com/v1alpha/projects/temptedchat/defaultBucket [none]
+[debug] [2026-04-19T22:05:59.085Z] <<< [apiv2][status] GET https://firebasestorage.googleapis.com/v1alpha/projects/temptedchat/defaultBucket 200
+[debug] [2026-04-19T22:05:59.085Z] <<< [apiv2][body] GET https://firebasestorage.googleapis.com/v1alpha/projects/temptedchat/defaultBucket {"name":"projects/temptedchat/defaultBucket","location":"US-CENTRAL1","bucket":{"name":"projects/temptedchat/buckets/temptedchat.firebasestorage.app"},"storageClass":"REGIONAL"}
+[info] i  firebase.storage: checking storage.rules for compilation errors... 
+[debug] [2026-04-19T22:05:59.085Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:05:59.085Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:05:59.086Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/temptedchat:test [none]
+[debug] [2026-04-19T22:05:59.086Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/temptedchat:test [omitted]
+[debug] [2026-04-19T22:05:59.643Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/temptedchat:test 200
+[debug] [2026-04-19T22:05:59.643Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/temptedchat:test {}
+[info] +  firebase.storage: rules file storage.rules compiled successfully 
+[debug] [2026-04-19T22:05:59.644Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:05:59.644Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:05:59.644Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/temptedchat/releases pageSize=10&pageToken=
+[debug] [2026-04-19T22:06:01.196Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/temptedchat/releases 200
+[debug] [2026-04-19T22:06:01.196Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/temptedchat/releases {"releases":[{"name":"projects/temptedchat/releases/cloud.firestore","rulesetName":"projects/temptedchat/rulesets/3c8e87ba-f365-41dc-94f0-f4b72dbc440e","createTime":"2026-04-07T13:58:17.889554Z","updateTime":"2026-04-07T13:58:17.889554Z"},{"name":"projects/temptedchat/releases/firebase.storage/temptedchat.firebasestorage.app","rulesetName":"projects/temptedchat/rulesets/6243ca8e-6049-4c3e-9437-7de2b8865250","createTime":"2026-04-08T11:28:16.614162Z","updateTime":"2026-04-10T20:52:18.116216Z"}]}
+[debug] [2026-04-19T22:06:01.208Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:06:01.208Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:06:01.208Z] >>> [apiv2][query] GET https://firebaserules.googleapis.com/v1/projects/temptedchat/rulesets/6243ca8e-6049-4c3e-9437-7de2b8865250 [none]
+[debug] [2026-04-19T22:06:01.547Z] <<< [apiv2][status] GET https://firebaserules.googleapis.com/v1/projects/temptedchat/rulesets/6243ca8e-6049-4c3e-9437-7de2b8865250 200
+[debug] [2026-04-19T22:06:01.547Z] <<< [apiv2][body] GET https://firebaserules.googleapis.com/v1/projects/temptedchat/rulesets/6243ca8e-6049-4c3e-9437-7de2b8865250 [omitted]
+[info] i  storage: uploading rules storage.rules... 
+[debug] [2026-04-19T22:06:01.547Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:06:01.547Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:06:01.548Z] >>> [apiv2][query] POST https://firebaserules.googleapis.com/v1/projects/temptedchat/rulesets [none]
+[debug] [2026-04-19T22:06:01.548Z] >>> [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/temptedchat/rulesets [omitted]
+[debug] [2026-04-19T22:06:03.100Z] <<< [apiv2][status] POST https://firebaserules.googleapis.com/v1/projects/temptedchat/rulesets 200
+[debug] [2026-04-19T22:06:03.100Z] <<< [apiv2][body] POST https://firebaserules.googleapis.com/v1/projects/temptedchat/rulesets {"name":"projects/temptedchat/rulesets/643ecec5-c45f-4983-a3c8-eeb11a6737d7","source":{"files":[{"content":"rules_version = '2';\r\nservice firebase.storage {\r\n  match /b/{bucket}/o {\r\n    match /chatUploads/{roomId}/{userId}/{fileName} {\r\n      allow read: if request.auth != null;\r\n\r\n      allow write: if request.auth != null\r\n        && request.auth.uid == userId\r\n        && request.resource.size < 10 * 1024 * 1024\r\n        && (\r\n          request.resource.contentType.matches('application/octet-stream')\r\n          || request.resource.contentType.matches('image/.*')\r\n        );\r\n\r\n      allow delete: if request.auth != null && request.auth.uid == userId;\r\n    }\r\n\r\n    match /feedback/{userId}/{fileName} {\r\n      allow read: if request.auth != null;\r\n\r\n      allow write: if request.auth != null\r\n        && request.auth.uid == userId\r\n        && request.resource.size < 5 * 1024 * 1024\r\n        && request.resource.contentType.matches('image/.*');\r\n    }\r\n\r\n    match /demoVideos/{fileName} {\r\n      allow read: if request.auth != null;\r\n\r\n      allow write: if request.auth != null\r\n        && request.resource.size < 100 * 1024 * 1024;\r\n\r\n      allow delete: if request.auth != null;\r\n    }\r\n\r\n    match /{allPaths=**} {\r\n      allow read, write: if false;\r\n    }\r\n  }\r\n}\r\n","name":"storage.rules"}]},"createTime":"2026-04-19T22:06:01.123343Z","metadata":{"services":["firebase.storage"]}}
+[debug] [2026-04-19T22:06:03.100Z] [rules] created ruleset projects/temptedchat/rulesets/643ecec5-c45f-4983-a3c8-eeb11a6737d7
+[debug] [2026-04-19T22:06:03.101Z] [rules] releasing firebase.storage/temptedchat.firebasestorage.app with ruleset projects/temptedchat/rulesets/643ecec5-c45f-4983-a3c8-eeb11a6737d7
+[debug] [2026-04-19T22:06:03.101Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:06:03.101Z] Checked if tokens are valid: true, expires at: 1776639956064
+[debug] [2026-04-19T22:06:03.101Z] >>> [apiv2][query] PATCH https://firebaserules.googleapis.com/v1/projects/temptedchat/releases/firebase.storage/temptedchat.firebasestorage.app [none]
+[debug] [2026-04-19T22:06:03.101Z] >>> [apiv2][body] PATCH https://firebaserules.googleapis.com/v1/projects/temptedchat/releases/firebase.storage/temptedchat.firebasestorage.app {"release":{"name":"projects/temptedchat/releases/firebase.storage/temptedchat.firebasestorage.app","rulesetName":"projects/temptedchat/rulesets/643ecec5-c45f-4983-a3c8-eeb11a6737d7"}}

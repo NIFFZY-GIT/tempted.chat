@@ -548,6 +548,9 @@ export default function AdminDashboardPage() {
       return;
     }
 
+    // Ensure Storage receives a fresh auth token before starting upload.
+    await user.getIdToken(true);
+
     const parsedAge = parseInt(demoUploadAge, 10);
     if (!Number.isFinite(parsedAge) || parsedAge < 13 || parsedAge > 99) {
       setDemoUploadError("Age must be between 13 and 99.");
@@ -601,7 +604,7 @@ export default function AdminDashboardPage() {
       }
     } catch (error) {
       if (typeof error === "object" && error !== null && "code" in error && (error as { code?: string }).code === "storage/unauthorized") {
-        setDemoUploadError("Upload blocked by Storage rules. You are signed in, but this file may be detected as a non-video MIME type. Please retry or use MP4/WebM.");
+        setDemoUploadError("Upload blocked by Storage rules for this bucket. Please re-login once, then redeploy Storage rules (firebase deploy --only storage), and retry.");
       } else {
         setDemoUploadError(error instanceof Error ? error.message : "Upload failed.");
       }
@@ -661,6 +664,14 @@ export default function AdminDashboardPage() {
     if (editingSaving) {
       return;
     }
+
+    if (!user) {
+      setEditingError("You are not authenticated.");
+      return;
+    }
+
+    // Ensure Storage receives a fresh auth token before replacement upload.
+    await user.getIdToken(true);
 
     const parsedAge = parseInt(editingAge, 10);
     if (!Number.isFinite(parsedAge) || parsedAge < 13 || parsedAge > 99) {
