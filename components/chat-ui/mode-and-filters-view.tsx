@@ -80,12 +80,12 @@ export function ModeAndFiltersView({
 	}, []);
 
 	return (
-		<section className="relative flex h-[100dvh] min-h-[100dvh] w-full flex-col items-center justify-center overflow-hidden bg-[#050508]">
+		<section className="relative flex h-[100dvh] min-h-[100dvh] w-full flex-col items-center overflow-hidden bg-[#050508]">
 			
 			<div className="absolute inset-0 z-0 pointer-events-none">
 				<div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_8%,rgba(255,255,255,0.08),transparent_36%),radial-gradient(circle_at_72%_24%,rgba(56,189,248,0.12),transparent_42%),radial-gradient(circle_at_26%_78%,rgba(244,114,182,0.1),transparent_40%)]" />
 				<motion.div
-					className="animated-aurora absolute -inset-[24%]"
+					className="animated-aurora absolute -inset-[24%] hidden sm:block"
 					animate={{
 						opacity: [0.5, 0.85, 0.55],
 						scale: [1, 1.08, 1],
@@ -99,51 +99,53 @@ export function ModeAndFiltersView({
 					custom={1.2}
 					variants={orbVariants}
 					animate="animate"
-					className="absolute left-[6%] top-[2%] h-72 w-72 rounded-full bg-fuchsia-500/16 blur-[100px]"
+					className="absolute left-[6%] top-[2%] h-72 w-72 rounded-full bg-fuchsia-500/16 blur-[100px] hidden sm:block"
 				/>
 				<motion.div
 					custom={2.2}
 					variants={orbVariants}
 					animate="animate"
-					className="absolute bottom-[3%] right-[8%] h-[380px] w-[380px] rounded-full bg-sky-400/16 blur-[118px]"
+					className="absolute bottom-[3%] right-[8%] h-[380px] w-[380px] rounded-full bg-sky-400/16 blur-[118px] hidden sm:block"
 				/>
 				<motion.div
 					custom={1.8}
 					variants={orbVariants}
 					animate="animate"
-					className="absolute right-[14%] top-[36%] h-64 w-64 rounded-full bg-amber-400/14 blur-[90px]"
+					className="absolute right-[14%] top-[36%] h-64 w-64 rounded-full bg-amber-400/14 blur-[90px] hidden sm:block"
 				/>
-				{Array.from({ length: 10 }).map((_, i) => (
-					<motion.span
-						key={`bg-p-${i}`}
-						className="absolute h-1.5 w-1.5 rounded-full bg-white/45"
-						style={{ left: `${5 + i * 9}%`, top: `${12 + ((i * 11) % 72)}%` }}
-						animate={{ y: [0, -28, 0], opacity: [0.1, 0.8, 0.15] }}
-						transition={{ duration: 4.5 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.22 }}
-					/>
-				))}
+				<div className="hidden sm:contents">
+					{Array.from({ length: 10 }).map((_, i) => (
+						<motion.span
+							key={`bg-p-${i}`}
+							className="absolute h-1.5 w-1.5 rounded-full bg-white/45"
+							style={{ left: `${5 + i * 9}%`, top: `${12 + ((i * 11) % 72)}%` }}
+							animate={{ y: [0, -28, 0], opacity: [0.1, 0.8, 0.15] }}
+							transition={{ duration: 4.5 + (i % 4), repeat: Infinity, ease: "easeInOut", delay: i * 0.22 }}
+						/>
+					))}
+				</div>
 			</div>
 
 			<motion.div
 				initial={{ opacity: 0, y: 24 }}
 				animate={{ opacity: 1, y: 0 }}
 				transition={{ duration: 0.55, ease: [0.2, 0.7, 0.2, 1] }}
-				className="relative z-10 flex w-full max-w-[420px] flex-col items-center px-6"
+				className="relative z-10 flex w-full max-w-[420px] flex-1 flex-col items-center overflow-y-auto px-6 pt-40 pb-6 gap-2 [scrollbar-width:none] [-webkit-overflow-scrolling:touch]"
 			>
 				
-				<motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-12">
+				<motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6 sm:mb-12">
 					<div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/[0.03] border border-white/10 text-white/40 text-[9px] font-black uppercase tracking-[0.4em] mb-8">
 						<Cpu size={12} className="text-pink-500 animate-pulse" /> Encryption Active
 					</div>
 					<Image src="/asstes/logo/logologoheartandtempetedchat.png" alt="Logo" width={190} height={38} className="mx-auto brightness-200 drop-shadow-[0_0_25px_rgba(255,255,255,0.2)]" priority />
 				</motion.div>
 
-				<div className="w-full grid grid-cols-2 gap-4 mb-10">
+				<div className="w-full grid grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-10">
 					{(['text', 'video'] as const).map((m) => (
 						<button
 							key={m}
 							onClick={() => setSelectedMode(m)}
-							className={`relative flex flex-col items-center gap-4 p-8 rounded-[2.5rem] border transition-all duration-500 active:scale-95 ${
+							className={`relative flex flex-col items-center gap-3 sm:gap-4 p-5 sm:p-8 rounded-[2rem] sm:rounded-[2.5rem] border transition-all duration-500 active:scale-95 ${
 								selectedMode === m 
 								? "bg-white text-black border-white shadow-[0_0_50px_rgba(255,255,255,0.15)]" 
 								: "bg-white/[0.02] border-white/5 text-white/30 hover:text-white hover:bg-white/[0.05]"
@@ -156,7 +158,7 @@ export function ModeAndFiltersView({
 					))}
 				</div>
 
-				<div className="w-full mb-10 space-y-4">
+				<div className="w-full mb-6 sm:mb-10 space-y-3 sm:space-y-4">
 					<div className="flex flex-wrap gap-2 min-h-[30px]">
 						<AnimatePresence>
 							{interests.map((tag) => (
@@ -168,11 +170,11 @@ export function ModeAndFiltersView({
 					</div>
 					<div className="relative group">
 						<Plus className="absolute left-5 top-1/2 -translate-y-1/2 text-white/20 group-focus-within:text-pink-500 transition-colors" size={18} />
-						<input value={intInput} onChange={e => setIntInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && interests.length < 10 && intInput.trim() && (setInterests([...interests, intInput.trim().toLowerCase()]), setIntInput(""))} placeholder="DEFINE INTERESTS..." className="w-full bg-white/[0.02] border border-white/50 rounded-2xl py-6 pl-14 pr-6 text-[11px] font-bold text-white uppercase tracking-[0.2em] outline-none focus:border-white/100 focus:bg-white/[0.04] transition-all placeholder:text-white/20" />
+						<input value={intInput} onChange={e => setIntInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && interests.length < 10 && intInput.trim() && (setInterests([...interests, intInput.trim().toLowerCase()]), setIntInput(""))} placeholder="DEFINE INTERESTS..." className="w-full bg-white/[0.02] border border-white/50 rounded-2xl py-4 sm:py-6 pl-14 pr-6 text-[11px] font-bold text-white uppercase tracking-[0.2em] outline-none focus:border-white/100 focus:bg-white/[0.04] transition-all placeholder:text-white/20" />
 					</div>
 				</div>
 
-				<button onClick={handleStart} className="group relative w-full py-7 bg-white text-black rounded-full font-black text-xs uppercase tracking-[0.5em] transition-all hover:scale-[1.02] active:scale-[0.98] shadow-[0_25px_70px_rgba(255,255,255,0.1)] overflow-hidden">
+				<button onClick={handleStart} className="group relative w-full py-5 sm:py-7 bg-white text-black rounded-full font-black text-xs uppercase tracking-[0.5em] transition-all hover:scale-[1.02] active:scale-[0.98] shadow-[0_25px_70px_rgba(255,255,255,0.1)] overflow-hidden">
 					<span className="relative z-10 flex items-center justify-center gap-4">Start Session <Rocket size={18} /></span>
 					<div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/[0.08] to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
 				</button>
@@ -183,7 +185,7 @@ export function ModeAndFiltersView({
 						whileHover={{ scale: 1.02, y: -2 }}
 						whileTap={{ scale: 0.98 }}
 						onClick={onShowPaywall}
-						className="relative mt-10 w-full overflow-hidden rounded-3xl border border-amber-300/35 bg-[linear-gradient(125deg,rgba(245,158,11,0.12),rgba(251,191,36,0.06),rgba(255,255,255,0.03))] p-[1px] shadow-[0_16px_50px_rgba(245,158,11,0.22)]"
+						className="relative mt-6 sm:mt-10 w-full overflow-hidden rounded-3xl border border-amber-300/35 bg-[linear-gradient(125deg,rgba(245,158,11,0.12),rgba(251,191,36,0.06),rgba(255,255,255,0.03))] p-[1px] shadow-[0_16px_50px_rgba(245,158,11,0.22)]"
 					>
 						<div className="group relative flex w-full items-center justify-between rounded-[22px] bg-[#09090c]/95 px-5 py-4 backdrop-blur-xl transition-all hover:bg-[#0f0f12]">
 							<div className="flex items-center gap-3.5">
@@ -202,13 +204,13 @@ export function ModeAndFiltersView({
 							</div>
 						</div>
 						
-						<div className="absolute inset-0 -z-10 animate-amber-pulse bg-amber-500/20 blur-xl" />
-						<div className="absolute -left-1/3 top-0 h-full w-1/3 animate-shimmer-fast bg-gradient-to-r from-transparent via-amber-100/35 to-transparent" />
+						<div className="absolute inset-0 -z-10 animate-amber-pulse bg-amber-500/20 blur-xl hidden sm:block" />
+						<div className="absolute -left-1/3 top-0 h-full w-1/3 animate-shimmer-fast bg-gradient-to-r from-transparent via-amber-100/35 to-transparent hidden sm:block" />
 					</motion.button>
 				) : (
 					<button
 						onClick={() => setShowFilters(true)}
-						className="mt-10 flex items-center gap-3 text-white/20 hover:text-white transition-all group px-6 py-3 rounded-full hover:bg-white/5 border border-white/5"
+						className="mt-6 sm:mt-10 flex items-center gap-3 text-white/20 hover:text-white transition-all group px-6 py-3 rounded-full hover:bg-white/5 border border-white/5"
 					>
 						<Settings2 size={14} className="group-hover:rotate-180 transition-transform duration-700" />
 						<span className="text-[10px] font-black uppercase tracking-[0.4em]">Refine Preferences</span>

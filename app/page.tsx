@@ -4439,7 +4439,7 @@ export default function Home() {
   if (!chatMode || !chatFilters) {
     return (
       <>
-        <main className="screen">
+        <main>
           <TopNav
             isAuthenticated={isAuthenticated}
             onLogin={() => {
