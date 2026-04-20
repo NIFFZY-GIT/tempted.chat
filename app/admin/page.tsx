@@ -3,9 +3,11 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { useRouter } from "next/navigation";
+
+import { TierLogo } from "@/components/tier-logo";
 import { auth, storage } from "@/lib/firebase";
 import { getUserRole } from "@/lib/admin";
-import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 
@@ -80,7 +82,17 @@ type DemoVideoEntry = {
   countryCode: string;
 };
 
-type AdminTab = "overview" | "demo";
+type LostFoundEntry = {
+  id: string;
+  lookingForName: string;
+  message: string;
+  contact: string;
+  createdAtMs: number;
+  status: "open" | "claimed";
+  claimedByLabel?: string;
+};
+
+type AdminTab = "overview" | "demo" | "lostfound";
 
 const resolveVideoContentType = (file: File): string => {
   const type = (file.type || "").trim().toLowerCase();
@@ -145,6 +157,9 @@ export default function AdminDashboardPage() {
   const [editingCountry, setEditingCountry] = useState("US");
   const [editingSaving, setEditingSaving] = useState(false);
   const [editingError, setEditingError] = useState<string | null>(null);
+  const [lostFoundEntries, setLostFoundEntries] = useState<LostFoundEntry[]>([]);
+  const [lostFoundLoading, setLostFoundLoading] = useState(false);
+  const [lostFoundDeleting, setLostFoundDeleting] = useState<string | null>(null);
   const demoFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -191,7 +206,11 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const syncTabFromLocation = () => {
       const requestedTab = new URLSearchParams(window.location.search).get("tab");
-      const nextTab: AdminTab = requestedTab === "demo" ? "demo" : "overview";
+      const nextTab: AdminTab = requestedTab === "demo"
+        ? "demo"
+        : requestedTab === "lostfound"
+          ? "lostfound"
+          : "overview";
       setActiveTab((current) => (current === nextTab ? current : nextTab));
     };
 
@@ -211,6 +230,10 @@ export default function AdminDashboardPage() {
     setActiveTab(tab);
     if (tab === "demo") {
       router.replace("/admin?tab=demo");
+      return;
+    }
+    if (tab === "lostfound") {
+      router.replace("/admin?tab=lostfound");
       return;
     }
     router.replace("/admin");
@@ -639,6 +662,65 @@ export default function AdminDashboardPage() {
     }
   };
 
+  useEffect(() => {
+    if (!user || !isAdmin) {
+      setLostFoundEntries([]);
+      return;
+    }
+
+    setLostFoundLoading(true);
+    const unsubscribe = onSnapshot(query(collection(db, "lostFoundPosts"), orderBy("createdAt", "desc")), (snapshot) => {
+      const nextEntries: LostFoundEntry[] = [];
+      snapshot.forEach((entryDoc) => {
+        const data = entryDoc.data() as {
+          lookingForName?: unknown;
+          message?: unknown;
+          contact?: unknown;
+          createdAt?: unknown;
+          createdAtMs?: unknown;
+          status?: unknown;
+          claimedByLabel?: unknown;
+        };
+
+        const createdAtMs = typeof data.createdAtMs === "number"
+          ? data.createdAtMs
+          : (typeof (data.createdAt as { toMillis?: () => number } | undefined)?.toMillis === "function"
+            ? (data.createdAt as { toMillis: () => number }).toMillis()
+            : Date.now());
+
+        nextEntries.push({
+          id: entryDoc.id,
+          lookingForName: typeof data.lookingForName === "string" ? data.lookingForName : "Unknown",
+          message: typeof data.message === "string" ? data.message : "",
+          contact: typeof data.contact === "string" ? data.contact : "",
+          createdAtMs,
+          status: data.status === "claimed" ? "claimed" : "open",
+          claimedByLabel: typeof data.claimedByLabel === "string" ? data.claimedByLabel : undefined,
+        });
+      });
+
+      setLostFoundEntries(nextEntries);
+      setLostFoundLoading(false);
+    }, () => {
+      setLostFoundLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [isAdmin, user]);
+
+  const handleLostFoundDelete = async (entryId: string) => {
+    if (lostFoundDeleting) {
+      return;
+    }
+
+    setLostFoundDeleting(entryId);
+    try {
+      await deleteDoc(doc(db, "lostFoundPosts", entryId));
+    } finally {
+      setLostFoundDeleting(null);
+    }
+  };
+
   const resetDemoVideoEditor = () => {
     setEditingVideoId(null);
     setEditingFile(null);
@@ -822,6 +904,10 @@ export default function AdminDashboardPage() {
             <svg className={`h-4 w-4 ${activeTab === "demo" ? "text-violet-400" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>
             Demo Videos
           </button>
+          <button onClick={() => openTab("lostfound")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition ${activeTab === "lostfound" ? "bg-white/[0.06] text-white/80" : "text-white/40 hover:bg-white/[0.04] hover:text-white/60"}`}>
+            <svg className={`h-4 w-4 ${activeTab === "lostfound" ? "text-sky-400" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-6-6h12" /><path strokeLinecap="round" strokeLinejoin="round" d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /></svg>
+            Lost & Found
+          </button>
           <button onClick={() => router.push("/admin/feedback")} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 transition hover:bg-white/[0.04] hover:text-white/60">
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
             Feedback
@@ -854,8 +940,8 @@ export default function AdminDashboardPage() {
         {/* Top bar */}
         <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0a14]/60 px-5 backdrop-blur-xl md:px-8">
           <div>
-            <h1 className="text-lg font-bold text-white/90">{activeTab === "overview" ? "Overview" : "Demo Videos"}</h1>
-            <p className="text-[11px] text-white/30">{activeTab === "overview" ? "Real-time analytics dashboard" : "Manage demo fallback videos & settings"}</p>
+            <h1 className="text-lg font-bold text-white/90">{activeTab === "overview" ? "Overview" : activeTab === "demo" ? "Demo Videos" : "Lost & Found"}</h1>
+            <p className="text-[11px] text-white/30">{activeTab === "overview" ? "Real-time analytics dashboard" : activeTab === "demo" ? "Manage demo fallback videos & settings" : "Review and remove community reconnect posts"}</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-400">
@@ -996,26 +1082,40 @@ export default function AdminDashboardPage() {
             <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 transition hover:border-white/[0.1]">
               <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-yellow-500/[0.06] blur-2xl transition-all group-hover:bg-yellow-500/[0.1]" />
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VIP</p>
+                <div className="flex items-center gap-2">
+                  <TierLogo tier="vip" size="xs" />
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VIP</p>
+                </div>
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-yellow-500/10">
                   <span className="text-sm">⭐</span>
                 </div>
               </div>
               <p className="mt-3 text-3xl font-extrabold tracking-tight text-yellow-400">{stats.vipCount}</p>
-              <p className="mt-1 text-[11px] text-white/25">active VIP subscribers</p>
+              <div className="mt-1 flex items-center gap-2 text-[11px] text-white/25">
+                <span>active</span>
+                <TierLogo tier="vip" size="xs" />
+                <span>subscribers</span>
+              </div>
             </div>
 
             {/* VVIP count */}
             <div className="group relative overflow-hidden rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 transition hover:border-white/[0.1]">
               <div className="pointer-events-none absolute -right-4 -top-4 h-24 w-24 rounded-full bg-purple-500/[0.06] blur-2xl transition-all group-hover:bg-purple-500/[0.1]" />
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VVIP</p>
+                <div className="flex items-center gap-2">
+                  <TierLogo tier="vvip" size="xs" />
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VVIP</p>
+                </div>
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-500/10">
-                  <span className="text-sm">💎</span>
+                  <TierLogo tier="vvip" size="xs" />
                 </div>
               </div>
               <p className="mt-3 text-3xl font-extrabold tracking-tight text-purple-400">{stats.vvipCount}</p>
-              <p className="mt-1 text-[11px] text-white/25">active VVIP subscribers</p>
+              <div className="mt-1 flex items-center gap-2 text-[11px] text-white/25">
+                <span>active</span>
+                <TierLogo tier="vvip" size="xs" />
+                <span>subscribers</span>
+              </div>
             </div>
 
             {/* VIP by gender */}
@@ -1478,6 +1578,66 @@ export default function AdminDashboardPage() {
                     </div>
                   ))}
                 </div>
+              )}
+            </div>
+          </div>
+          </>)}
+
+          {activeTab === "lostfound" && (<>
+          <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5 md:p-6">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Lost & Found Moderation</p>
+            <p className="mt-1 text-sm font-semibold text-white/85">Community reconnect posts</p>
+            <p className="mt-1 text-[11px] text-white/35">Admins can remove inappropriate or spam posts. Claimed posts are marked as found by users.</p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-3">
+                <p className="text-[10px] uppercase tracking-wider text-white/35">Total</p>
+                <p className="mt-1 text-2xl font-bold text-white/90">{lostFoundEntries.length}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-amber-500/10 px-4 py-3">
+                <p className="text-[10px] uppercase tracking-wider text-amber-300/70">Open</p>
+                <p className="mt-1 text-2xl font-bold text-amber-200">{lostFoundEntries.filter((entry) => entry.status === "open").length}</p>
+              </div>
+              <div className="rounded-xl border border-white/[0.08] bg-emerald-500/10 px-4 py-3">
+                <p className="text-[10px] uppercase tracking-wider text-emerald-300/70">Found</p>
+                <p className="mt-1 text-2xl font-bold text-emerald-300">{lostFoundEntries.filter((entry) => entry.status === "claimed").length}</p>
+              </div>
+            </div>
+
+            <div className="mt-5 space-y-2">
+              {lostFoundLoading ? (
+                <p className="text-[12px] text-white/35">Loading posts...</p>
+              ) : lostFoundEntries.length === 0 ? (
+                <p className="text-[12px] text-white/35">No lost and found posts available.</p>
+              ) : (
+                lostFoundEntries.map((entry) => (
+                  <div key={entry.id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">Looking for <span className="text-sky-300">{entry.lookingForName}</span></p>
+                        <p className="mt-0.5 text-[11px] text-white/35">Posted • {new Date(entry.createdAtMs).toLocaleString()}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${entry.status === "claimed" ? "bg-emerald-500/20 text-emerald-300" : "bg-amber-500/20 text-amber-200"}`}>
+                          {entry.status === "claimed" ? "Found" : "Open"}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void handleLostFoundDelete(entry.id)}
+                          disabled={lostFoundDeleting === entry.id}
+                          className="rounded-lg bg-rose-500/90 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-rose-400 disabled:opacity-40"
+                        >
+                          {lostFoundDeleting === entry.id ? "Deleting..." : "Delete"}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-2 whitespace-pre-wrap text-[12px] text-white/70">{entry.message}</p>
+                    <p className="mt-1 text-[12px] text-white/55">Contact: {entry.contact}</p>
+                    {entry.status === "claimed" && (
+                      <p className="mt-1 text-[11px] text-emerald-300/80">Marked as found</p>
+                    )}
+                  </div>
+                ))
               )}
             </div>
           </div>

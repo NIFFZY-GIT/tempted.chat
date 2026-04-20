@@ -1,7 +1,10 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from "react";
+
+import { TierLogo } from "@/components/tier-logo";
 
 export type ChatMessage = {
   id: string;
@@ -44,6 +47,15 @@ export type ChatFilters = {
   style: ChatStyleFilter;
   country: CountryFilter;
   hideCountry?: boolean;
+};
+
+type FullscreenCapableElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenCapableDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
 };
 
 export const starterMessages: ChatMessage[] = [
@@ -416,7 +428,7 @@ export function AuthView({
             onChange={(event) => setEmail(event.target.value)}
             autoComplete="email"
             placeholder="Email address"
-            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-[15px] text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/40 focus:bg-white/[0.06]"
+            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/40 focus:bg-white/[0.06] sm:text-[15px]"
           />
           <input
             id="password"
@@ -425,7 +437,7 @@ export function AuthView({
             onChange={(event) => setPassword(event.target.value)}
             autoComplete={authMode === "signup" ? "new-password" : "current-password"}
             placeholder="Password"
-            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-[15px] text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/40 focus:bg-white/[0.06]"
+            className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/40 focus:bg-white/[0.06] sm:text-[15px]"
           />
           <button
             type="button"
@@ -469,6 +481,13 @@ export function AuthView({
           {authNotice}
         </div>
       )}
+
+      <div className="mt-5 text-center text-xs leading-relaxed text-white/45">
+        By logging in or continuing as guest, you agree to our safety rules and community guidelines.
+        <Link href="/safety" className="ml-1 font-semibold text-pink-400 transition hover:text-pink-300">
+          Read our rules
+        </Link>
+      </div>
     </section>
   );
 }
@@ -932,12 +951,19 @@ export function ModeAndFiltersView({
               if (!hasActiveSubscription) { onShowPaywall?.(); return; }
               setShowFilters((v) => !v);
             }}
-            className="group relative inline-flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-5 py-2.5 text-[12px] font-semibold text-white/30 backdrop-blur-sm transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.05] hover:text-white/50 active:scale-[0.97]"
+            className="group relative inline-flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-[12px] font-semibold text-white/30 backdrop-blur-sm transition-all duration-300 hover:border-white/[0.12] hover:bg-white/[0.05] hover:text-white/50 active:scale-[0.97]"
+            aria-label={!hasActiveSubscription ? "Unlock filters" : "Filters"}
           >
             <svg className="h-3.5 w-3.5 transition-transform duration-300 group-hover:rotate-45" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-            Filters
+            <span>{!hasActiveSubscription ? "Unlock filters" : "Filters"}</span>
             {!hasActiveSubscription ? (
-              <span className="rounded-full bg-pink-500/15 px-2 py-0.5 text-[9px] font-bold text-pink-400">VIP</span>
+              <TierLogo tier="vvip" size="xs" className="rounded-full bg-amber-400/10 px-1.5 py-1 ring-1 ring-amber-400/15" />
+            ) : subscriptionTier ? (
+              <TierLogo
+                tier={subscriptionTier}
+                size="xs"
+                className={`rounded-full px-1.5 py-1 ring-1 ${subscriptionTier === "vvip" ? "bg-amber-400/10 ring-amber-400/15" : "bg-pink-500/10 ring-pink-500/15"}`}
+              />
             ) : activeFiltersCount > 0 ? (
               <span
                 className="flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold text-white"
@@ -994,7 +1020,7 @@ export function ModeAndFiltersView({
               {/* VIP section */}
               <div>
                 <div className="mb-4 flex items-center gap-2.5">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-pink-500/10 text-[12px]">💎</span>
+                  <TierLogo tier="vip" size="sm" className="rounded-xl bg-pink-500/10 px-2 py-1 ring-1 ring-pink-500/15" />
                   <span className="text-[11px] font-bold uppercase tracking-widest text-pink-400/60">VIP Filters</span>
                 </div>
 
@@ -1042,16 +1068,17 @@ export function ModeAndFiltersView({
               <div className={subscriptionTier !== "vvip" ? "pointer-events-none" : ""}>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/10 text-[12px]">👑</span>
+                    <TierLogo tier="vvip" size="sm" className="rounded-xl bg-amber-500/10 px-2 py-1 ring-1 ring-amber-400/20" />
                     <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400/60">VVIP Filters</span>
                   </div>
                   {subscriptionTier !== "vvip" && (
                     <button
                       type="button"
                       onClick={() => onShowPaywall?.()}
-                      className="pointer-events-auto rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-[10px] font-bold text-black transition-all duration-200 hover:shadow-[0_4px_16px_rgba(245,158,11,0.3)] active:scale-95"
+                      className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-[10px] font-bold text-black transition-all duration-200 hover:shadow-[0_4px_16px_rgba(245,158,11,0.3)] active:scale-95"
                     >
-                      Upgrade
+                      <span>Get</span>
+                      <TierLogo tier="vvip" size="xs" imageClassName="brightness-0" />
                     </button>
                   )}
                 </div>
@@ -1225,6 +1252,7 @@ export function ChatRoomView({
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const shouldAutoScrollRef = useRef(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
   const [showScrollToLatestBubble, setShowScrollToLatestBubble] = useState(false);
   const [unreadReceivedCount, setUnreadReceivedCount] = useState(0);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
@@ -1277,6 +1305,7 @@ export function ChatRoomView({
     chatFilters?.country !== "Any" && chatFilters?.country,
     chatFilters?.hideCountry,
   ].filter(Boolean).length;
+  const isFullscreenActive = isFullscreen || isFallbackFullscreen;
 
   useEffect(() => {
     if (!filterCountryMenuOpen) return;
@@ -1321,7 +1350,7 @@ export function ChatRoomView({
                 </div>
                 <div>
                   <h2 className="text-[15px] font-bold text-white">Filters</h2>
-                  <p className="text-[11px] text-white/25">Change filters & find new match</p>
+                  <p className="text-[11px] text-white/25">Choose your preferences, then find a new match</p>
                 </div>
               </div>
               <button type="button" onClick={() => setShowChatFilters(false)} className="flex h-9 w-9 items-center justify-center rounded-xl text-white/30 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 active:scale-90">
@@ -1335,15 +1364,22 @@ export function ChatRoomView({
               {/* VIP */}
               <div className={!hasActiveSubscription ? "pointer-events-none opacity-40" : ""}>
                 <div className="mb-4 flex items-center gap-2.5">
-                  <span className="flex h-6 w-6 items-center justify-center rounded-md bg-pink-500/10 text-[12px]">💎</span>
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-pink-400/60">VIP</span>
+                  <TierLogo tier="vip" size="sm" className="rounded-xl bg-pink-500/10 px-2 py-1 ring-1 ring-pink-500/15" />
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-pink-400/60">VIP filters</span>
                   {!hasActiveSubscription && (
                     <button type="button" onClick={() => { setShowChatFilters(false); onShowPaywall?.(); }} className="pointer-events-auto ml-auto rounded-lg bg-pink-500 px-3 py-1 text-[10px] font-bold text-white transition hover:bg-pink-400 active:scale-95">Unlock</button>
                   )}
                 </div>
+                {!hasActiveSubscription && (
+                  <div className="mb-3 flex items-center gap-2 text-[11px] text-white/30">
+                    <span>Unlock</span>
+                    <TierLogo tier="vip" size="xs" />
+                    <span>to use these filters.</span>
+                  </div>
+                )}
                 <div className="space-y-4">
                   <div>
-                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Gender</label>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Who you want to match with</label>
                     <div className="flex flex-wrap gap-2">
                       {(["Any", "Male", "Female", "Other"] as GenderFilter[]).map((opt) => (
                         <button key={opt} type="button" onClick={() => setFilterGender((c) => (c === opt ? "Any" : opt))} className={chatFilterChip(filterGender === opt)}>{opt}</button>
@@ -1351,15 +1387,15 @@ export function ChatRoomView({
                     </div>
                   </div>
                   <div>
-                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Vibe</label>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Chat type</label>
                     <div className="flex flex-wrap gap-2">
                       {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((opt) => (
-                        <button key={opt} type="button" onClick={() => setFilterStyle((c) => (c === opt ? "Any style" : opt))} className={chatFilterChip(filterStyle === opt)}>{opt === "Any style" ? "Any" : opt}</button>
+                        <button key={opt} type="button" onClick={() => setFilterStyle((c) => (c === opt ? "Any style" : opt))} className={chatFilterChip(filterStyle === opt)}>{opt === "Any style" ? "Any type" : opt}</button>
                       ))}
                     </div>
                   </div>
                   <button type="button" onClick={() => setFilterHideCountry((v) => !v)} className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 transition-all duration-200 hover:bg-white/[0.04]">
-                    <span className="flex items-center gap-2.5 text-[13px] font-medium text-white/40"><span className="text-[14px]">🙈</span>Hide my location</span>
+                    <span className="flex items-center gap-2.5 text-[13px] font-medium text-white/40"><span className="text-[14px]">🙈</span>Hide my country from others</span>
                     <span className={`relative flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${filterHideCountry ? "bg-pink-500" : "bg-white/10"}`}>
                       <span className={`absolute h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${filterHideCountry ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
                     </span>
@@ -1373,24 +1409,34 @@ export function ChatRoomView({
               <div className={subscriptionTier !== "vvip" ? "pointer-events-none" : ""}>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-md bg-amber-500/10 text-[12px]">👑</span>
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400/60">VVIP</span>
+                    <TierLogo tier="vvip" size="sm" className="rounded-xl bg-amber-500/10 px-2 py-1 ring-1 ring-amber-400/20" />
+                    <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400/60">VVIP filters</span>
                   </div>
                   {subscriptionTier !== "vvip" && (
-                    <button type="button" onClick={() => { setShowChatFilters(false); onShowPaywall?.(); }} className="pointer-events-auto rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-[10px] font-bold text-black transition-all duration-200 hover:shadow-[0_4px_16px_rgba(245,158,11,0.3)] active:scale-95">Upgrade</button>
+                    <button type="button" onClick={() => { setShowChatFilters(false); onShowPaywall?.(); }} className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-[10px] font-bold text-black transition-all duration-200 hover:shadow-[0_4px_16px_rgba(245,158,11,0.3)] active:scale-95">
+                      <span>Get</span>
+                      <TierLogo tier="vvip" size="xs" imageClassName="brightness-0" />
+                    </button>
                   )}
                 </div>
+                {subscriptionTier !== "vvip" && (
+                  <div className="mb-3 flex items-center gap-2 text-[11px] text-white/30">
+                    <span>Upgrade to</span>
+                    <TierLogo tier="vvip" size="xs" />
+                    <span>to set age and country preferences.</span>
+                  </div>
+                )}
                 <div className={`space-y-4 transition-opacity duration-300 ${subscriptionTier !== "vvip" ? "opacity-30" : ""}`}>
                   <div>
-                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Age Range</label>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Preferred age range</label>
                     <div className="flex flex-wrap gap-2">
                       {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((opt) => (
-                        <button key={opt} type="button" onClick={() => { if (subscriptionTier === "vvip") setFilterAgeGroup((c) => (c === opt ? "Any age" : opt)); }} className={chatFilterChip(filterAgeGroup === opt)}>{opt === "Any age" ? "Any" : opt}</button>
+                        <button key={opt} type="button" onClick={() => { if (subscriptionTier === "vvip") setFilterAgeGroup((c) => (c === opt ? "Any age" : opt)); }} className={chatFilterChip(filterAgeGroup === opt)}>{opt === "Any age" ? "Any age" : opt}</button>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Country</label>
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Preferred country</label>
                     <div className="relative" ref={filterCountryMenuRef}>
                       <button type="button" onClick={() => { if (subscriptionTier === "vvip") setFilterCountryMenuOpen((c) => !c); }} className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm text-white/40 transition-all duration-200 hover:bg-white/[0.04]">
                         <span className="inline-flex items-center gap-2.5">
@@ -1421,7 +1467,7 @@ export function ChatRoomView({
             <div className="border-t border-white/[0.06] px-6 py-5">
               <button type="button" onClick={handleApplyFilters} className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl bg-pink-500 py-3.5 text-[14px] font-bold text-white transition-all duration-300 hover:bg-pink-400 active:scale-[0.97]">
                 <span className="relative flex items-center gap-2">
-                  Apply & Find New Match
+                  Save filters and find match
                   <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
                 </span>
               </button>
@@ -1439,23 +1485,77 @@ export function ChatRoomView({
 
   useEffect(() => {
     const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
+      const doc = document as FullscreenCapableDocument;
+      const hasNativeFullscreen = Boolean(document.fullscreenElement || doc.webkitFullscreenElement);
+      setIsFullscreen(hasNativeFullscreen);
+      if (hasNativeFullscreen) {
+        setIsFallbackFullscreen(false);
+      }
     };
 
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange as EventListener);
     return () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", handleFullscreenChange as EventListener);
     };
   }, []);
 
   const toggleFullscreen = async () => {
-    if (!document.fullscreenElement) {
-      await chatContainerRef.current?.requestFullscreen();
+    const doc = document as FullscreenCapableDocument;
+
+    if (document.fullscreenElement || doc.webkitFullscreenElement) {
+      try {
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          await doc.webkitExitFullscreen();
+        }
+      } catch {
+        setIsFallbackFullscreen(false);
+      }
       return;
     }
 
-    await document.exitFullscreen();
+    if (isFallbackFullscreen) {
+      setIsFallbackFullscreen(false);
+      return;
+    }
+
+    const target = chatContainerRef.current as FullscreenCapableElement | null;
+    try {
+      if (target?.requestFullscreen) {
+        await target.requestFullscreen();
+        return;
+      }
+
+      if (target?.webkitRequestFullscreen) {
+        await target.webkitRequestFullscreen();
+        return;
+      }
+    } catch {
+      // Fallback below for environments that block Fullscreen API (common on iOS).
+    }
+
+    setIsFallbackFullscreen(true);
   };
+
+  useEffect(() => {
+    if (!isFallbackFullscreen) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsFallbackFullscreen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => {
+      window.removeEventListener("keydown", handleEscape);
+    };
+  }, [isFallbackFullscreen]);
 
   useEffect(() => {
     if (!shouldAutoScrollRef.current) {
@@ -1644,11 +1744,37 @@ export function ChatRoomView({
     if (!vv) return;
     const update = () => {
       document.documentElement.style.setProperty("--vh", `${vv.height * 0.01}px`);
+      const keyboardOffset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      document.documentElement.style.setProperty("--keyboard-offset", `${keyboardOffset}px`);
     };
     update();
     vv.addEventListener("resize", update);
-    return () => vv.removeEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      document.documentElement.style.removeProperty("--keyboard-offset");
+    };
   }, []);
+
+  useEffect(() => {
+    const input = messageInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    const ensureInputVisible = () => {
+      window.setTimeout(() => {
+        input.scrollIntoView({ block: "nearest", inline: "nearest" });
+        messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+      }, 140);
+    };
+
+    input.addEventListener("focus", ensureInputVisible);
+    return () => {
+      input.removeEventListener("focus", ensureInputVisible);
+    };
+  }, [chatMode]);
 
   useEffect(() => {
     if (!isSendingMessage && !isConnecting) {
@@ -1668,6 +1794,22 @@ export function ChatRoomView({
           {/* Stranger video panel */}
           <div className="relative h-[calc(var(--vh,1dvh)*50)] w-full shrink-0 overflow-hidden border-b border-white/10 sm:h-full sm:w-1/2 sm:shrink sm:border-b-0 sm:border-r">
             <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+            {!isConnecting && hasResolvedStrangerProfile && (!remoteAudioEnabled || !hasRemoteVideo) && (
+              <div className="pointer-events-none absolute right-3 top-3 z-10 flex flex-col items-end gap-2">
+                {!remoteAudioEnabled && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-rose-300/45 bg-rose-500/30 px-3 py-1.5 text-[11px] font-bold text-rose-100 shadow-[0_6px_18px_rgba(244,63,94,0.35)] backdrop-blur-md">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 4 16 16" /><path d="M9 9v3a3 3 0 0 0 5.14 2.14" /><path d="M15 6a3 3 0 0 0-5.08-2.2" /></svg>
+                    Stranger muted
+                  </span>
+                )}
+                {!hasRemoteVideo && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-amber-300/45 bg-amber-500/28 px-3 py-1.5 text-[11px] font-bold text-amber-100 shadow-[0_6px_18px_rgba(245,158,11,0.35)] backdrop-blur-md">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m2 2 20 20" /><rect x="3" y="7" width="12" height="10" rx="2" /></svg>
+                    Stranger camera off
+                  </span>
+                )}
+              </div>
+            )}
             {!hasRemoteVideo && (
               <div className="absolute inset-0 grid place-items-center bg-black/90 text-center">
                 <div className="flex flex-col items-center gap-4">
@@ -1715,7 +1857,7 @@ export function ChatRoomView({
           {!showBackConfirm ? (
             <button
               onClick={() => setShowBackConfirm(true)}
-              className="btn-action btn-action-ghost flex h-10 min-w-[4rem] items-center justify-center gap-1.5 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md transition hover:bg-black/60"
+              className="btn-action btn-action-ghost flex h-11 min-w-[4.5rem] items-center justify-center gap-1.5 rounded-full bg-black/55 px-4 text-xs font-semibold text-white/90 backdrop-blur-md transition hover:bg-black/65"
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
               Back
@@ -1723,8 +1865,8 @@ export function ChatRoomView({
           ) : (
             <div className="flex items-center gap-2 animate-pop-in">
               <span className="text-xs font-semibold text-white/60">Leave?</span>
-              <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="btn-action btn-action-pink h-10 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md">Yes</button>
-              <button onClick={() => setShowBackConfirm(false)} className="btn-action btn-action-ghost h-10 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md">No</button>
+              <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="btn-action btn-action-pink h-11 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md">Yes</button>
+              <button onClick={() => setShowBackConfirm(false)} className="btn-action btn-action-ghost h-11 rounded-full bg-black/55 px-4 text-xs font-semibold text-white/90 backdrop-blur-md">No</button>
             </div>
           )}
 
@@ -1745,28 +1887,14 @@ export function ChatRoomView({
                 <span className="text-white/50">Connecting...</span>
               )}
               {subscriptionTier && (
-                <span className={`ml-1 inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
-                  {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
-                </span>
+                <TierLogo
+                  tier={subscriptionTier}
+                  size="xs"
+                  className={`ml-1 rounded-full px-1.5 py-1 ring-1 ${subscriptionTier === "vvip" ? "bg-amber-400/10 ring-amber-400/15" : "bg-pink-500/10 ring-pink-500/15"}`}
+                />
               )}
             </p>
            
-            {!isConnecting && hasResolvedStrangerProfile && (!hasRemoteVideo || !remoteAudioEnabled) && (
-              <div className="mt-1 flex flex-wrap gap-1.5">
-                {!remoteAudioEnabled && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/30 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200">
-                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m4 4 16 16" /><path d="M9 9v3a3 3 0 0 0 5.14 2.14" /><path d="M15 6a3 3 0 0 0-5.08-2.2" /></svg>
-                    Muted
-                  </span>
-                )}
-                {!hasRemoteVideo && (
-                  <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-100">
-                    <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m2 2 20 20" /><rect x="3" y="7" width="12" height="10" rx="2" /></svg>
-                    Camera off
-                  </span>
-                )}
-              </div>
-            )}
             {hasResolvedStrangerProfile && strangerProfile.interests && strangerProfile.interests.length > 0 && (
               <div className="mt-0.5 flex flex-wrap gap-1">
                 {strangerProfile.interests.map((tag) => (
@@ -1792,15 +1920,15 @@ export function ChatRoomView({
                 {!showLeaveConfirm ? (
                   <button
                     onClick={() => setShowLeaveConfirm(true)}
-                    className="btn-action btn-action-rose flex h-10 items-center rounded-full bg-rose-500/90 px-5 text-xs font-bold text-white backdrop-blur-md"
+                    className="btn-action btn-action-rose flex h-11 items-center rounded-full bg-rose-500/90 px-6 text-xs font-bold text-white backdrop-blur-md"
                   >
                     Leave
                   </button>
                 ) : (
                   <div className="flex items-center gap-2 animate-pop-in">
                     <span className="text-xs font-semibold text-white/60">Sure?</span>
-                    <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="btn-action btn-action-pink h-10 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md">Yes</button>
-                    <button onClick={() => setShowLeaveConfirm(false)} className="btn-action btn-action-ghost h-10 rounded-full bg-black/50 px-4 text-xs font-semibold text-white/80 backdrop-blur-md">No</button>
+                    <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="btn-action btn-action-pink h-11 rounded-full bg-pink-500 px-4 text-xs font-bold text-white backdrop-blur-md">Yes</button>
+                    <button onClick={() => setShowLeaveConfirm(false)} className="btn-action btn-action-ghost h-11 rounded-full bg-black/55 px-4 text-xs font-semibold text-white/90 backdrop-blur-md">No</button>
                   </div>
                 )}
               </>
@@ -1810,10 +1938,20 @@ export function ChatRoomView({
             <button
               type="button"
               onClick={() => setShowChatFilters(true)}
-              className="relative flex h-10 w-10 items-center justify-center rounded-full bg-black/50 text-white/70 backdrop-blur-md transition hover:bg-black/60 active:scale-[0.96]"
-              aria-label="Filters"
+              className="relative flex h-10 items-center gap-2 rounded-full bg-black/50 px-3 text-white/70 backdrop-blur-md transition hover:bg-black/60 active:scale-[0.96]"
+              aria-label={!hasActiveSubscription ? "Unlock filters" : "Filters"}
             >
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
+              <span className="text-[11px] font-semibold">{!hasActiveSubscription ? "Unlock filters" : "Filters"}</span>
+              {!hasActiveSubscription ? (
+                <TierLogo tier="vvip" size="xs" className="rounded-full bg-amber-400/10 px-1.5 py-1 ring-1 ring-amber-400/15" />
+              ) : subscriptionTier ? (
+                <TierLogo
+                  tier={subscriptionTier}
+                  size="xs"
+                  className={`rounded-full px-1.5 py-1 ring-1 ${subscriptionTier === "vvip" ? "bg-amber-400/10 ring-amber-400/15" : "bg-pink-500/10 ring-pink-500/15"}`}
+                />
+              ) : null}
               {chatFilterActiveCount > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-pink-500 text-[9px] font-bold text-white">{chatFilterActiveCount}</span>
               )}
@@ -1877,7 +2015,7 @@ export function ChatRoomView({
                 }}
                 placeholder="Message..."
                 disabled={isSendingMessage}
-                className="h-9 flex-1 rounded-lg bg-white/[0.06] px-3 text-sm text-white outline-none placeholder:text-white/25"
+                className="h-9 flex-1 rounded-lg bg-white/[0.06] px-3 text-base text-white outline-none placeholder:text-white/25 sm:text-sm"
               />
               <button
                 onClick={sendMessage}
@@ -1973,23 +2111,23 @@ export function ChatRoomView({
   return (
     <section
       ref={chatContainerRef}
-      className={`${isFullscreen ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.06] bg-[#0a0a10] shadow-[0_8px_40px_rgba(0,0,0,0.5)] overscroll-contain touch-manipulation`}
+      className={`${isFullscreenActive ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.06] bg-[#0a0a10] shadow-[0_8px_40px_rgba(0,0,0,0.5)] overscroll-contain touch-manipulation`}
     >
       {/* ─── Header ─── */}
       <header className="flex items-center gap-2 border-b border-white/[0.06] bg-[#0d0d14]/90 px-2.5 py-2 backdrop-blur-md sm:px-4 sm:py-2.5">
         {!showBackConfirm ? (
           <button
             onClick={() => setShowBackConfirm(true)}
-            className="btn-action btn-action-ghost flex h-8 items-center gap-1 rounded-lg bg-white/[0.06] px-2.5 text-[11px] font-semibold text-white/50 transition-all duration-150 hover:bg-white/[0.1] hover:text-white/70"
+            className="btn-action btn-action-ghost flex h-10 items-center gap-1.5 rounded-xl bg-white/[0.08] px-3.5 text-xs font-semibold text-white/80 transition-all duration-150 hover:bg-white/[0.14] hover:text-white"
           >
-            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
+            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m15 18-6-6 6-6"/></svg>
             Back
           </button>
         ) : (
           <div className="flex items-center gap-1.5 animate-pop-in">
-            <span className="text-[11px] font-semibold text-white/40">Sure?</span>
-            <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="btn-action btn-action-pink h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-pink-400">Yes</button>
-            <button onClick={() => setShowBackConfirm(false)} className="btn-action btn-action-ghost h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition-all duration-150 hover:bg-white/[0.14]">No</button>
+            <span className="text-xs font-semibold text-white/60">Sure?</span>
+            <button onClick={() => { setShowBackConfirm(false); onChangeMode(); }} className="btn-action btn-action-pink h-9 rounded-xl bg-pink-500 px-3.5 text-xs font-bold text-white transition-all duration-150 hover:bg-pink-400">Yes</button>
+            <button onClick={() => setShowBackConfirm(false)} className="btn-action btn-action-ghost h-9 rounded-xl bg-white/[0.1] px-3.5 text-xs font-semibold text-white/85 transition-all duration-150 hover:bg-white/[0.16]">No</button>
           </div>
         )}
 
@@ -2010,9 +2148,11 @@ export function ChatRoomView({
               <span className="text-sm font-semibold text-white/50">Connecting...</span>
             )}
             {subscriptionTier && (
-              <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[9px] font-extrabold leading-none ${subscriptionTier === "vvip" ? "bg-amber-400/20 text-amber-400" : "bg-pink-500/20 text-pink-400"}`}>
-                {subscriptionTier === "vvip" ? "VVIP" : "VIP"}
-              </span>
+              <TierLogo
+                tier={subscriptionTier}
+                size="xs"
+                className={`rounded-full px-1.5 py-1 ring-1 ${subscriptionTier === "vvip" ? "bg-amber-400/10 ring-amber-400/15" : "bg-pink-500/10 ring-pink-500/15"}`}
+              />
             )}
           </div>
           {hasResolvedStrangerProfile && strangerProfile.interests && strangerProfile.interests.length > 0 ? (
@@ -2044,10 +2184,20 @@ export function ChatRoomView({
           <button
             type="button"
             onClick={() => setShowChatFilters(true)}
-            className="relative flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white/30 transition hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.95]"
-            aria-label="Filters"
+            className="relative flex h-10 flex-shrink-0 items-center gap-2 rounded-xl px-3 text-white/65 transition hover:bg-white/[0.1] hover:text-white active:scale-[0.95]"
+            aria-label={!hasActiveSubscription ? "Unlock filters" : "Filters"}
           >
             <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
+            <span className="text-[11px] font-semibold">{!hasActiveSubscription ? "Unlock filters" : "Filters"}</span>
+            {!hasActiveSubscription ? (
+              <TierLogo tier="vvip" size="xs" className="rounded-full bg-amber-400/10 px-1.5 py-1 ring-1 ring-amber-400/15" />
+            ) : subscriptionTier ? (
+              <TierLogo
+                tier={subscriptionTier}
+                size="xs"
+                className={`rounded-full px-1.5 py-1 ring-1 ${subscriptionTier === "vvip" ? "bg-amber-400/10 ring-amber-400/15" : "bg-pink-500/10 ring-pink-500/15"}`}
+              />
+            ) : null}
             {chatFilterActiveCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-pink-500 text-[9px] font-bold text-white">{chatFilterActiveCount}</span>
             )}
@@ -2066,29 +2216,31 @@ export function ChatRoomView({
               {!showLeaveConfirm ? (
                 <button
                   onClick={() => setShowLeaveConfirm(true)}
-                  className="btn-action btn-action-rose flex h-8 items-center rounded-lg bg-rose-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-rose-400"
+                  className="btn-action btn-action-rose flex h-10 items-center rounded-xl bg-rose-500 px-4 text-xs font-bold text-white transition-all duration-150 hover:bg-rose-400"
                 >
                   Leave
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 animate-pop-in">
-                  <span className="text-[11px] font-semibold text-white/40">Sure?</span>
-                  <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="btn-action btn-action-pink h-7 rounded-lg bg-pink-500 px-3 text-[11px] font-bold text-white transition-all duration-150 hover:bg-pink-400">Yes</button>
-                  <button onClick={() => setShowLeaveConfirm(false)} className="btn-action btn-action-ghost h-7 rounded-lg bg-white/[0.08] px-3 text-[11px] font-semibold text-white/60 transition-all duration-150 hover:bg-white/[0.14]">No</button>
+                  <span className="text-xs font-semibold text-white/60">Sure?</span>
+                  <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="btn-action btn-action-pink h-9 rounded-xl bg-pink-500 px-3.5 text-xs font-bold text-white transition-all duration-150 hover:bg-pink-400">Yes</button>
+                  <button onClick={() => setShowLeaveConfirm(false)} className="btn-action btn-action-ghost h-9 rounded-xl bg-white/[0.1] px-3.5 text-xs font-semibold text-white/85 transition-all duration-150 hover:bg-white/[0.16]">No</button>
                 </div>
               )}
             </>
           ) : null}
           <button
             onClick={toggleFullscreen}
-            className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-white/30 transition hover:bg-white/[0.06] hover:text-white/60 active:scale-[0.95]"
-            aria-label={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
+            className="flex h-10 min-w-[5.75rem] flex-shrink-0 items-center justify-center gap-1.5 rounded-xl bg-white/[0.06] px-3 text-xs font-semibold text-white/80 transition hover:bg-white/[0.12] hover:text-white active:scale-[0.95]"
+            aria-label={isFullscreenActive ? "Exit fullscreen" : "Fullscreen"}
+            title={isFullscreenActive ? "Exit fullscreen" : "Fullscreen"}
           >
-            {isFullscreen ? (
+            {isFullscreenActive ? (
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
             ) : (
               <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
             )}
+            <span>{isFullscreenActive ? "Exit" : "Full"}</span>
           </button>
         </div>
       </header>
@@ -2432,7 +2584,10 @@ export function ChatRoomView({
       </div>
 
       {/* ─── Footer ─── */}
-      <footer className="border-t border-white/[0.06] bg-[#0a0a10] px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 md:px-4 md:pt-2.5 flex-shrink-0">
+      <footer
+        className="border-t border-white/[0.06] bg-[#0a0a10] px-3 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2 md:px-4 md:pt-2.5 flex-shrink-0"
+        style={{ paddingBottom: "max(env(safe-area-inset-bottom), calc(0.5rem + var(--keyboard-offset, 0px)))" }}
+      >
         <div className="mx-auto w-full max-w-2xl space-y-2">
           {/* Reply preview */}
           {replyingTo && (
@@ -2544,7 +2699,7 @@ export function ChatRoomView({
                 }}
                 placeholder={isConnecting ? "Finding someone..." : "Message..."}
                 disabled={isSendingMessage}
-                className="h-full w-full bg-transparent px-4 py-3 text-sm text-white outline-none placeholder:text-white/20"
+                className="h-full w-full bg-transparent px-4 py-3 text-base text-white outline-none placeholder:text-white/20 sm:text-sm"
               />
             </div>
 

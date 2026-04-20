@@ -87,6 +87,11 @@ const E2EE_WAIT_BEFORE_QUEUE_MS = 1800;
 const REALTIME_QUEUE_PING_MS = 2000;
 const REALTIME_WS_URL = process.env.NEXT_PUBLIC_REALTIME_WS_URL || "ws://localhost:8787";
 const REALTIME_WS_ENABLED = process.env.NEXT_PUBLIC_DISABLE_REALTIME_WS !== "true";
+const REALTIME_WS_RECONNECT_BASE_MS = 1000;
+const REALTIME_WS_RECONNECT_MAX_MS = 10000;
+const REALTIME_SIGNAL_BUFFER_LIMIT = 100;
+const REALTIME_SIGNAL_BUFFER_TTL_MS = 60_000;
+const NEGOTIATION_DEBOUNCE_MS = 500;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const DEMO_FALLBACK_TRIGGER_MS = 9000;
 const DEMO_CONNECT_MIN_MS = 2000;
@@ -177,6 +182,18 @@ type RealtimeSignalEvent = {
   fromUid: string;
   kind: RealtimeSignalKind;
   payload: RTCSessionDescriptionInit | RTCIceCandidateInit;
+  receivedAtMs: number;
+};
+
+type RealtimeQueueJoinPayload = {
+  mode: ChatMode;
+  filters: ChatFilters;
+  profile: {
+    gender: UserProfile["gender"];
+    age: UserProfile["age"];
+    countryCode: UserProfile["countryCode"] | null;
+    interests: string[];
+  };
 };
 
 const getChatSessionStorageKey = (uid: string): string => `chat_session_${uid}`;
@@ -309,9 +326,10 @@ export default function Home() {
   const realtimeIsOffererRef = useRef(false);
   const realtimeSignalBufferRef = useRef<RealtimeSignalEvent[]>([]);
   const realtimeSignalHandlerRef = useRef<((event: RealtimeSignalEvent) => void) | null>(null);
+  const realtimeQueueJoinPayloadRef = useRef<RealtimeQueueJoinPayload | null>(null);
   const realtimeWsDisabledRef = useRef(!REALTIME_WS_ENABLED);
-  const realtimeWsConnectedOnceRef = useRef(false);
-  const realtimeWsFailureHandledRef = useRef(false);
+  const realtimeReconnectTimeoutRef = useRef<number | null>(null);
+  const realtimeReconnectAttemptRef = useRef(0);
   const [strangerSkipped, setStrangerSkipped] = useState(false);
   const [waitingForNext, setWaitingForNext] = useState(false);
 
@@ -335,7 +353,10 @@ export default function Home() {
   const processedCandidateIdsRef = useRef<Set<string>>(new Set());
   const noShowTimeoutRef = useRef<number | null>(null);
   const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
+  const pendingRemoteCandidateSignaturesRef = useRef<Set<string>>(new Set());
   const processedFallbackCandidateSignaturesRef = useRef<Set<string>>(new Set());
+  const lastOfferAttemptAtRef = useRef(0);
+  const lastAnswerAttemptAtRef = useRef(0);
   const decryptedTextCacheRef = useRef<Map<string, { ciphertext: string; iv: string; text: string }>>(new Map());
   const decryptedImageUrlCacheRef = useRef<Map<string, { sourceUrl: string; objectUrl: string }>>(new Map());
 
@@ -366,6 +387,52 @@ export default function Home() {
     return new Promise((resolve) => {
       window.setTimeout(resolve, ms);
     });
+  };
+
+  const clearRealtimeReconnectTimeout = () => {
+    if (realtimeReconnectTimeoutRef.current) {
+      window.clearTimeout(realtimeReconnectTimeoutRef.current);
+      realtimeReconnectTimeoutRef.current = null;
+    }
+  };
+
+  const getIceCandidateSignature = (candidateInit: RTCIceCandidateInit): string => {
+    return JSON.stringify({
+      candidate: candidateInit.candidate ?? "",
+      sdpMid: candidateInit.sdpMid ?? null,
+      sdpMLineIndex: candidateInit.sdpMLineIndex ?? null,
+      usernameFragment: candidateInit.usernameFragment ?? null,
+    });
+  };
+
+  const enqueuePendingRemoteCandidate = (candidateInit: RTCIceCandidateInit) => {
+    const signature = getIceCandidateSignature(candidateInit);
+    if (pendingRemoteCandidateSignaturesRef.current.has(signature)) {
+      return;
+    }
+
+    pendingRemoteCandidateSignaturesRef.current.add(signature);
+    pendingRemoteCandidatesRef.current.push(candidateInit);
+  };
+
+  const markNegotiationAttempt = (attemptRef: { current: number }): boolean => {
+    const attemptAtMs = Date.now();
+    if (attemptAtMs - attemptRef.current < NEGOTIATION_DEBOUNCE_MS) {
+      return false;
+    }
+
+    attemptRef.current = attemptAtMs;
+    return true;
+  };
+
+  const bufferRealtimeSignal = (signalEvent: RealtimeSignalEvent) => {
+    const cutoff = Date.now() - REALTIME_SIGNAL_BUFFER_TTL_MS;
+    const bufferedSignals = realtimeSignalBufferRef.current.filter((buffered) => buffered.receivedAtMs >= cutoff);
+    bufferedSignals.push(signalEvent);
+    if (bufferedSignals.length > REALTIME_SIGNAL_BUFFER_LIMIT) {
+      bufferedSignals.splice(0, bufferedSignals.length - REALTIME_SIGNAL_BUFFER_LIMIT);
+    }
+    realtimeSignalBufferRef.current = bufferedSignals;
   };
 
   const getMediaErrorName = (error: unknown): string => {
@@ -426,6 +493,7 @@ export default function Home() {
 
     const queuedMode = realtimeQueueModeRef.current;
     realtimeQueueModeRef.current = null;
+    realtimeQueueJoinPayloadRef.current = null;
 
     if (queuedMode && realtimeSocketRef.current?.readyState === WebSocket.OPEN && realtimeConnectedRef.current) {
       realtimeSocketRef.current.send(JSON.stringify({ event: "queue_leave", payload: { mode: queuedMode } }));
@@ -659,7 +727,7 @@ export default function Home() {
     }
 
     setIsConnecting(true);
-    setConnectingStatus("No users online. Connecting to demo participant...");
+    setConnectingStatus("Checking availability...");
     setHasRemoteVideo(false);
     setHasRemoteAudio(false);
     setDemoRemoteVideoUrl(null);
@@ -706,9 +774,12 @@ export default function Home() {
     videoCandidatesUnsubRef.current = null;
     processedCandidateIdsRef.current.clear();
     pendingRemoteCandidatesRef.current = [];
+    pendingRemoteCandidateSignaturesRef.current.clear();
     processedFallbackCandidateSignaturesRef.current.clear();
     videoOfferSentRef.current = false;
     videoAnswerSentRef.current = false;
+    lastOfferAttemptAtRef.current = 0;
+    lastAnswerAttemptAtRef.current = 0;
 
     if (peerConnectionRef.current) {
       peerConnectionRef.current.onicecandidate = null;
@@ -783,6 +854,23 @@ export default function Home() {
     };
   }, [demoRemoteVideoUrl, handleDemoVideoEnded]);
 
+  const publishLocalMediaState = useCallback((nextAudioEnabled: boolean, nextVideoEnabled: boolean) => {
+    if (!user || !activeRoomId) {
+      return;
+    }
+
+    void updateDoc(doc(db, "rooms", activeRoomId), {
+      [`mediaStateBy.${user.uid}`]: {
+        audioEnabled: nextAudioEnabled,
+        videoEnabled: nextVideoEnabled,
+        updatedAtMs: Date.now(),
+      },
+      mediaStateUpdatedAt: serverTimestamp(),
+    }).catch(() => {
+      // Ignore transient media-state publish failures.
+    });
+  }, [activeRoomId, user]);
+
   const toggleLocalVideo = () => {
     const localStream = localMediaStreamRef.current;
     if (!localStream) {
@@ -808,6 +896,7 @@ export default function Home() {
     }
 
     setLocalVideoEnabled(shouldEnable);
+    publishLocalMediaState(localAudioEnabled, shouldEnable);
   };
 
   const toggleLocalAudio = () => {
@@ -835,6 +924,7 @@ export default function Home() {
     }
 
     setLocalAudioEnabled(shouldEnable);
+    publishLocalMediaState(shouldEnable, localVideoEnabled);
   };
 
   const switchCamera = async () => {
@@ -904,15 +994,50 @@ export default function Home() {
 
     const pending = [...pendingRemoteCandidatesRef.current];
     pendingRemoteCandidatesRef.current = [];
+    pendingRemoteCandidateSignaturesRef.current.clear();
 
     for (const candidateInit of pending) {
       try {
         await peerConnection.addIceCandidate(new RTCIceCandidate(candidateInit));
       } catch {
-        // Ignore transient addIceCandidate failures during renegotiation.
+        enqueuePendingRemoteCandidate(candidateInit);
       }
     }
   };
+
+  const sendRealtimeEvent = useCallback((event: string, payload?: unknown): boolean => {
+    const socket = realtimeSocketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !realtimeConnectedRef.current) {
+      return false;
+    }
+
+    try {
+      socket.send(JSON.stringify({ event, payload }));
+      return true;
+    } catch {
+      realtimeConnectedRef.current = false;
+      return false;
+    }
+  }, []);
+
+  const startRealtimeQueueHeartbeat = useCallback(() => {
+    if (realtimeQueuePingIntervalRef.current) {
+      window.clearInterval(realtimeQueuePingIntervalRef.current);
+    }
+
+    realtimeQueuePingIntervalRef.current = window.setInterval(() => {
+      if (!activeRoomIdRef.current && realtimeQueueModeRef.current) {
+        void sendRealtimeEvent("queue_ping", { mode: realtimeQueueModeRef.current });
+      }
+    }, REALTIME_QUEUE_PING_MS);
+  }, [sendRealtimeEvent]);
+
+  const stopRealtimeQueueHeartbeat = useCallback(() => {
+    if (realtimeQueuePingIntervalRef.current) {
+      window.clearInterval(realtimeQueuePingIntervalRef.current);
+      realtimeQueuePingIntervalRef.current = null;
+    }
+  }, []);
 
   const getPreferredLocalMediaStream = async (
     facingMode: "user" | "environment",
@@ -1546,6 +1671,7 @@ export default function Home() {
       if (imageCleanupIntervalRef.current) {
         window.clearInterval(imageCleanupIntervalRef.current);
       }
+      clearRealtimeReconnectTimeout();
       clearDemoTimers();
       cleanupVideoSession();
       clearPendingSendRetry();
@@ -1568,8 +1694,11 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) {
+      clearRealtimeReconnectTimeout();
+      realtimeReconnectAttemptRef.current = 0;
       realtimeConnectedRef.current = false;
       realtimeQueueModeRef.current = null;
+      realtimeQueueJoinPayloadRef.current = null;
       realtimeRoomIdRef.current = null;
       realtimePeerUidRef.current = null;
       realtimeIsOffererRef.current = false;
@@ -1594,36 +1723,59 @@ export default function Home() {
       return;
     }
 
-    const socket = new WebSocket(REALTIME_WS_URL);
-    realtimeSocketRef.current = socket;
+    let disposed = false;
 
-    const disableRealtimeWs = (reason: string) => {
-      if (realtimeWsFailureHandledRef.current || realtimeWsConnectedOnceRef.current) {
+    const scheduleReconnect = (reason: string) => {
+      if (disposed || realtimeWsDisabledRef.current || realtimeReconnectTimeoutRef.current) {
         return;
       }
 
-      realtimeWsFailureHandledRef.current = true;
-      realtimeWsDisabledRef.current = true;
-      realtimeQueueModeRef.current = null;
+      realtimeConnectedRef.current = false;
       stopRealtimeQueueHeartbeat();
-      console.warn("[realtime] websocket unavailable; using Firestore matchmaking fallback", {
+
+      const attempt = realtimeReconnectAttemptRef.current + 1;
+      realtimeReconnectAttemptRef.current = attempt;
+      const delayMs = Math.min(REALTIME_WS_RECONNECT_BASE_MS * (2 ** (attempt - 1)), REALTIME_WS_RECONNECT_MAX_MS);
+
+      if (realtimeQueueModeRef.current && !activeRoomIdRef.current && !isDemoModeRef.current) {
+        setConnectingStatus("Realtime connection lost. Reconnecting...");
+      }
+
+      console.warn("[realtime] websocket disconnected; retrying", {
         reason,
         url: REALTIME_WS_URL,
+        attempt,
+        delayMs,
       });
-    };
 
-    socket.onopen = () => {
-      void user.getIdToken(true).then((token) => {
-        if (socket.readyState !== WebSocket.OPEN) {
+      realtimeReconnectTimeoutRef.current = window.setTimeout(() => {
+        realtimeReconnectTimeoutRef.current = null;
+        if (disposed || realtimeWsDisabledRef.current) {
           return;
         }
-        socket.send(JSON.stringify({ event: "auth", payload: { token } }));
-      }).catch(() => {
-        console.warn("[realtime] failed to fetch auth token for websocket");
-      });
+        connectSocket();
+      }, delayMs);
     };
 
-    socket.onmessage = (event) => {
+    const restoreRealtimeQueue = () => {
+      const queuePayload = realtimeQueueJoinPayloadRef.current;
+      if (!queuePayload || activeRoomIdRef.current) {
+        return;
+      }
+
+      const rejoined = sendRealtimeEvent("queue_join", queuePayload);
+      if (!rejoined) {
+        return;
+      }
+
+      realtimeQueueModeRef.current = queuePayload.mode;
+      startRealtimeQueueHeartbeat();
+      if (!isDemoModeRef.current) {
+        setConnectingStatus("Looking for an available stranger...");
+      }
+    };
+
+    const handleRealtimeMessage = (event: MessageEvent) => {
       let parsed: { event?: string; payload?: unknown } | null = null;
       try {
         parsed = JSON.parse(String(event.data)) as { event?: string; payload?: unknown };
@@ -1636,7 +1788,17 @@ export default function Home() {
 
       if (eventName === "auth_ok") {
         realtimeConnectedRef.current = true;
-        realtimeWsConnectedOnceRef.current = true;
+        realtimeReconnectAttemptRef.current = 0;
+        clearRealtimeReconnectTimeout();
+        restoreRealtimeQueue();
+        return;
+      }
+
+      if (eventName === "error") {
+        const errorCode = typeof payload?.code === "string" ? payload.code : null;
+        if (errorCode === "auth-failed" || errorCode === "unauthenticated") {
+          scheduleReconnect(errorCode);
+        }
         return;
       }
 
@@ -1662,6 +1824,7 @@ export default function Home() {
         realtimePeerUidRef.current = peerUid;
         realtimeIsOffererRef.current = isOfferer;
         realtimeQueueModeRef.current = null;
+        realtimeQueueJoinPayloadRef.current = null;
         stopRealtimeQueueHeartbeat();
 
         const roomRef = doc(db, "rooms", roomId);
@@ -1689,7 +1852,7 @@ export default function Home() {
 
         cleanupWaitIntervals();
         stopDemoMode();
-        setConnectingStatus("Stranger found. Connecting...");
+        setConnectingStatus("Stranger found. Preparing secure connection...");
         activeRoomIdRef.current = roomId;
         setActiveRoomId(roomId);
         return;
@@ -1717,6 +1880,7 @@ export default function Home() {
           fromUid,
           kind,
           payload: signalPayload,
+          receivedAtMs: Date.now(),
         };
 
         const signalHandler = realtimeSignalHandlerRef.current;
@@ -1725,33 +1889,70 @@ export default function Home() {
           return;
         }
 
-        realtimeSignalBufferRef.current.push(signalEvent);
+        bufferRealtimeSignal(signalEvent);
       }
     };
 
-    socket.onerror = () => {
-      realtimeConnectedRef.current = false;
-      disableRealtimeWs("socket_error");
+    const connectSocket = () => {
+      if (disposed || realtimeWsDisabledRef.current) {
+        return;
+      }
+
+      clearRealtimeReconnectTimeout();
+      const socket = new WebSocket(REALTIME_WS_URL);
+      realtimeSocketRef.current = socket;
+
+      socket.onopen = () => {
+        void user.getIdToken(true).then((token) => {
+          if (socket.readyState !== WebSocket.OPEN) {
+            return;
+          }
+          socket.send(JSON.stringify({ event: "auth", payload: { token } }));
+        }).catch(() => {
+          console.warn("[realtime] failed to fetch auth token for websocket");
+          try {
+            socket.close();
+          } catch {
+            // Ignore close races.
+          }
+          scheduleReconnect("token_fetch_failed");
+        });
+      };
+
+      socket.onmessage = handleRealtimeMessage;
+
+      socket.onerror = () => {
+        if (realtimeSocketRef.current === socket) {
+          realtimeSocketRef.current = null;
+        }
+        scheduleReconnect("socket_error");
+      };
+
+      socket.onclose = () => {
+        if (realtimeSocketRef.current === socket) {
+          realtimeSocketRef.current = null;
+        }
+        scheduleReconnect("socket_closed");
+      };
     };
 
-    socket.onclose = () => {
-      realtimeConnectedRef.current = false;
-      disableRealtimeWs("closed_before_auth");
-    };
+    connectSocket();
 
     return () => {
-      if (realtimeSocketRef.current === socket) {
-        realtimeSocketRef.current = null;
-      }
+      disposed = true;
+      clearRealtimeReconnectTimeout();
       realtimeConnectedRef.current = false;
       stopRealtimeQueueHeartbeat();
-      try {
-        socket.close();
-      } catch {
-        // Ignore close races.
+      if (realtimeSocketRef.current) {
+        try {
+          realtimeSocketRef.current.close();
+        } catch {
+          // Ignore close races.
+        }
+        realtimeSocketRef.current = null;
       }
     };
-  }, [stopDemoMode, user]);
+  }, [sendRealtimeEvent, startRealtimeQueueHeartbeat, stopDemoMode, stopRealtimeQueueHeartbeat, user]);
 
   useEffect(() => {
     if (activeRoomId) {
@@ -1844,6 +2045,10 @@ export default function Home() {
         }
         setLocalVideoEnabled(true);
         setLocalAudioEnabled(localStream.getAudioTracks().some((track) => track.enabled));
+
+        const localVideoTrackEnabled = localStream.getVideoTracks().some((track) => track.enabled);
+        const localAudioTrackEnabled = localStream.getAudioTracks().some((track) => track.enabled);
+        publishLocalMediaState(localAudioTrackEnabled, localVideoTrackEnabled);
         const currentFacingMode = localStream.getVideoTracks()[0]?.getSettings().facingMode;
         if (currentFacingMode === "environment" || currentFacingMode === "user") {
           setCameraFacingMode(currentFacingMode);
@@ -2027,6 +2232,10 @@ export default function Home() {
           if (!isOfferer) return;
           void (async () => {
             try {
+              if (!markNegotiationAttempt(lastOfferAttemptAtRef)) {
+                return;
+              }
+
               // Safari on some Apple devices may not expose restartIce reliably.
               // createOffer({ iceRestart: true }) is the compatibility-safe fallback.
               if (typeof peerConnection.restartIce === "function") {
@@ -2086,12 +2295,12 @@ export default function Home() {
           if (signalEvent.kind === "ice") {
             const candidateInit = signalEvent.payload as RTCIceCandidateInit;
             if (!peerConnection.remoteDescription) {
-              pendingRemoteCandidatesRef.current.push(candidateInit);
+              enqueuePendingRemoteCandidate(candidateInit);
               return;
             }
 
             void peerConnection.addIceCandidate(new RTCIceCandidate(candidateInit)).catch(() => {
-              pendingRemoteCandidatesRef.current.push(candidateInit);
+              enqueuePendingRemoteCandidate(candidateInit);
             });
             return;
           }
@@ -2100,6 +2309,10 @@ export default function Home() {
             const remoteOffer = signalEvent.payload as RTCSessionDescriptionInit;
             void (async () => {
               try {
+                if (!markNegotiationAttempt(lastAnswerAttemptAtRef)) {
+                  return;
+                }
+
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(remoteOffer));
                 await flushPendingRemoteCandidates(peerConnection);
                 const createdAnswer = await peerConnection.createAnswer();
@@ -2175,13 +2388,13 @@ export default function Home() {
 
               if (data.candidate) {
                 if (!peerConnection.remoteDescription) {
-                  pendingRemoteCandidatesRef.current.push(data.candidate);
+                  enqueuePendingRemoteCandidate(data.candidate);
                   return;
                 }
 
                 void peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)).catch(() => {
                   // Queue again and retry after next remote description update.
-                  pendingRemoteCandidatesRef.current.push(data.candidate as RTCIceCandidateInit);
+                  enqueuePendingRemoteCandidate(data.candidate as RTCIceCandidateInit);
                 });
               }
             });
@@ -2219,18 +2432,22 @@ export default function Home() {
 
               processedFallbackCandidateSignaturesRef.current.add(signature);
               if (!peerConnection.remoteDescription) {
-                pendingRemoteCandidatesRef.current.push(candidateInit);
+                enqueuePendingRemoteCandidate(candidateInit);
                 return;
               }
 
               void peerConnection.addIceCandidate(new RTCIceCandidate(candidateInit)).catch(() => {
-                pendingRemoteCandidatesRef.current.push(candidateInit);
+                enqueuePendingRemoteCandidate(candidateInit);
               });
             });
 
             if (!isOfferer && remoteOffer && !peerConnection.currentRemoteDescription && !videoAnswerSentRef.current) {
               void (async () => {
                 try {
+                  if (!markNegotiationAttempt(lastAnswerAttemptAtRef)) {
+                    return;
+                  }
+
                   await peerConnection.setRemoteDescription(new RTCSessionDescription(remoteOffer));
                   await flushPendingRemoteCandidates(peerConnection);
                   const createdAnswer = await peerConnection.createAnswer();
@@ -2272,6 +2489,10 @@ export default function Home() {
         );
 
         if (isOfferer && !videoOfferSentRef.current) {
+          if (!markNegotiationAttempt(lastOfferAttemptAtRef)) {
+            return;
+          }
+
           const createdOffer = await peerConnection.createOffer();
           await peerConnection.setLocalDescription(createdOffer);
           videoOfferSentRef.current = true;
@@ -2308,7 +2529,7 @@ export default function Home() {
       // panel doesn't go black between stranger connections.
       cleanupVideoSession(chatMode === "video");
     };
-  }, [activeRoomId, chatMode, roomParticipants, user]);
+  }, [activeRoomId, chatMode, publishLocalMediaState, roomParticipants, user]);
 
   useEffect(() => {
     if (!activeRoomId || !user) {
@@ -2536,6 +2757,7 @@ export default function Home() {
       void sendRealtimeEvent("queue_leave", { mode: realtimeQueueModeRef.current });
       realtimeQueueModeRef.current = null;
     }
+    realtimeQueueJoinPayloadRef.current = null;
     stopRealtimeQueueHeartbeat();
 
     cleanupWaitIntervals();
@@ -2574,6 +2796,7 @@ export default function Home() {
         const roomData = snapshot.data() as {
           participants?: string[];
           participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string; interests?: string[] }>
+          mediaStateBy?: Record<string, { audioEnabled?: boolean; videoEnabled?: boolean; updatedAtMs?: number }>;
           typingBy?: Record<string, boolean>;
           presenceBy?: Record<string, number>;
           e2eePublicKeys?: Record<string, JsonWebKey>;
@@ -2604,6 +2827,17 @@ export default function Home() {
             countryCode: stranger.countryCode,
             interests: stranger.interests,
           });
+        }
+
+        const strangerUid = roomData.participants?.find((participantUid) => participantUid !== user.uid);
+        const strangerMediaState = strangerUid ? roomData.mediaStateBy?.[strangerUid] : undefined;
+        if (strangerMediaState) {
+          if (typeof strangerMediaState.audioEnabled === "boolean") {
+            setHasRemoteAudio(strangerMediaState.audioEnabled);
+          }
+          if (typeof strangerMediaState.videoEnabled === "boolean") {
+            setHasRemoteVideo(strangerMediaState.videoEnabled);
+          }
         }
 
         if (roomData.status === "ended") {
@@ -3039,35 +3273,6 @@ export default function Home() {
     }
   };
 
-  const sendRealtimeEvent = useCallback((event: string, payload?: unknown): boolean => {
-    const socket = realtimeSocketRef.current;
-    if (!socket || socket.readyState !== WebSocket.OPEN || !realtimeConnectedRef.current) {
-      return false;
-    }
-
-    socket.send(JSON.stringify({ event, payload }));
-    return true;
-  }, []);
-
-  const startRealtimeQueueHeartbeat = useCallback(() => {
-    if (realtimeQueuePingIntervalRef.current) {
-      window.clearInterval(realtimeQueuePingIntervalRef.current);
-    }
-
-    realtimeQueuePingIntervalRef.current = window.setInterval(() => {
-      if (!activeRoomIdRef.current && realtimeQueueModeRef.current) {
-        void sendRealtimeEvent("queue_ping", { mode: realtimeQueueModeRef.current });
-      }
-    }, REALTIME_QUEUE_PING_MS);
-  }, [sendRealtimeEvent]);
-
-  const stopRealtimeQueueHeartbeat = useCallback(() => {
-    if (realtimeQueuePingIntervalRef.current) {
-      window.clearInterval(realtimeQueuePingIntervalRef.current);
-      realtimeQueuePingIntervalRef.current = null;
-    }
-  }, []);
-
   const emitRealtimeSignal = useCallback((roomId: string, toUid: string, kind: RealtimeSignalKind, payload: RTCSessionDescriptionInit | RTCIceCandidateInit) => {
     void sendRealtimeEvent("signal", {
       roomId,
@@ -3250,7 +3455,7 @@ export default function Home() {
       realtimeQueueModeRef.current = null;
     }
 
-    const wsQueued = sendRealtimeEvent("queue_join", {
+    const queueJoinPayload: RealtimeQueueJoinPayload = {
       mode: effectiveMode,
       filters,
       profile: {
@@ -3259,7 +3464,11 @@ export default function Home() {
         countryCode: filters.hideCountry ? null : (profile.countryCode ?? null),
         interests: interests ?? myInterests,
       },
-    });
+    };
+
+    realtimeQueueJoinPayloadRef.current = queueJoinPayload;
+
+    const wsQueued = sendRealtimeEvent("queue_join", queueJoinPayload);
 
     if (wsQueued) {
       realtimeQueueModeRef.current = effectiveMode;
@@ -3401,6 +3610,7 @@ export default function Home() {
       void sendRealtimeEvent("queue_leave", { mode: realtimeQueueModeRef.current });
       realtimeQueueModeRef.current = null;
     }
+    realtimeQueueJoinPayloadRef.current = null;
 
     stopRealtimeQueueHeartbeat();
 

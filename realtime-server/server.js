@@ -56,6 +56,7 @@ const wss = new WebSocketServer({ server });
 
 const clientsByUid = new Map();
 const socketState = new WeakMap();
+const socketHeartbeatState = new WeakMap();
 const inMemoryQueues = {
   text: new Map(),
   video: new Map(),
@@ -67,6 +68,7 @@ const WAITING_TTL_MS = 20000;
 const GROUP_ROOM_SIZE = 10;
 const GROUP_MIN_SIZE = 2;
 const GROUP_ROOM_IDLE_TTL_MS = 10 * 60 * 1000;
+const SOCKET_HEARTBEAT_INTERVAL_MS = 15000;
 
 const send = (ws, event, payload) => {
   if (ws.readyState !== ws.OPEN) return;
@@ -259,6 +261,7 @@ const pickCandidatesRedis = async (entry, maxCount) => {
 };
 
 const detachSocket = async (ws) => {
+  socketHeartbeatState.delete(ws);
   const state = socketState.get(ws);
   if (!state?.uid) return;
 
@@ -579,9 +582,22 @@ const parseMessage = (raw) => {
 
 wss.on("connection", (ws) => {
   socketState.set(ws, { uid: null, queueMode: null, roomId: null });
+  socketHeartbeatState.set(ws, { isAlive: true });
   send(ws, "hello", { ts: now() });
 
+  ws.on("pong", () => {
+    const heartbeat = socketHeartbeatState.get(ws);
+    if (heartbeat) {
+      heartbeat.isAlive = true;
+    }
+  });
+
   ws.on("message", async (raw) => {
+    const heartbeat = socketHeartbeatState.get(ws);
+    if (heartbeat) {
+      heartbeat.isAlive = true;
+    }
+
     const msg = parseMessage(raw);
     if (!msg || typeof msg !== "object") {
       send(ws, "error", { code: "bad-payload" });
@@ -757,6 +773,35 @@ const sweepQueues = async () => {
 setInterval(() => {
   void sweepQueues();
 }, 3000);
+
+setInterval(() => {
+  wss.clients.forEach((ws) => {
+    const heartbeat = socketHeartbeatState.get(ws);
+    if (!heartbeat) {
+      return;
+    }
+
+    if (!heartbeat.isAlive) {
+      try {
+        ws.terminate();
+      } catch {
+        // Ignore termination races.
+      }
+      return;
+    }
+
+    heartbeat.isAlive = false;
+    try {
+      ws.ping();
+    } catch {
+      try {
+        ws.terminate();
+      } catch {
+        // Ignore termination races.
+      }
+    }
+  });
+}, SOCKET_HEARTBEAT_INTERVAL_MS);
 
 server.listen(PORT, () => {
   console.log(`[realtime] websocket server listening on :${PORT}`);

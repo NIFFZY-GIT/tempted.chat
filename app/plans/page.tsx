@@ -2,10 +2,12 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import type { PlanId, PlanTier } from "@/lib/stripe";
 import { TopNav } from "@/components/navbar";
+import { TierLogo } from "@/components/tier-logo";
 import { getUserRole } from "@/lib/admin";
 
 type Duration = "1h" | "24h" | "7d" | "30d";
@@ -132,7 +134,9 @@ export default function PlansPage() {
         isAuthenticated={!!user}
         onLogin={() => router.push("/")}
         onLogout={() => void signOut(auth)}
-        isWorking={false}
+        isWorking={authLoading}
+        isAdmin={isAdmin}
+        onGoToAdmin={isAdmin ? () => router.push("/admin") : undefined}
       />
 
       <main className="mx-auto max-w-3xl px-4 pb-20 pt-24 sm:px-6">
@@ -163,12 +167,15 @@ export default function PlansPage() {
           ) : isAdmin ? (
             <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400">
               <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              Admin — Full VVIP Access
+              <span>Admin - Full</span>
+              <TierLogo tier="vvip" size="xs" />
+              <span>Access</span>
             </div>
           ) : isActive && subscriptionExpiresAt ? (
             <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {subscriptionTier?.toUpperCase()} until {new Date(subscriptionExpiresAt).toLocaleString()}
+              {subscriptionTier ? <TierLogo tier={subscriptionTier} size="xs" /> : null}
+              <span>until {new Date(subscriptionExpiresAt).toLocaleString()}</span>
             </div>
           ) : null}
         </div>
@@ -207,8 +214,8 @@ export default function PlansPage() {
           {/* VIP */}
           <div className="flex flex-col rounded-3xl border border-white/[0.08] bg-white/[0.02] p-6">
             <div className="mb-5">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-pink-500/10 text-lg">💎</span>
+              <div className="mb-3 flex items-center gap-3">
+                <TierLogo tier="vip" size="md" className="rounded-2xl bg-pink-500/10 px-2.5 py-1.5 ring-1 ring-pink-500/15" />
                 <h2 className="text-lg font-extrabold text-white">VIP</h2>
               </div>
               <div className="flex items-baseline gap-1">
@@ -237,7 +244,13 @@ export default function PlansPage() {
               disabled={loading !== null || authLoading || isGuest}
               className="relative w-full rounded-xl bg-white/[0.07] py-3 text-sm font-bold text-white transition hover:bg-white/[0.12] active:scale-[0.98] disabled:opacity-50"
             >
-              {isGuest ? "Sign in with Google or Email" : !user && !authLoading ? "Sign in first" : `Get VIP — ${fmt(PRICES.vip[duration])}`}
+              {isGuest ? "Sign in with Google or Email" : !user && !authLoading ? "Sign in first" : (
+                <span className="inline-flex items-center gap-2">
+                  <span>Get</span>
+                  <TierLogo tier="vip" size="xs" />
+                  <span>- {fmt(PRICES.vip[duration])}</span>
+                </span>
+              )}
               {vipLoading && (
                 <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm">
                   <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-pink-400" />
@@ -253,8 +266,8 @@ export default function PlansPage() {
             </span>
 
             <div className="mb-5">
-              <div className="mb-3 flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-400/10 text-lg">👑</span>
+              <div className="mb-3 flex items-center gap-3">
+                <TierLogo tier="vvip" size="md" className="rounded-2xl bg-amber-400/10 px-2.5 py-1.5 ring-1 ring-amber-400/20" />
                 <h2 className="text-lg font-extrabold text-white">VVIP</h2>
               </div>
               <div className="flex items-baseline gap-1">
@@ -279,7 +292,13 @@ export default function PlansPage() {
               disabled={loading !== null || authLoading || isGuest}
               className="relative w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3 text-sm font-bold text-black transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
             >
-              {isGuest ? "Sign in with Google or Email" : !user && !authLoading ? "Sign in first" : `Get VVIP — ${fmt(PRICES.vvip[duration])}`}
+              {isGuest ? "Sign in with Google or Email" : !user && !authLoading ? "Sign in first" : (
+                <span className="inline-flex items-center gap-2">
+                  <span>Get</span>
+                  <TierLogo tier="vvip" size="xs" />
+                  <span>- {fmt(PRICES.vvip[duration])}</span>
+                </span>
+              )}
               {vvipLoading && (
                 <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm">
                   <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-amber-400" />

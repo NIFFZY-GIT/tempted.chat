@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
+
+import { TierLogo } from "@/components/tier-logo";
 import { auth } from "@/lib/firebase";
 
 export type PlanId = "1h" | "24h" | "7d" | "30d";
@@ -173,7 +175,10 @@ export function SubscriptionPaywall({
                   </span>
                 )}
                 <span className="text-2xl">{plan.icon}</span>
-                <span className="text-sm font-bold text-white">{plan.name}</span>
+                <span className="inline-flex items-center gap-2 text-sm font-bold text-white">
+                  {plan.name === "VIP Monthly" ? <TierLogo tier="vip" size="xs" /> : null}
+                  <span>{plan.name}</span>
+                </span>
                 <span className="text-[11px] text-white/40">{plan.description}</span>
                 <span className="mt-1 text-lg font-extrabold text-white">
                   {formatPrice(plan.price)}
