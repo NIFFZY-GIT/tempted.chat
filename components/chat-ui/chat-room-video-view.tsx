@@ -59,7 +59,7 @@ export function ChatRoomVideoView({
 	onShowPaywall,
 }: any) {
     
-    const [showSkipConfirm, setShowSkipConfirm] = useState(false);
+
 
     useEffect(() => {
         document.body.classList.add("video-chat-active");
@@ -235,20 +235,13 @@ export function ChatRoomVideoView({
                                     Next
                                 </motion.button>
                             ) : !isConnecting && (
-                                !showSkipConfirm ? (
-                                    <motion.button 
-                                        key="skip" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                                        onClick={() => setShowSkipConfirm(true)}
-                                        className="h-10 px-5 rounded-[1rem] bg-white/5 border border-white/10 text-white font-black uppercase tracking-tighter hover:bg-white/10 active:scale-95 transition-all text-xs"
-                                    >
-                                        Skip
-                                    </motion.button>
-                                ) : (
-                                    <motion.div key="confirm" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 rounded-2xl p-1">
-                                        <button onClick={() => { setShowSkipConfirm(false); onNextStranger(); }} className="px-3 py-2 text-[10px] font-black uppercase text-rose-400 hover:bg-rose-500/20 rounded-xl">Yes</button>
-                                        <button onClick={() => setShowSkipConfirm(false)} className="px-3 py-2 text-[10px] font-black uppercase text-white/40 hover:bg-white/5 rounded-xl">No</button>
-                                    </motion.div>
-                                )
+                                <motion.button 
+                                    key="skip" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                                    onClick={onNextStranger}
+                                    className="h-10 px-5 rounded-[1rem] bg-white/5 border border-white/10 text-white font-black uppercase tracking-tighter hover:bg-white/10 active:scale-95 transition-all text-xs"
+                                >
+                                    Skip
+                                </motion.button>
                             )}
                         </AnimatePresence>
                     </div>

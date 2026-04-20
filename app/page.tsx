@@ -354,7 +354,6 @@ export default function Home() {
   const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const pendingRemoteCandidateSignaturesRef = useRef<Set<string>>(new Set());
   const processedFallbackCandidateSignaturesRef = useRef<Set<string>>(new Set());
-  const peerDisconnectTimeoutRef = useRef<number | null>(null);
   const lastOfferAttemptAtRef = useRef(0);
   const lastAnswerAttemptAtRef = useRef(0);
   const decryptedTextCacheRef = useRef<Map<string, { ciphertext: string; iv: string; text: string }>>(new Map());
@@ -767,11 +766,6 @@ export default function Home() {
   };
 
   const cleanupVideoSession = (preserveLocalStream = false) => {
-    if (peerDisconnectTimeoutRef.current) {
-      window.clearTimeout(peerDisconnectTimeoutRef.current);
-      peerDisconnectTimeoutRef.current = null;
-    }
-
     realtimeSignalHandlerRef.current = null;
     videoRoomUnsubRef.current?.();
     videoRoomUnsubRef.current = null;
@@ -2310,11 +2304,6 @@ export default function Home() {
         };
 
         peerConnection.onconnectionstatechange = () => {
-          if (peerDisconnectTimeoutRef.current) {
-            window.clearTimeout(peerDisconnectTimeoutRef.current);
-            peerDisconnectTimeoutRef.current = null;
-          }
-
           if (peerConnection.connectionState === "connected") {
             setVideoError(null);
             return;
@@ -2322,16 +2311,7 @@ export default function Home() {
 
           if (peerConnection.connectionState === "disconnected") {
             setVideoError("Stranger disconnected.");
-            peerDisconnectTimeoutRef.current = window.setTimeout(() => {
-              peerDisconnectTimeoutRef.current = null;
-              if (
-                peerConnection.connectionState === "disconnected" ||
-                peerConnection.connectionState === "failed" ||
-                peerConnection.connectionState === "closed"
-              ) {
-                handlePeerLeftImmediately();
-              }
-            }, 1200);
+            handlePeerLeftImmediately();
             return;
           }
 
@@ -2348,22 +2328,12 @@ export default function Home() {
         };
 
         peerConnection.oniceconnectionstatechange = () => {
-          if (peerDisconnectTimeoutRef.current) {
-            window.clearTimeout(peerDisconnectTimeoutRef.current);
-            peerDisconnectTimeoutRef.current = null;
-          }
-
           if (peerConnection.iceConnectionState === "connected" || peerConnection.iceConnectionState === "completed") {
             return;
           }
 
           if (peerConnection.iceConnectionState === "disconnected") {
-            peerDisconnectTimeoutRef.current = window.setTimeout(() => {
-              peerDisconnectTimeoutRef.current = null;
-              if (peerConnection.iceConnectionState === "disconnected" || peerConnection.iceConnectionState === "failed") {
-                handlePeerLeftImmediately();
-              }
-            }, 1200);
+            handlePeerLeftImmediately();
             return;
           }
 
