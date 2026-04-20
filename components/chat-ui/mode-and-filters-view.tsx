@@ -9,34 +9,49 @@ import {
 	ArrowUpRight, Lock
 } from "lucide-react";
 
-import { getCountryLabel } from "@/components/chat-ui";
+import { COUNTRY_OPTIONS, getCountryLabel } from "@/components/chat-ui";
 import type { 
 	AgeGroupFilter, ChatFilters, ChatMode, ChatStyleFilter, 
-	CountryFilter, GenderFilter 
+	CountryFilter, GenderFilter, ProfileGender 
 } from "@/components/chat-ui";
 
 export function ModeAndFiltersView({
 	onStart,
 	hasActiveSubscription = false,
 	subscriptionTier = null,
+	isAdmin = false,
+	initialAdminProfile,
 	onShowPaywall,
 }: {
-	onStart: (mode: ChatMode, filters: ChatFilters, nickname?: string, interests?: string[]) => void;
+	onStart: (
+		mode: ChatMode,
+		filters: ChatFilters,
+		nickname?: string,
+		interests?: string[],
+		adminProfileOverride?: { gender: ProfileGender; age: number; countryCode: string | null },
+	) => void;
 	onBack: () => void;
 	hasActiveSubscription?: boolean;
 	subscriptionTier?: "vip" | "vvip" | null;
+	isAdmin?: boolean;
+	initialAdminProfile?: { gender: ProfileGender; age: number; countryCode?: string | null };
 	onShowPaywall?: () => void;
 }) {
 	const [selectedMode, setSelectedMode] = useState<ChatMode>("text");
 	const [interests, setInterests] = useState<string[]>([]);
 	const [intInput, setIntInput] = useState("");
 	const [showFilters, setShowFilters] = useState(false);
+	const [showCountryMenu, setShowCountryMenu] = useState(false);
 	
 	const [gender, setGender] = useState<GenderFilter>("Any");
 	const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("Any age");
 	const [style, setStyle] = useState<ChatStyleFilter>("Any style");
 	const [country, setCountry] = useState<CountryFilter>("Any");
 	const [hideCountry, setHideCountry] = useState(false);
+	const [adminGender, setAdminGender] = useState<ProfileGender>(initialAdminProfile?.gender ?? "Other");
+	const [adminAge, setAdminAge] = useState(initialAdminProfile?.age ? String(initialAdminProfile.age) : "25");
+	const [adminCountryCode, setAdminCountryCode] = useState(initialAdminProfile?.countryCode ?? "Any");
+	const [adminError, setAdminError] = useState<string | null>(null);
 
 	const activeFiltersCount = [
 		gender !== "Any", ageGroup !== "Any age", 
@@ -46,6 +61,24 @@ export function ModeAndFiltersView({
 	const isVvip = subscriptionTier === "vvip";
 
 	const handleStart = () => {
+		if (isAdmin) {
+			const parsedAdminAge = Number(adminAge);
+			if (!Number.isInteger(parsedAdminAge) || parsedAdminAge < 5 || parsedAdminAge > 99) {
+				setAdminError("Admin age must be between 5 and 99.");
+				return;
+			}
+
+			setAdminError(null);
+			onStart(
+				selectedMode,
+				{ gender, ageGroup, style, country, hideCountry },
+				undefined,
+				interests,
+				{ gender: adminGender, age: parsedAdminAge, countryCode: adminCountryCode === "Any" ? null : adminCountryCode },
+			);
+			return;
+		}
+
 		onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, undefined, interests);
 	};
 
@@ -119,6 +152,43 @@ export function ModeAndFiltersView({
 						<span className="absolute inset-0 translate-x-[-110%] group-hover:translate-x-[110%] transition-transform duration-700 ease-in-out bg-gradient-to-r from-transparent via-white/5 to-transparent skew-x-[-20deg] pointer-events-none" />
 						</div>
 					</motion.button>
+					)}
+
+					{isAdmin && (
+						<div className="w-full rounded-2xl border border-cyan-400/25 bg-cyan-500/5 p-3 sm:p-4 space-y-3">
+							<div className="flex items-center justify-between gap-2">
+								<p className="text-cyan-300 text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.1em]">Admin Match Persona</p>
+								<span className="text-white/45 text-[9px] sm:text-[10px] font-medium uppercase tracking-[0.08em]">Applied before join</span>
+							</div>
+							<div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+								<select
+									value={adminGender}
+									onChange={(e) => setAdminGender(e.target.value as ProfileGender)}
+									className="bg-white/[0.05] border border-white/20 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-white outline-none"
+								>
+									<option value="Male">Male</option>
+									<option value="Female">Female</option>
+									<option value="Other">Other</option>
+								</select>
+								<input
+									value={adminAge}
+									onChange={(e) => setAdminAge(e.target.value.replace(/[^0-9]/g, ""))}
+									placeholder="Age"
+									className="bg-white/[0.05] border border-white/20 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-white placeholder:text-white/35 outline-none"
+								/>
+								<select
+									value={adminCountryCode}
+									onChange={(e) => setAdminCountryCode(e.target.value)}
+									className="bg-white/[0.05] border border-white/20 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-white outline-none"
+								>
+									<option value="Any">Any country</option>
+									{COUNTRY_OPTIONS.map((option) => (
+										<option key={option.code} value={option.code}>{option.label}</option>
+									))}
+								</select>
+							</div>
+							{adminError && <p className="text-rose-300 text-[10px] sm:text-[11px] font-medium">{adminError}</p>}
+						</div>
 					)}
 
 				{/* INTERESTS */}
@@ -228,13 +298,39 @@ export function ModeAndFiltersView({
 										))}
 									</FilterSection>
 
-									<button className="w-full py-4 sm:py-5 px-4 sm:px-8 rounded-lg sm:rounded-2xl bg-white/[0.02] border border-white/10 flex items-center justify-between text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] text-white/50 hover:text-white transition-all">
-										<div className="flex items-center gap-3 sm:gap-4 min-w-0">
-											<Globe size={14} className="sm:w-[18px] sm:h-[18px] shrink-0" /> 
-											<span className="truncate">{country === 'Any' ? 'Global Reach' : getCountryLabel(country)}</span>
-										</div>
-										<ChevronRight size={14} className="sm:w-4 sm:h-4 shrink-0" />
-									</button>
+									<div className="relative">
+										<button
+											onClick={() => isVvip && setShowCountryMenu((current) => !current)}
+											className="w-full py-4 sm:py-5 px-4 sm:px-8 rounded-lg sm:rounded-2xl bg-white/[0.02] border border-white/10 flex items-center justify-between text-[10px] sm:text-[11px] font-semibold uppercase tracking-[0.08em] text-white/50 hover:text-white transition-all"
+										>
+											<div className="flex items-center gap-3 sm:gap-4 min-w-0">
+												<Globe size={14} className="sm:w-[18px] sm:h-[18px] shrink-0" /> 
+												<span className="truncate">{country === 'Any' ? 'Global Reach' : getCountryLabel(country)}</span>
+											</div>
+											<ChevronRight size={14} className={`sm:w-4 sm:h-4 shrink-0 transition-transform ${showCountryMenu ? 'rotate-90' : ''}`} />
+										</button>
+										{isVvip && showCountryMenu && (
+											<div className="absolute z-20 mt-2 max-h-56 w-full overflow-y-auto rounded-2xl border border-white/10 bg-[#0f0f14] p-2 shadow-[0_12px_34px_rgba(0,0,0,0.45)]">
+												<button
+													type="button"
+													onClick={() => { setCountry("Any"); setShowCountryMenu(false); }}
+													className={`w-full text-left rounded-xl px-3 py-2 text-[11px] transition-colors ${country === "Any" ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"}`}
+												>
+													Any country
+												</button>
+												{COUNTRY_OPTIONS.map((option) => (
+													<button
+														type="button"
+														key={option.code}
+														onClick={() => { setCountry(option.code); setShowCountryMenu(false); }}
+														className={`w-full text-left rounded-xl px-3 py-2 text-[11px] transition-colors ${country === option.code ? "bg-white/15 text-white" : "text-white/70 hover:bg-white/10"}`}
+													>
+														{option.label}
+													</button>
+												))}
+											</div>
+										)}
+									</div>
 								</div>
 							</div>
 

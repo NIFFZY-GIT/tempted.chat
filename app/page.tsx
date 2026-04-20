@@ -3426,11 +3426,26 @@ export default function Home() {
     setMessages([]);
   };
 
-  const startSearching = async (filters: ChatFilters, modeOverride?: ChatMode, nickname?: string, interests?: string[]) => {
+  const startSearching = async (
+    filters: ChatFilters,
+    modeOverride?: ChatMode,
+    nickname?: string,
+    interests?: string[],
+    adminProfileOverride?: { gender: ProfileGender; age: number; countryCode: string | null },
+  ) => {
     const effectiveMode = modeOverride ?? chatMode;
     if (!user || !profile || !effectiveMode) {
       return;
     }
+
+    const effectiveProfile: UserProfile = adminProfileOverride
+      ? {
+          ...profile,
+          gender: adminProfileOverride.gender,
+          age: adminProfileOverride.age,
+          countryCode: adminProfileOverride.countryCode ?? undefined,
+        }
+      : profile;
 
     stopDemoMode();
     cleanupWaitIntervals();
@@ -3458,9 +3473,9 @@ export default function Home() {
       mode: effectiveMode,
       filters,
       profile: {
-        gender: profile.gender,
-        age: profile.age,
-        countryCode: filters.hideCountry ? null : (profile.countryCode ?? null),
+        gender: effectiveProfile.gender,
+        age: effectiveProfile.age,
+        countryCode: filters.hideCountry ? null : (effectiveProfile.countryCode ?? null),
         interests: interests ?? myInterests,
       },
     };
@@ -3494,9 +3509,9 @@ export default function Home() {
         mode: effectiveMode,
         filters,
         profile: {
-          gender: profile.gender,
-          age: profile.age,
-          countryCode: filters.hideCountry ? null : (profile.countryCode ?? null),
+          gender: effectiveProfile.gender,
+          age: effectiveProfile.age,
+          countryCode: filters.hideCountry ? null : (effectiveProfile.countryCode ?? null),
           interests: interests ?? myInterests,
         },
         createdAt: serverTimestamp(),
@@ -4452,15 +4467,38 @@ export default function Home() {
             onGoToAdmin={() => router.push("/admin")}
           />
           <ModeAndFiltersView
-            onStart={(mode, filters, nickname, interests) => {
+            onStart={(mode, filters, nickname, interests, adminProfileOverride) => {
+              if (adminProfileOverride) {
+                const locale = navigator.languages?.[0] ?? navigator.language ?? "en";
+                const nextProfile: UserProfile = {
+                  ...profile,
+                  gender: adminProfileOverride.gender,
+                  age: adminProfileOverride.age,
+                  countryCode: adminProfileOverride.countryCode ?? undefined,
+                  country: adminProfileOverride.countryCode
+                    ? getCountryNameFromCode(adminProfileOverride.countryCode, locale)
+                    : (profile.country ?? "Unknown"),
+                };
+                if (user) {
+                  window.localStorage.setItem(`profile_${user.uid}`, JSON.stringify(nextProfile));
+                }
+                setProfile(nextProfile);
+              }
+
               setChatMode(mode);
               setChatFilters(filters);
               setMyInterests(interests ?? []);
-              void startSearching(filters, mode, nickname, interests);
+              void startSearching(filters, mode, nickname, interests, adminProfileOverride);
             }}
             onBack={logout}
             hasActiveSubscription={hasActiveSubscription}
             subscriptionTier={effectiveSubscriptionTier}
+            isAdmin={isAdmin}
+            initialAdminProfile={{
+              gender: profile.gender,
+              age: profile.age,
+              countryCode: profile.countryCode ?? null,
+            }}
             onShowPaywall={() => router.push("/plans")}
           />
         </main>

@@ -44,7 +44,7 @@ export type ChatMode = "text" | "video";
 export type GenderFilter = "Any" | ProfileGender;
 export type AgeGroupFilter = "Any age" | "Under 18" | "18-25" | "25+";
 export type ChatStyleFilter = "Any style" | "Casual" | "Intimate";
-export type CountryFilter = "Any" | "US" | "GB" | "IN" | "DE" | "FR" | "ES" | "IT" | "BR" | "CA" | "AU" | "JP" | "KR" | "LK";
+export type CountryFilter = "Any" | string;
 export type ChatFilters = {
   gender: GenderFilter;
   ageGroup: AgeGroupFilter;
@@ -93,7 +93,6 @@ export function ChatMedia({
   if (isGifMimeType(mimeType)) {
     return <img src={src} alt={alt} className={className} loading="lazy" decoding="async" />;
   }
-
   return <Image src={src} alt={alt} width={300} height={200} className={className} unoptimized />;
 }
 
@@ -102,21 +101,51 @@ const pickRandomGender = (): ProfileGender => {
   return genders[Math.floor(Math.random() * genders.length)];
 };
 
-export const COUNTRY_OPTIONS: Array<{ code: Exclude<CountryFilter, "Any">; label: string }> = [
-  { code: "US", label: "United States" },
-  { code: "GB", label: "United Kingdom" },
-  { code: "IN", label: "India" },
-  { code: "DE", label: "Germany" },
-  { code: "FR", label: "France" },
-  { code: "ES", label: "Spain" },
-  { code: "IT", label: "Italy" },
-  { code: "BR", label: "Brazil" },
-  { code: "CA", label: "Canada" },
-  { code: "AU", label: "Australia" },
-  { code: "JP", label: "Japan" },
-  { code: "KR", label: "South Korea" },
-  { code: "LK", label: "Sri Lanka" },
-];
+const buildCountryOptions = (): Array<{ code: string; label: string }> => {
+  let displayNames: Intl.DisplayNames;
+  try {
+    displayNames = new Intl.DisplayNames(["en"], { type: "region" });
+  } catch {
+    return [
+      { code: "US", label: "United States" },
+      { code: "GB", label: "United Kingdom" },
+      { code: "IN", label: "India" },
+      { code: "DE", label: "Germany" },
+      { code: "FR", label: "France" },
+      { code: "ES", label: "Spain" },
+      { code: "IT", label: "Italy" },
+      { code: "BR", label: "Brazil" },
+      { code: "CA", label: "Canada" },
+      { code: "AU", label: "Australia" },
+      { code: "JP", label: "Japan" },
+      { code: "KR", label: "South Korea" },
+      { code: "LK", label: "Sri Lanka" },
+    ];
+  }
+
+  const options: Array<{ code: string; label: string }> = [];
+  for (let first = 65; first <= 90; first += 1) {
+    for (let second = 65; second <= 90; second += 1) {
+      const code = `${String.fromCharCode(first)}${String.fromCharCode(second)}`;
+      const label = displayNames.of(code);
+      if (!label || label === code) {
+        continue;
+      }
+
+      // Avoid macro-regions and unknown placeholders so only concrete countries appear.
+      if (/^world|unknown|outlying|european union$/i.test(label)) {
+        continue;
+      }
+
+      options.push({ code, label });
+    }
+  }
+
+  options.sort((a, b) => a.label.localeCompare(b.label));
+  return options;
+};
+
+export const COUNTRY_OPTIONS: Array<{ code: string; label: string }> = buildCountryOptions();
 
 const normalizeCountryCode = (countryCode?: string): string | null => {
   if (!countryCode) {
@@ -177,7 +206,7 @@ const getCountryDisplayName = (country?: string): string => {
   return normalized;
 };
 
-export const getCountryLabel = (countryCode: CountryFilter): string => {
+export const getCountryLabel = (countryCode: string): string => {
   if (countryCode === "Any") {
     return "Any country";
   }
