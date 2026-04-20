@@ -4084,6 +4084,25 @@ export default function Home() {
     }
   };
 
+  function firebaseAuthErrorMessage(code: string): string | null {
+    const map: Record<string, string> = {
+      "auth/invalid-credential":       "Wrong email or password. Please try again.",
+      "auth/user-not-found":           "No account found with that email.",
+      "auth/wrong-password":           "Incorrect password. Please try again.",
+      "auth/email-already-in-use":     "An account with this email already exists. Try signing in.",
+      "auth/weak-password":            "Password must be at least 6 characters.",
+      "auth/invalid-email":            "That doesn't look like a valid email address.",
+      "auth/too-many-requests":        "Too many attempts. Wait a moment, then try again.",
+      "auth/network-request-failed":   "Network error. Check your connection and retry.",
+      "auth/user-disabled":            "This account has been disabled. Contact support.",
+      "auth/requires-recent-login":    "Please sign in again to continue.",
+      "auth/unauthorized-domain":      "Sign-in not enabled for this domain. Contact support.",
+      "auth/popup-closed-by-user":     "Sign-in popup was closed. Please try again.",
+      "auth/cancelled-popup-request":  "Another sign-in is in progress.",
+    };
+    return map[code] ?? null;
+  }
+
   const loginAnonymously = async () => {
     try {
       setAuthBusy(true);
@@ -4108,8 +4127,11 @@ export default function Home() {
       if (window.grecaptcha && recaptchaWidgetIdRef.current !== null) {
         window.grecaptcha.reset(recaptchaWidgetIdRef.current);
       }
-      const message =
-        error instanceof Error ? error.message : "Guest login failed. Try again.";
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : "";
+      const message = firebaseAuthErrorMessage(code) ?? (error instanceof Error ? error.message : "Guest login failed. Try again.");
       setAuthError(message);
     } finally {
       setAuthBusy(false);
@@ -4123,17 +4145,11 @@ export default function Home() {
       setAuthNotice(null);
       await signInWithPopup(auth, googleProvider);
     } catch (error) {
-      const authCode =
+      const code =
         typeof error === "object" && error !== null && "code" in error
           ? String((error as { code?: unknown }).code)
           : "";
-
-      const message =
-        authCode === "auth/unauthorized-domain"
-          ? "Google sign-in is not enabled for this domain yet. Add this domain in Firebase Console > Authentication > Settings > Authorized domains, then retry."
-          : error instanceof Error
-            ? error.message
-            : "Google login failed. Try again.";
+      const message = firebaseAuthErrorMessage(code) ?? (error instanceof Error ? error.message : "Google login failed. Try again.");
       setAuthError(message);
     } finally {
       setAuthBusy(false);
@@ -4142,7 +4158,7 @@ export default function Home() {
 
   const loginWithEmail = async () => {
     if (!email || !password) {
-      setAuthError("Enter email and password.");
+      setAuthError("Please enter your email and password.");
       return;
     }
 
@@ -4157,8 +4173,11 @@ export default function Home() {
         await signInWithEmailAndPassword(auth, email, password);
       }
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Email login failed. Try again.";
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : "";
+      const message = firebaseAuthErrorMessage(code) ?? (error instanceof Error ? error.message : "Login failed. Try again.");
       setAuthError(message);
     } finally {
       setAuthBusy(false);
@@ -4167,7 +4186,7 @@ export default function Home() {
 
   const resetPassword = async () => {
     if (!email) {
-      setAuthError("Enter your email above, then click Forgot Password.");
+      setAuthError("Enter your email address first, then tap Forgot password.");
       return;
     }
 
@@ -4176,10 +4195,13 @@ export default function Home() {
       setAuthError(null);
       setAuthNotice(null);
       await sendPasswordResetEmail(auth, email);
-      setAuthNotice("Password reset email sent. Check your inbox.");
+      setAuthNotice("Reset link sent — check your inbox (and spam folder).");
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Could not send reset email. Try again.";
+      const code =
+        typeof error === "object" && error !== null && "code" in error
+          ? String((error as { code?: unknown }).code)
+          : "";
+      const message = firebaseAuthErrorMessage(code) ?? (error instanceof Error ? error.message : "Could not send reset email. Try again.");
       setAuthError(message);
     } finally {
       setAuthBusy(false);

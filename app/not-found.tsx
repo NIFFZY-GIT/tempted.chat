@@ -3,46 +3,101 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TopNav } from "@/components/navbar";
+import { motion } from "framer-motion";
+import { Home, MessageCircle, AlertCircle, ArrowRight } from "lucide-react";
+import { ParticleBackground } from "@/components/particle-background";
 
 export default function NotFound() {
-  const router = useRouter();
+	const router = useRouter();
 
-  return (
-    <>
-      <main className="screen">
-        <TopNav
-          isAuthenticated={false}
-          onLogin={() => router.push("/")}
-          onLogout={() => router.push("/")}
-          isWorking={false}
-        />
+	return (
+		<div className="relative min-h-screen w-full bg-[#050508] text-white overflow-x-hidden selection:bg-pink-500/30">
+			{/* --- Navbar --- */}
+			<TopNav
+				isAuthenticated={false}
+				onLogin={() => router.push("/")}
+				onLogout={() => router.push("/")}
+				isWorking={false}
+			/>
 
-        <section className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_right,rgba(236,72,153,0.16),transparent_40%),linear-gradient(145deg,#14111b,#0c0b12)] p-6 shadow-[0_24px_70px_rgba(0,0,0,0.45)] transition-transform duration-300 motion-safe:hover:-translate-y-0.5 md:p-9">
-          <div className="pointer-events-none absolute -left-10 -top-10 h-32 w-32 rounded-full bg-pink-400/15 blur-2xl motion-safe:animate-pulse" />
-          <div className="pointer-events-none absolute -bottom-12 -right-10 h-32 w-32 rounded-full bg-cyan-300/10 blur-2xl motion-safe:animate-pulse" />
+			<ParticleBackground />
 
-          <p className="text-xs font-bold uppercase tracking-[0.28em] text-pink-300/80">Error 404</p>
-          <h1 className="mt-3 text-4xl font-black leading-tight text-white md:text-5xl">Page not found</h1>
-          <p className="mt-3 max-w-[42ch] text-sm leading-relaxed text-white/65 md:text-base">
-            The page you are looking for does not exist or has been moved. Return to the homepage and continue chatting.
-          </p>
+			{/* --- Fixed Background Effects --- */}
+			<div className="fixed inset-0 pointer-events-none -z-10">
+				<div className="absolute top-[20%] left-[10%] h-[500px] w-[500px] rounded-full bg-pink-600/10 blur-[130px] opacity-50" />
+				<div className="absolute bottom-[20%] right-[10%] h-[500px] w-[500px] rounded-full bg-blue-600/10 blur-[130px] opacity-50" />
+				
+				{/* Large Decorative 404 Text */}
+				<div className="absolute inset-0 flex items-center justify-center select-none">
+					<span className="text-[30vw] font-black text-white/[0.02] leading-none">
+						404
+					</span>
+				</div>
+			</div>
 
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <Link
-              href="/"
-              className="rounded-xl bg-pink-500 px-5 py-3 text-sm font-extrabold text-black transition duration-200 hover:scale-[1.02] hover:brightness-110"
-            >
-              Go Home
-            </Link>
-            <Link
-              href="/"
-              className="rounded-xl border border-white/20 px-5 py-3 text-sm font-semibold text-white/80 transition duration-200 hover:scale-[1.02] hover:border-white/35 hover:text-white"
-            >
-              Start Chat
-            </Link>
-          </div>
-        </section>
-      </main>
-    </>
-  );
+			{/* --- Main Content Section --- */}
+			<main className="relative flex flex-col items-center justify-center w-full min-h-screen pt-[80px] px-6">
+				<div className="w-full max-w-2xl text-center">
+					
+					{/* Icon Badge */}
+					<motion.div 
+						initial={{ opacity: 0, scale: 0.8 }}
+						animate={{ opacity: 1, scale: 1 }}
+						className="inline-flex h-20 w-20 items-center justify-center rounded-3xl bg-white/5 border border-white/10 mb-8 shadow-2xl backdrop-blur-xl"
+					>
+						<AlertCircle size={40} className="text-pink-500" />
+					</motion.div>
+
+					{/* Text Section */}
+					<motion.div
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.1 }}
+					>
+						<p className="text-xs font-black uppercase tracking-[0.4em] text-pink-400 mb-4">
+							Lost in Space
+						</p>
+						<h1 className="text-5xl md:text-7xl font-black tracking-tighter mb-6">
+							Page Not <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-500">Found</span>
+						</h1>
+						<p className="text-white/40 text-lg md:text-xl max-w-md mx-auto leading-relaxed">
+							The link you followed might be broken, or the page has been moved to a new dimension.
+						</p>
+					</motion.div>
+
+					{/* Action Buttons */}
+					<motion.div 
+						initial={{ opacity: 0, y: 20 }}
+						animate={{ opacity: 1, y: 0 }}
+						transition={{ delay: 0.2 }}
+						className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4"
+					>
+						{/* --- Home Button (Shimmer) --- */}
+						<Link href="/" className="group relative w-full sm:w-auto overflow-hidden rounded-2xl px-8 py-4 transition-all active:scale-[0.98]">
+							<div className="absolute inset-0 bg-white text-black" />
+							<div className="absolute inset-0 bg-gradient-to-r from-transparent via-black/[0.05] to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+							
+							<span className="relative z-10 flex items-center justify-center gap-2 text-sm font-black uppercase tracking-widest text-black">
+								<Home size={18} />
+								Go Home
+							</span>
+						</Link>
+
+						{/* --- Chat Button (Outline) --- */}
+					
+					</motion.div>
+
+					{/* Subtle Footer */}
+					<motion.p 
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						transition={{ delay: 0.4 }}
+						className="mt-20 text-[10px] font-black text-white/10 uppercase tracking-[0.5em]"
+					>
+						Error Code: 0x404_NULL_REF
+					</motion.p>
+				</div>
+			</main>
+		</div>
+	);
 }

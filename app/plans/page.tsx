@@ -1,321 +1,309 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
-
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import type { PlanId, PlanTier } from "@/lib/stripe";
 import { TopNav } from "@/components/navbar";
 import { TierLogo } from "@/components/tier-logo";
 import { getUserRole } from "@/lib/admin";
+import { motion, AnimatePresence } from "framer-motion";
+import { 
+	Check, 
+	X, 
+	ChevronLeft, 
+	ShieldCheck, 
+	Zap, 
+	AlertTriangle,
+	Loader2,
+	ArrowRight
+} from "lucide-react";
 
+// --- Types & Constants ---
 type Duration = "1h" | "24h" | "7d" | "30d";
 
-const DURATIONS: { id: Duration; label: string; short: string }[] = [
-  { id: "1h", label: "1 Hour", short: "1H" },
-  { id: "24h", label: "24 Hours", short: "24H" },
-  { id: "7d", label: "7 Days", short: "7D" },
-  { id: "30d", label: "30 Days", short: "30D" },
+const DURATIONS: { id: Duration; label: string }[] = [
+	{ id: "1h", label: "1 Hour" },
+	{ id: "24h", label: "24 Hours" },
+	{ id: "7d", label: "7 Days" },
+	{ id: "30d", label: "30 Days" },
 ];
 
 const PRICES: Record<PlanTier, Record<Duration, number>> = {
-  vip: { "1h": 99, "24h": 249, "7d": 599, "30d": 999 },
-  vvip: { "1h": 199, "24h": 499, "7d": 999, "30d": 1999 },
+	vip: { "1h": 99, "24h": 249, "7d": 599, "30d": 999 },
+	vvip: { "1h": 199, "24h": 499, "7d": 999, "30d": 1999 },
 };
 
-type Feature = { label: string; vip: boolean; vvip: boolean };
-const FEATURES: Feature[] = [
-  { label: "Gender filter", vip: true, vvip: true },
-  { label: "Chat style filter", vip: true, vvip: true },
-  { label: "Age filter", vip: false, vvip: true },
-  { label: "Country filter", vip: false, vvip: true },
-  { label: "Priority matching", vip: false, vvip: true },
+const FEATURES = [
+	{ label: "Gender filter", vip: true, vvip: true },
+	{ label: "Chat style filter", vip: true, vvip: true },
+	{ label: "Age filter", vip: false, vvip: true },
+	{ label: "Country filter", vip: false, vvip: true },
+	{ label: "Priority matching", vip: false, vvip: true },
 ];
 
-function fmt(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`;
-}
+const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 export default function PlansPage() {
-  const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
-  const [loading, setLoading] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [duration, setDuration] = useState<Duration>("7d");
-  const [subscriptionExpiresAt, setSubscriptionExpiresAt] = useState<number | null>(null);
-  const [subscriptionTier, setSubscriptionTier] = useState<PlanTier | null>(null);
-  const [subLoading, setSubLoading] = useState(true);
-  const [isAdmin, setIsAdmin] = useState(false);
+	const router = useRouter();
+	const [user, setUser] = useState<User | null>(null);
+	const [authLoading, setAuthLoading] = useState(true);
+	const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	const [duration, setDuration] = useState<Duration>("7d");
+	const [subStatus, setSubStatus] = useState<{active: boolean, tier?: PlanTier, expiresAt?: number} | null>(null);
+	const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setAuthLoading(false);
-      if (u && !u.isAnonymous) {
-        void getUserRole(u.uid).then((role) => setIsAdmin(role === "admin")).catch(() => setIsAdmin(false));
-      } else {
-        setIsAdmin(false);
-      }
-    });
-    return unsub;
-  }, []);
+	// Auth Listener
+	useEffect(() => {
+		const unsub = onAuthStateChanged(auth, (u) => {
+			setUser(u);
+			setAuthLoading(false);
+			if (u && !u.isAnonymous) {
+				getUserRole(u.uid).then((role) => setIsAdmin(role === "admin")).catch(() => setIsAdmin(false));
+			}
+		});
+		return unsub;
+	}, []);
 
-  useEffect(() => {
-    if (!user) { setSubLoading(false); return; }
-    setSubLoading(true);
-    user.getIdToken().then((token) =>
-      fetch(`/api/subscription?uid=${encodeURIComponent(user.uid)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-    )
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.active) {
-          setSubscriptionExpiresAt(data.expiresAt);
-          setSubscriptionTier(data.tier ?? null);
-        } else {
-          setSubscriptionExpiresAt(null);
-          setSubscriptionTier(null);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setSubLoading(false));
-  }, [user]);
+	// Subscription Check
+	useEffect(() => {
+		if (!user) return;
+		user.getIdToken().then(token => 
+			fetch(`/api/subscription?uid=${user.uid}`, { headers: { Authorization: `Bearer ${token}` }})
+		).then(r => r.json()).then(setSubStatus).catch(() => {});
+	}, [user]);
 
-  const isActive = isAdmin || (subscriptionExpiresAt !== null && subscriptionExpiresAt > Date.now());
-  const isGuest = !!user && user.isAnonymous;
+	const handlePurchase = async (tier: PlanTier) => {
+		const planId: PlanId = `${tier}_${duration}`;
+		if (!user || user.isAnonymous) { router.push("/"); return; }
+		setLoadingPlan(planId);
+		setError(null);
+		try {
+			const token = await user.getIdToken(true);
+			const res = await fetch("/api/checkout", {
+				method: "POST",
+				headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+				body: JSON.stringify({ planId, idToken: token }),
+			});
+			const data = await res.json();
+			if (!res.ok) throw new Error(data.error || "Purchase failed");
+			window.location.href = data.url;
+		} catch (err: any) {
+			setError(err.message);
+			setLoadingPlan(null);
+		}
+	};
 
-  const handlePurchase = async (tier: PlanTier) => {
-    const planId: PlanId = `${tier}_${duration}`;
-    if (!user || isGuest) { router.push("/"); return; }
-    setLoading(planId);
-    setError(null);
-    try {
-      const token = await user.getIdToken(true);
-      const res = await fetch("/api/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ planId, idToken: token }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        if (res.status === 401) {
-          setError("Session expired. Please sign in again and retry.");
-          setLoading(null);
-          return;
-        }
-        setError(data.error ?? "Something went wrong");
-        setLoading(null);
-        return;
-      }
-      window.location.href = data.url;
-    } catch {
-      setError("Network error. Please try again.");
-      setLoading(null);
-    }
-  };
+	return (
+		<div className="relative min-h-screen w-full bg-[#050508] text-white overflow-x-hidden selection:bg-pink-500/30">
+			{/* --- Navbar --- */}
+			<TopNav 
+				isAuthenticated={!!user} 
+				onLogin={() => router.push("/")} 
+				onLogout={() => signOut(auth)} 
+				isWorking={authLoading} 
+				isAdmin={isAdmin}
+				onGoToAdmin={() => router.push("/admin")}
+			/>
 
-  const vipLoading = loading === `vip_${duration}`;
-  const vvipLoading = loading === `vvip_${duration}`;
+			{/* --- Fixed Background Elements --- */}
+			<div className="fixed inset-0 pointer-events-none -z-10">
+				<div className="absolute top-[-10%] left-[10%] h-[500px] w-[500px] rounded-full bg-pink-600/10 blur-[120px]" />
+				<div className="absolute bottom-[-10%] right-[10%] h-[500px] w-[500px] rounded-full bg-amber-600/10 blur-[120px]" />
+			</div>
 
-  const handleGoBack = () => {
-    if (window.history.length > 1) {
-      router.back();
-      return;
-    }
-    router.push("/");
-  };
+			{/* --- Main Scrollable Content --- */}
+			<main className="relative flex flex-col items-center w-full pt-[100px] sm:pt-[120px] pb-20 px-6">
+				<div className="w-full max-w-4xl">
+					
+					{/* Status Bar */}
+					<div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-10">
+						<button 
+							onClick={() => router.back()} 
+							className="flex items-center gap-2 text-sm font-bold text-white/30 hover:text-white transition-colors group"
+						>
+							<ChevronLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
+							Go Back
+						</button>
 
-  return (
-    <div className="min-h-dvh bg-[#08080e]">
-      <TopNav
-        isAuthenticated={!!user}
-        onLogin={() => router.push("/")}
-        onLogout={() => void signOut(auth)}
-        isWorking={authLoading}
-        isAdmin={isAdmin}
-        onGoToAdmin={isAdmin ? () => router.push("/admin") : undefined}
-      />
+						{isAdmin ? (
+							<div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px] font-black uppercase tracking-wider">
+								<ShieldCheck className="w-3.5 h-3.5" /> Admin Access Locked
+							</div>
+						) : subStatus?.active && (
+							<div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-black uppercase tracking-wider">
+								<Zap className="w-3.5 h-3.5" /> 
+								{subStatus.tier} active · Exp: {new Date(subStatus.expiresAt!).toLocaleDateString()}
+							</div>
+						)}
+					</div>
 
-      <main className="mx-auto max-w-3xl px-4 pb-20 pt-24 sm:px-6">
-        <div className="mb-4">
-          <button
-            type="button"
-            onClick={handleGoBack}
-            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-semibold text-white/70 transition hover:bg-white/[0.06] hover:text-white"
-          >
-            <span aria-hidden="true">&larr;</span>
-            Back
-          </button>
-        </div>
+					{/* Header */}
+					<div className="text-center mb-12">
+						<motion.h1 
+							initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }}
+							className="text-4xl md:text-6xl font-black tracking-tighter"
+						>
+							Upgrade <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-violet-500 to-amber-500">Your Match</span>
+						</motion.h1>
+						<p className="mt-4 text-white/40 text-lg max-w-xl mx-auto">Select a plan to unlock advanced filters and priority connections.</p>
+					</div>
 
-        {/* Header */}
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-extrabold tracking-tight text-white sm:text-3xl">
-            Upgrade Your Experience
-          </h1>
-          <p className="mt-2 text-sm text-white/35">
-            Choose your filters. Pick a duration. Start matching.
-          </p>
-          {subLoading ? (
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/[0.04] px-3 py-1.5 text-xs text-white/30">
-              <span className="h-3 w-3 animate-spin rounded-full border-2 border-white/10 border-t-white/40" />
-              Checking...
-            </div>
-          ) : isAdmin ? (
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-amber-400/10 px-3 py-1.5 text-xs font-medium text-amber-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-              <span>Admin - Full</span>
-              <TierLogo tier="vvip" size="xs" />
-              <span>Access</span>
-            </div>
-          ) : isActive && subscriptionExpiresAt ? (
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-400">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              {subscriptionTier ? <TierLogo tier={subscriptionTier} size="xs" /> : null}
-              <span>until {new Date(subscriptionExpiresAt).toLocaleString()}</span>
-            </div>
-          ) : null}
-        </div>
+					{/* Guest Warning */}
+					{user?.isAnonymous && (
+						<motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="mb-10 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex gap-4 items-center">
+							<AlertTriangle className="text-amber-400 shrink-0" />
+							<p className="text-xs text-amber-200/70">
+								<strong className="text-amber-400">Guest Detected:</strong> Please sign in with Google or Email to prevent losing your purchase access later.
+							</p>
+						</motion.div>
+					)}
 
-        {/* Guest warning */}
-        {isGuest && (
-          <div className="mx-auto mb-6 flex max-w-md items-center gap-3 rounded-2xl border border-amber-400/20 bg-amber-400/[0.04] px-4 py-3">
-            <span className="text-lg">&#x26A0;&#xFE0F;</span>
-            <div>
-              <p className="text-sm font-semibold text-amber-300">Guest account detected</p>
-              <p className="text-xs text-white/40">Sign in with Google or email to purchase a plan. Guest accounts can lose access if you clear your browser data.</p>
-            </div>
-          </div>
-        )}
+					{/* Duration Selector */}
+					<div className="flex justify-center mb-12">
+						<div className="inline-flex p-1.5 bg-white/5 rounded-2xl border border-white/10 backdrop-blur-xl">
+							{DURATIONS.map((d) => (
+								<button
+									key={d.id}
+									onClick={() => setDuration(d.id)}
+									className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+										duration === d.id ? "bg-white/10 text-white shadow-lg" : "text-white/30 hover:text-white/60"
+									}`}
+								>
+									{d.label}
+								</button>
+							))}
+						</div>
+					</div>
 
-        {/* Duration selector */}
-        <div className="mx-auto mb-8 flex w-fit rounded-2xl border border-white/[0.06] bg-white/[0.02] p-1">
-          {DURATIONS.map((d) => (
-            <button
-              key={d.id}
-              type="button"
-              onClick={() => setDuration(d.id)}
-              className={`rounded-xl px-4 py-2 text-xs font-bold transition sm:px-6 sm:text-sm ${
-                duration === d.id
-                  ? "bg-white/[0.1] text-white shadow-sm"
-                  : "text-white/35 hover:text-white/60"
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
+					{/* Pricing Grid */}
+					<div className="grid md:grid-cols-2 gap-6 items-stretch">
+						{/* VIP CARD */}
+						<PlanCard 
+							tier="vip"
+							price={PRICES.vip[duration]}
+							durationLabel={duration}
+							isLoading={loadingPlan === `vip_${duration}`}
+							onPurchase={() => handlePurchase("vip")}
+							disabled={authLoading || !!user?.isAnonymous}
+							features={FEATURES.map(f => ({ ...f, included: f.vip }))}
+							accent="pink"
+						/>
 
-        {/* Plan cards */}
-        <div className="grid gap-5 sm:grid-cols-2">
-          {/* VIP */}
-          <div className="flex flex-col rounded-3xl border border-white/[0.08] bg-white/[0.02] p-6">
-            <div className="mb-5">
-              <div className="mb-3 flex items-center gap-3">
-                <TierLogo tier="vip" size="md" className="rounded-2xl bg-pink-500/10 px-2.5 py-1.5 ring-1 ring-pink-500/15" />
-                <h2 className="text-lg font-extrabold text-white">VIP</h2>
-              </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-white">{fmt(PRICES.vip[duration])}</span>
-                <span className="text-sm text-white/30">/ {DURATIONS.find((d) => d.id === duration)?.label.toLowerCase()}</span>
-              </div>
-              <p className="mt-1 text-xs text-white/30">Essential chat filters</p>
-            </div>
+						{/* VVIP CARD */}
+						<PlanCard 
+							tier="vvip"
+							price={PRICES.vvip[duration]}
+							durationLabel={duration}
+							isLoading={loadingPlan === `vvip_${duration}`}
+							onPurchase={() => handlePurchase("vvip")}
+							disabled={authLoading || !!user?.isAnonymous}
+							features={FEATURES.map(f => ({ ...f, included: f.vvip }))}
+							accent="amber"
+							recommended
+						/>
+					</div>
 
-            <ul className="mb-6 flex-1 space-y-2.5">
-              {FEATURES.map((f) => (
-                <li key={f.label} className="flex items-center gap-2.5 text-sm">
-                  {f.vip ? (
-                    <svg className="h-4 w-4 shrink-0 text-pink-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6 9 17l-5-5" /></svg>
-                  ) : (
-                    <svg className="h-4 w-4 shrink-0 text-white/15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                  )}
-                  <span className={f.vip ? "text-white/60" : "text-white/20 line-through"}>{f.label}</span>
-                </li>
-              ))}
-            </ul>
+					{error && (
+						<motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-8 text-center text-red-400 font-bold text-sm">
+							{error}
+						</motion.p>
+					)}
 
-            <button
-              type="button"
-              onClick={() => handlePurchase("vip")}
-              disabled={loading !== null || authLoading || isGuest}
-              className="relative w-full rounded-xl bg-white/[0.07] py-3 text-sm font-bold text-white transition hover:bg-white/[0.12] active:scale-[0.98] disabled:opacity-50"
-            >
-              {isGuest ? "Sign in with Google or Email" : !user && !authLoading ? "Sign in first" : (
-                <span className="inline-flex items-center gap-2">
-                  <span>Get</span>
-                  <TierLogo tier="vip" size="xs" />
-                  <span>- {fmt(PRICES.vip[duration])}</span>
-                </span>
-              )}
-              {vipLoading && (
-                <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm">
-                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-pink-400" />
-                </span>
-              )}
-            </button>
-          </div>
+					<footer className="mt-16 text-center space-y-2">
+						<p className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Secure Stripe Checkout • Instant Access</p>
+					</footer>
+				</div>
+			</main>
+		</div>
+	);
+}
 
-          {/* VVIP */}
-          <div className="relative flex flex-col rounded-3xl border border-amber-400/25 bg-gradient-to-b from-amber-500/[0.03] to-transparent p-6">
-            <span className="absolute -top-3 right-5 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 px-3 py-0.5 text-[10px] font-extrabold text-black shadow-lg shadow-amber-500/20">
-              RECOMMENDED
-            </span>
+// --- Sub-component for Cards ---
+function PlanCard({ tier, price, durationLabel, features, onPurchase, isLoading, disabled, accent, recommended }: any) {
+	const isVVIP = tier === "vvip";
+	
+	return (
+		<motion.div 
+			whileHover={{ y: -5 }}
+			className={`relative flex flex-col p-8 rounded-[2.5rem] border transition-all ${
+				recommended 
+				? "bg-amber-500/[0.03] border-amber-500/30 shadow-[0_20px_50px_rgba(0,0,0,0.3)]" 
+				: "bg-white/[0.02] border-white/10"
+			}`}
+		>
+			{recommended && (
+				<div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-black text-[10px] font-black uppercase tracking-widest shadow-xl">
+					Most Popular
+				</div>
+			)}
 
-            <div className="mb-5">
-              <div className="mb-3 flex items-center gap-3">
-                <TierLogo tier="vvip" size="md" className="rounded-2xl bg-amber-400/10 px-2.5 py-1.5 ring-1 ring-amber-400/20" />
-                <h2 className="text-lg font-extrabold text-white">VVIP</h2>
-              </div>
-              <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-white">{fmt(PRICES.vvip[duration])}</span>
-                <span className="text-sm text-white/30">/ {DURATIONS.find((d) => d.id === duration)?.label.toLowerCase()}</span>
-              </div>
-              <p className="mt-1 text-xs text-white/30">Full control + priority matching</p>
-            </div>
+			<div className="mb-8">
+				<div className="flex items-center gap-3 mb-6">
+					<Image
+						src={isVVIP ? "/asstes/vvip/vviplogo.png" : "/asstes/vip/viplogo.png"}
+						alt={isVVIP ? "VVIP Badge" : "VIP Badge"}
+						width={48}
+						height={48}
+						className="object-contain"
+					/>
+					<h3 className="text-xl font-black uppercase tracking-tighter">{tier} Tier</h3>
+				</div>
+				
+				<div className="flex items-baseline gap-1">
+					<AnimatePresence mode="wait">
+						<motion.span 
+							key={price}
+							initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+							className="text-5xl font-black tracking-tight"
+						>
+							{fmt(price)}
+						</motion.span>
+					</AnimatePresence>
+					<span className="text-white/20 font-bold text-sm uppercase">/ {durationLabel}</span>
+				</div>
+			</div>
 
-            <ul className="mb-6 flex-1 space-y-2.5">
-              {FEATURES.map((f) => (
-                <li key={f.label} className="flex items-center gap-2.5 text-sm">
-                  <svg className="h-4 w-4 shrink-0 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6 9 17l-5-5" /></svg>
-                  <span className="text-white/60">{f.label}</span>
-                </li>
-              ))}
-            </ul>
+			<ul className="space-y-4 mb-10 flex-1">
+				{features.map((f: any) => (
+					<li key={f.label} className={`flex items-center gap-3 text-sm font-medium ${f.included ? "text-white/60" : "text-white/10"}`}>
+						{f.included ? (
+							<Check className={`w-4 h-4 ${isVVIP ? "text-amber-400" : "text-pink-400"}`} />
+						) : (
+							<X className="w-4 h-4" />
+						)}
+						<span className={!f.included ? "line-through opacity-50" : ""}>{f.label}</span>
+					</li>
+				))}
+			</ul>
 
-            <button
-              type="button"
-              onClick={() => handlePurchase("vvip")}
-              disabled={loading !== null || authLoading || isGuest}
-              className="relative w-full rounded-xl bg-gradient-to-r from-amber-400 to-orange-500 py-3 text-sm font-bold text-black transition hover:brightness-110 active:scale-[0.98] disabled:opacity-50"
-            >
-              {isGuest ? "Sign in with Google or Email" : !user && !authLoading ? "Sign in first" : (
-                <span className="inline-flex items-center gap-2">
-                  <span>Get</span>
-                  <TierLogo tier="vvip" size="xs" />
-                  <span>- {fmt(PRICES.vvip[duration])}</span>
-                </span>
-              )}
-              {vvipLoading && (
-                <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/60 backdrop-blur-sm">
-                  <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/20 border-t-amber-400" />
-                </span>
-              )}
-            </button>
-          </div>
-        </div>
+			{/* --- PREMIUM SUBMIT BUTTON DESIGN --- */}
+			<button
+				onClick={onPurchase}
+				disabled={disabled || isLoading}
+				className="group relative w-full py-4 rounded-2xl font-black text-sm transition-all active:scale-[0.98] disabled:opacity-40 overflow-hidden"
+			>
+				{/* Background layer */}
+				<div className={`absolute inset-0 transition-colors ${
+					isVVIP 
+					? "bg-gradient-to-r from-amber-500 to-orange-600" 
+					: "bg-white/[0.08] hover:bg-white/[0.12]"
+				}`} />
 
-        {error && (
-          <p className="mt-4 text-center text-sm font-medium text-rose-400">{error}</p>
-        )}
-
-        <p className="mt-8 text-center text-[11px] text-white/15">
-          One-time payment · No recurring charges · Instant activation · Time stacks if you buy again
-        </p>
-      </main>
-    </div>
-  );
+				{/* Shimmer effect */}
+				<div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 pointer-events-none" />
+				
+				<span className={`relative z-10 flex items-center justify-center gap-2 ${isVVIP ? "text-black" : "text-white"}`}>
+					{isLoading ? (
+						<Loader2 className="w-5 h-5 animate-spin" />
+					) : (
+						<>Get {tier.toUpperCase()} Access <ArrowRight className="w-4 h-4" /></>
+					)}
+				</span>
+			</button>
+		</motion.div>
+	);
 }
