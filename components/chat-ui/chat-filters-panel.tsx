@@ -69,7 +69,7 @@ export function ChatFiltersPanel({
           {/* Scrollable content */}
           <div className="flex-1 overflow-y-auto px-7 pb-6 space-y-7">
             {/* VIP Section */}
-            <div className={!hasActiveSubscription ? "pointer-events-none" : ""}>
+            <div>
               <div className="mb-5 flex items-center gap-2.5">
                 <TierLogo tier="vip" size="sm" className="rounded-xl bg-pink-500/10 px-2 py-1 ring-1 ring-pink-500/15" />
                 <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-pink-400/80">VIP filters</span>
@@ -89,7 +89,20 @@ export function ChatFiltersPanel({
                   <label className="mb-3 block text-[11px] font-semibold uppercase tracking-[0.12em] text-white/75">Match with</label>
                   <div className="flex flex-wrap gap-2">
                     {(["Any", "Male", "Female", "Other"] as const).map((opt) => (
-                      <button key={opt} type="button" onClick={() => setFilterGender((c: string) => (c === opt ? "Any" : opt))} className={chip(filterGender === opt)}>{opt}</button>
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => {
+                          if (!hasActiveSubscription) {
+                            onShowPaywall?.();
+                            return;
+                          }
+                          setFilterGender((c: string) => (c === opt ? "Any" : opt));
+                        }}
+                        className={chip(filterGender === opt)}
+                      >
+                        {opt}
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -97,11 +110,34 @@ export function ChatFiltersPanel({
                   <label className="mb-3 block text-[11px] font-semibold uppercase tracking-[0.12em] text-white/75">Chat type</label>
                   <div className="flex flex-wrap gap-2">
                     {(["Any style", "Casual", "Intimate"] as const).map((opt) => (
-                      <button key={opt} type="button" onClick={() => setFilterStyle((c: string) => (c === opt ? "Any style" : opt))} className={chip(filterStyle === opt)}>{opt === "Any style" ? "Any type" : opt}</button>
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => {
+                          if (!hasActiveSubscription) {
+                            onShowPaywall?.();
+                            return;
+                          }
+                          setFilterStyle((c: string) => (c === opt ? "Any style" : opt));
+                        }}
+                        className={chip(filterStyle === opt)}
+                      >
+                        {opt === "Any style" ? "Any type" : opt}
+                      </button>
                     ))}
                   </div>
                 </div>
-                <button type="button" onClick={() => setFilterHideCountry((v: boolean) => !v)} className="flex w-full items-center justify-between rounded-2xl border border-white/[0.16] bg-white/[0.08] px-5 py-3.5 transition-all duration-200 hover:bg-white/[0.12]">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!hasActiveSubscription) {
+                      onShowPaywall?.();
+                      return;
+                    }
+                    setFilterHideCountry((v: boolean) => !v);
+                  }}
+                  className="flex w-full items-center justify-between rounded-2xl border border-white/[0.16] bg-white/[0.08] px-5 py-3.5 transition-all duration-200 hover:bg-white/[0.12]"
+                >
                   <span className="flex items-center gap-3 text-[13px] font-medium text-white/80"><span className="text-[15px]">🙈</span>Hide my country</span>
                   <span className={`relative flex h-7 w-12 items-center rounded-full transition-colors duration-300 ${filterHideCountry ? "bg-white" : "bg-white/15"}`}>
                     <span className={`absolute h-5.5 w-5.5 rounded-full shadow-md transition-transform duration-300 ${filterHideCountry ? "translate-x-[22px] bg-black" : "translate-x-[3px] bg-white/60"}`} />
@@ -114,7 +150,7 @@ export function ChatFiltersPanel({
             <div className="h-px bg-gradient-to-r from-transparent via-white/[0.10] to-transparent" />
 
             {/* VVIP Section */}
-            <div className={subscriptionTier !== "vvip" ? "pointer-events-none" : ""}>
+            <div>
               <div className="mb-5 flex items-center justify-between">
                 <div className="flex items-center gap-2.5">
                   <TierLogo tier="vvip" size="sm" className="rounded-xl bg-amber-500/10 px-2 py-1 ring-1 ring-amber-400/20" />
@@ -139,14 +175,37 @@ export function ChatFiltersPanel({
                   <label className="mb-3 block text-[11px] font-semibold uppercase tracking-[0.12em] text-white/75">Age range</label>
                   <div className="flex flex-wrap gap-2">
                     {(["Any age", "Under 18", "18-25", "25+"] as const).map((opt) => (
-                      <button key={opt} type="button" onClick={() => { if (subscriptionTier === "vvip") setFilterAgeGroup((c: string) => (c === opt ? "Any age" : opt)); }} className={chip(filterAgeGroup === opt)}>{opt}</button>
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => {
+                          if (subscriptionTier !== "vvip") {
+                            onShowPaywall?.();
+                            return;
+                          }
+                          setFilterAgeGroup((c: string) => (c === opt ? "Any age" : opt));
+                        }}
+                        className={chip(filterAgeGroup === opt)}
+                      >
+                        {opt}
+                      </button>
                     ))}
                   </div>
                 </div>
                 <div>
                   <label className="mb-3 block text-[11px] font-semibold uppercase tracking-[0.12em] text-white/75">Country</label>
                   <div className="relative" ref={filterCountryMenuRef}>
-                    <button type="button" onClick={() => { if (subscriptionTier === "vvip") setFilterCountryMenuOpen((c: boolean) => !c); }} className="flex w-full items-center justify-between rounded-2xl border border-white/[0.16] bg-white/[0.08] px-5 py-3.5 text-sm text-white/80 transition-all duration-200 hover:bg-white/[0.12]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (subscriptionTier !== "vvip") {
+                          onShowPaywall?.();
+                          return;
+                        }
+                        setFilterCountryMenuOpen((c: boolean) => !c);
+                      }}
+                      className="flex w-full items-center justify-between rounded-2xl border border-white/[0.16] bg-white/[0.08] px-5 py-3.5 text-sm text-white/80 transition-all duration-200 hover:bg-white/[0.12]"
+                    >
                       <span className="inline-flex items-center gap-3">
                         <CountryFlagIcon countryCode={filterSelectedCountryCode} className="h-4 w-5.5 rounded-sm object-cover" />
                         {filterCountry === "Any" ? "Any country" : getCountryLabel(filterCountry)}

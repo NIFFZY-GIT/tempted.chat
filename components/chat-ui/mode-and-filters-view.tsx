@@ -164,26 +164,26 @@ export function ModeAndFiltersView({
 								<select
 									value={adminGender}
 									onChange={(e) => setAdminGender(e.target.value as ProfileGender)}
-									className="bg-white/[0.05] border border-white/20 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-white outline-none"
+									className="bg-white border border-white/40 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-black outline-none"
 								>
-									<option value="Male">Male</option>
-									<option value="Female">Female</option>
-									<option value="Other">Other</option>
+									<option value="Male" className="text-black bg-white">Male</option>
+									<option value="Female" className="text-black bg-white">Female</option>
+									<option value="Other" className="text-black bg-white">Other</option>
 								</select>
 								<input
 									value={adminAge}
 									onChange={(e) => setAdminAge(e.target.value.replace(/[^0-9]/g, ""))}
 									placeholder="Age"
-									className="bg-white/[0.05] border border-white/20 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-white placeholder:text-white/35 outline-none"
+									className="bg-white border border-white/40 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-black placeholder:text-black/40 outline-none"
 								/>
 								<select
 									value={adminCountryCode}
 									onChange={(e) => setAdminCountryCode(e.target.value)}
-									className="bg-white/[0.05] border border-white/20 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-white outline-none"
+									className="bg-white border border-white/40 rounded-xl px-3 py-2.5 text-[11px] font-semibold text-black outline-none"
 								>
-									<option value="Any">Any country</option>
+									<option value="Any" className="text-black bg-white">Any country</option>
 									{COUNTRY_OPTIONS.map((option) => (
-										<option key={option.code} value={option.code}>{option.label}</option>
+										<option key={option.code} value={option.code} className="text-black bg-white">{option.label}</option>
 									))}
 								</select>
 							</div>
