@@ -126,7 +126,7 @@ export function ChatRoomVideoView({
 
 				{/* YOU PANEL */}
 				<div className="relative flex-1 overflow-hidden bg-[#080808] border border-white/5">
-					<video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover [transform:scaleX(-1)] opacity-60 grayscale-[0.2] rounded-none" />
+					<video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover [transform:scaleX(-1)] rounded-none" />
 					{!localVideoEnabled && (
 						<div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
 							<VideoOff size={48} className="text-white/10" />
