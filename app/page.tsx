@@ -4565,6 +4565,7 @@ export default function Home() {
           onShowPaywall={() => router.push("/plans")}
           onLeaveChat={(filters) => {
             void (async () => {
+              setChatFilters(filters);
               await markRoomEnded();
               await stopSearching();
               await startSearching(filters);
