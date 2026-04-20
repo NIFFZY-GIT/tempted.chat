@@ -451,6 +451,11 @@ function ModeAndFiltersViewLegacy({
     onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, undefined, collectInterests());
   };
 
+  const handleApplyLegacyFilters = () => {
+    setShowFilters(false);
+    handleStart();
+  };
+
   const handleQuickStart = () => {
     onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry }, undefined, collectInterests());
   };
@@ -761,177 +766,32 @@ function ModeAndFiltersViewLegacy({
         </div>
       </div>
 
-      {/* ══ Backdrop overlay ══ */}
-      {showFilters && (
-        <div
-          className="animate-fade-in fixed inset-0 z-40 bg-black/60 backdrop-blur-md"
-          onClick={() => setShowFilters(false)}
-        />
-      )}
-
-      {/* ══ Centered filter panel ══ */}
-      {showFilters && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4" onClick={() => setShowFilters(false)}>
-          <div
-            className="animate-filter-slide-in flex w-full max-w-[420px] max-h-[80dvh] flex-col rounded-3xl border border-white/[0.08] bg-[#0f0f17]/95 shadow-[0_32px_80px_rgba(0,0,0,0.7)] backdrop-blur-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Panel header */}
-            <div className="flex items-center justify-between px-6 py-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] ring-1 ring-white/[0.06]">
-                  <svg className="h-4 w-4 text-white/50" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
-                </div>
-                <div>
-                  <h2 className="text-[15px] font-bold text-white">Filters</h2>
-                  <p className="text-[11px] text-white/25">Customize your match</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowFilters(false)}
-                className="flex h-9 w-9 items-center justify-center rounded-xl text-white/30 transition-all duration-200 hover:bg-white/[0.06] hover:text-white/60 active:scale-90"
-              >
-                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
-              </button>
-            </div>
-
-            {/* Divider */}
-            <div className="mx-6 h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-
-            {/* Scrollable filters */}
-            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-
-              {/* VIP section */}
-              <div>
-                <div className="mb-4 flex items-center gap-2.5">
-                  <TierLogo tier="vip" size="sm" className="rounded-xl bg-pink-500/10 px-2 py-1 ring-1 ring-pink-500/15" />
-                  <span className="text-[11px] font-bold uppercase tracking-widest text-pink-400/60">VIP Filters</span>
-                </div>
-
-                <div className="space-y-5">
-                  <div>
-                    <label className="mb-2.5 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Gender preference</label>
-                    <div className="flex flex-wrap gap-2">
-                      {(["Any", "Male", "Female", "Other"] as GenderFilter[]).map((opt) => (
-                        <button key={opt} type="button" onClick={() => setGender((c) => (c === opt ? "Any" : opt))} className={chip(gender === opt, activeModeConfig.chipColor)}>{opt}</button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2.5 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Chat vibe</label>
-                    <div className="flex flex-wrap gap-2">
-                      {(["Any style", "Casual", "Intimate"] as ChatStyleFilter[]).map((opt) => (
-                        <button key={opt} type="button" onClick={() => setStyle((c) => (c === opt ? "Any style" : opt))} className={chip(style === opt, activeModeConfig.chipColor)}>
-                          {opt === "Any style" ? "Any" : opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setHideCountry((v) => !v)}
-                    className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3.5 transition-all duration-200 hover:bg-white/[0.04]"
-                  >
-                    <span className="flex items-center gap-2.5 text-[13px] font-medium text-white/40">
-                      <span className="text-[14px]">🙈</span>
-                      Hide my location
-                    </span>
-                    <span className={`relative flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${hideCountry ? "bg-pink-500" : "bg-white/10"}`}>
-                      <span className={`absolute h-5 w-5 rounded-full bg-white shadow-md transition-transform duration-300 ${hideCountry ? "translate-x-[22px]" : "translate-x-[2px]"}`} />
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Divider */}
-              <div className="h-px bg-gradient-to-r from-transparent via-white/[0.06] to-transparent" />
-
-              {/* VVIP section */}
-              <div className={subscriptionTier !== "vvip" ? "pointer-events-none" : ""}>
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <TierLogo tier="vvip" size="sm" className="rounded-xl bg-amber-500/10 px-2 py-1 ring-1 ring-amber-400/20" />
-                    <span className="text-[11px] font-bold uppercase tracking-widest text-amber-400/60">VVIP Filters</span>
-                  </div>
-                  {subscriptionTier !== "vvip" && (
-                    <button
-                      type="button"
-                      onClick={() => onShowPaywall?.()}
-                      className="pointer-events-auto inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-amber-500 to-amber-400 px-3.5 py-1.5 text-[10px] font-bold text-black transition-all duration-200 hover:shadow-[0_4px_16px_rgba(245,158,11,0.3)] active:scale-95"
-                    >
-                      <span>Get</span>
-                      <TierLogo tier="vvip" size="xs" imageClassName="brightness-0" />
-                    </button>
-                  )}
-                </div>
-
-                <div className={`space-y-5 transition-opacity duration-300 ${subscriptionTier !== "vvip" ? "opacity-30" : ""}`}>
-                  <div>
-                    <label className="mb-2.5 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Age range</label>
-                    <div className="flex flex-wrap gap-2">
-                      {(["Any age", "Under 18", "18-25", "25+"] as AgeGroupFilter[]).map((opt) => (
-                        <button key={opt} type="button" onClick={() => { if (subscriptionTier === "vvip") setAgeGroup((c) => (c === opt ? "Any age" : opt)); }} className={chip(ageGroup === opt, "amber")}>
-                          {opt === "Any age" ? "Any" : opt}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2.5 block text-[11px] font-semibold uppercase tracking-wider text-white/25">Country</label>
-                    <div className="relative" ref={countryMenuRef}>
-                      <button
-                        type="button"
-                        onClick={() => { if (subscriptionTier === "vvip") setCountryMenuOpen((c) => !c); }}
-                        className="flex w-full items-center justify-between rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3.5 text-sm text-white/40 transition-all duration-200 hover:bg-white/[0.04]"
-                      >
-                        <span className="inline-flex items-center gap-2.5">
-                          <CountryFlagIcon countryCode={selectedCountryCode} className="h-3.5 w-5 rounded-sm object-cover" />
-                          {country === "Any" ? "Any country" : getCountryLabel(country)}
-                        </span>
-                        <svg className={`h-4 w-4 text-white/20 transition-transform duration-300 ${countryMenuOpen ? "rotate-180" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m6 9 6 6 6-6"/></svg>
-                      </button>
-                      {countryMenuOpen && (
-                        <div className="absolute z-30 mt-2 max-h-44 w-full overflow-y-auto rounded-xl border border-white/[0.06] bg-[#141420] p-1.5 shadow-2xl backdrop-blur-xl">
-                          <button type="button" onClick={() => { setCountry("Any"); setCountryMenuOpen(false); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${country === "Any" ? "bg-white/10 text-white" : "text-white/40 hover:bg-white/[0.05]"}`}>
-                            <CountryFlagIcon className="h-3.5 w-5 rounded-sm object-cover" /> Any country
-                          </button>
-                          {COUNTRY_OPTIONS.map((opt) => (
-                            <button key={opt.code} type="button" onClick={() => { setCountry(opt.code); setCountryMenuOpen(false); }} className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors ${country === opt.code ? "bg-white/10 text-white" : "text-white/40 hover:bg-white/[0.05]"}`}>
-                              <CountryFlagIcon countryCode={opt.code} className="h-3.5 w-5 rounded-sm object-cover" /> {opt.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Apply button */}
-            <div className="border-t border-white/[0.06] px-6 py-5">
-              <button
-                type="button"
-                onClick={handleStart}
-                className="group relative flex w-full items-center justify-center gap-2.5 overflow-hidden rounded-xl py-3.5 text-[14px] font-bold text-white transition-all duration-300 active:scale-[0.97]"
-                style={{
-                  background: `linear-gradient(135deg, rgba(${activeModeConfig.accentRgb}, 0.9), rgba(${activeModeConfig.accentRgb}, 1))`,
-                  boxShadow: `0 8px 24px rgba(${activeModeConfig.accentRgb}, 0.3)`,
-                }}
-              >
-                <span className="relative flex items-center gap-2">
-                  Apply & Start
-                  <svg className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-                </span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ChatFiltersPanel
+        showChatFilters={showFilters}
+        setShowChatFilters={setShowFilters}
+        hasActiveSubscription={hasActiveSubscription}
+        onShowPaywall={onShowPaywall}
+        filterGender={gender}
+        setFilterGender={setGender}
+        chatFilterChip={(active: boolean) => chip(active, activeModeConfig.chipColor)}
+        filterStyle={style}
+        setFilterStyle={setStyle}
+        filterHideCountry={hideCountry}
+        setFilterHideCountry={setHideCountry}
+        subscriptionTier={subscriptionTier}
+        filterAgeGroup={ageGroup}
+        setFilterAgeGroup={setAgeGroup}
+        filterCountryMenuRef={countryMenuRef}
+        filterCountryMenuOpen={countryMenuOpen}
+        setFilterCountryMenuOpen={setCountryMenuOpen}
+        filterSelectedCountryCode={selectedCountryCode}
+        CountryFlagIcon={CountryFlagIcon}
+        filterCountry={country}
+        setFilterCountry={setCountry}
+        COUNTRY_OPTIONS={COUNTRY_OPTIONS}
+        getCountryLabel={getCountryLabel}
+        handleApplyFilters={handleApplyLegacyFilters}
+      />
 
     </section>
   );

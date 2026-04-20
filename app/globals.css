@@ -340,6 +340,16 @@ body {
   font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
+body.mode-filters-page {
+  background: #050508 !important;
+  background-attachment: scroll !important;
+}
+
+body.mode-filters-page .route-enter {
+  min-height: 100dvh;
+  background: #050508;
+}
+
 /* ─── Mobile touch & scroll optimisations ─── */
 html, body {
   overscroll-behavior: none;

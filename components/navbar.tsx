@@ -23,7 +23,6 @@ export function TopNav({
 	onGoToAdmin,
 }: TopNavProps) {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
-	const [scrolled, setScrolled] = useState(false);
 	const pathname = usePathname();
 	const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -36,13 +35,6 @@ export function TopNav({
 		};
 		document.addEventListener("mousedown", handleOutsideClick);
 		return () => document.removeEventListener("mousedown", handleOutsideClick);
-	}, []);
-
-	// Scroll listener for glass effect
-	useEffect(() => {
-		const onScroll = () => setScrolled(window.scrollY > 15);
-		window.addEventListener("scroll", onScroll, { passive: true });
-		return () => window.removeEventListener("scroll", onScroll);
 	}, []);
 
 	const navLinks = [
@@ -62,11 +54,8 @@ export function TopNav({
 					transition-all duration-500 ease-in-out
 					flex items-center justify-between
 					h-14 w-full max-w-6xl px-4
-					rounded-2xl border
-					${scrolled 
-						? "bg-[#0a0a12]/80 border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl" 
-						: "bg-transparent border-transparent"
-					}
+					rounded-2xl
+					!bg-transparent !shadow-none !backdrop-blur-0 !border-transparent
 				`}
 			>
 				{/* ── Left: Logo ── */}
@@ -137,9 +126,9 @@ export function TopNav({
 									onClick={onLogin}
 									className="relative group overflow-hidden px-5 py-1.5 text-[12px] font-bold text-white transition-all active:scale-95"
 								>
-									<div className="absolute inset-0 bg-gradient-to-r from-pink-500 via-violet-500 to-blue-500 rounded-full" />
-									<div className="absolute inset-[1px] bg-[#0a0a12] rounded-full group-hover:bg-transparent transition-colors" />
-									<span className="relative z-10">Sign In</span>
+									<div className="absolute inset-0 bg-white rounded-full" />
+									<div className="absolute inset-0 rounded-full ring-1 ring-white/25 group-hover:ring-white/40 transition-all" />
+									<span className="relative z-10 text-black">Sign In</span>
 								</button>
 							)}
 						</>
@@ -163,7 +152,7 @@ export function TopNav({
 					ref={menuRef}
 					className={`
 						absolute top-full left-4 right-4 mt-2 p-2 md:hidden
-						bg-[#0e0e18]/95 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-2xl
+						bg-white/[0.08] border border-white/15 rounded-2xl shadow-2xl backdrop-blur-xl
 						transition-all duration-300 origin-top
 						${isMenuOpen ? "scale-100 opacity-100" : "scale-95 opacity-0 pointer-events-none"}
 					`}

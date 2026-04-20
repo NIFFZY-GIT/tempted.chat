@@ -3,7 +3,7 @@
 import Image from "next/image";
 
 export function DevelopedBy({ disableLink = false }: { disableLink?: boolean } = {}) {
-  const className = "absolute bottom-1 left-0 z-0 w-full pointer-events-auto flex items-center justify-center gap-1 text-[10px] text-white/30 transition-colors duration-200 hover:text-white/50";
+  const className = "w-full pointer-events-auto flex items-center justify-center gap-1 text-[10px] text-white/30 transition-colors duration-200 hover:text-white/50";
 
   const content = (
     <>

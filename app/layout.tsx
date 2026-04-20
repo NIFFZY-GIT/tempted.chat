@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import { RouteTransition } from "@/components/route-transition";
+import { DevelopedBy } from "@/components/developed-by";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -97,6 +98,9 @@ j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
           />
         </noscript>
         <RouteTransition>{children}</RouteTransition>
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 pb-2">
+          <DevelopedBy />
+        </div>
       </body>
     </html>
   );

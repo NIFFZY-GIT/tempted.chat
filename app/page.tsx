@@ -27,7 +27,6 @@ import {
   type UserProfile,
 } from "@/components/chat-ui";
 import { LandingPageSection } from "@/components/landing-page";
-import { DevelopedBy } from "@/components/developed-by";
 import { TopNav } from "@/components/navbar";
 import {
   addDoc,
@@ -4359,7 +4358,6 @@ export default function Home() {
           <section className="auth-shell">
             <article className="auth-panel auth-loading">Checking account session...</article>
           </section>
-          <DevelopedBy />
         </main>
       </>
     );
@@ -4401,8 +4399,6 @@ export default function Home() {
             resetPassword={resetPassword}
           />
           <LandingPageSection />
-          <DevelopedBy />
-          
         </main>
       </>
     );
@@ -4435,7 +4431,6 @@ export default function Home() {
             onContinue={saveProfile}
             backLabel="Sign Out"
           />
-          <DevelopedBy />
         </main>
       </>
     );
@@ -4468,7 +4463,6 @@ export default function Home() {
             subscriptionTier={effectiveSubscriptionTier}
             onShowPaywall={() => router.push("/plans")}
           />
-          <DevelopedBy />
         </main>
       </>
     );
@@ -4539,11 +4533,10 @@ export default function Home() {
             })();
           }}
           onChangeMode={() => {
-            void (async () => {
-              await markRoomEnded();
-              await stopSearching();
-              setChatFilters(null);
-            })();
+            setChatMode(null);
+            setChatFilters(null);
+            void markRoomEnded();
+            void stopSearching();
           }}
           onNextStranger={() => {
             if (isDemoMode && strangerSkipped && waitingForNext) {
@@ -4554,7 +4547,6 @@ export default function Home() {
             void startSearching(chatFilters);
           }}
         />
-        <DevelopedBy disableLink />
       </main>
     </>
   );
