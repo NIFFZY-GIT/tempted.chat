@@ -354,6 +354,7 @@ export default function Home() {
   const pendingRemoteCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const pendingRemoteCandidateSignaturesRef = useRef<Set<string>>(new Set());
   const processedFallbackCandidateSignaturesRef = useRef<Set<string>>(new Set());
+  const peerDisconnectTimeoutRef = useRef<number | null>(null);
   const lastOfferAttemptAtRef = useRef(0);
   const lastAnswerAttemptAtRef = useRef(0);
   const decryptedTextCacheRef = useRef<Map<string, { ciphertext: string; iv: string; text: string }>>(new Map());
@@ -766,6 +767,11 @@ export default function Home() {
   };
 
   const cleanupVideoSession = (preserveLocalStream = false) => {
+    if (peerDisconnectTimeoutRef.current) {
+      window.clearTimeout(peerDisconnectTimeoutRef.current);
+      peerDisconnectTimeoutRef.current = null;
+    }
+
     realtimeSignalHandlerRef.current = null;
     videoRoomUnsubRef.current?.();
     videoRoomUnsubRef.current = null;
@@ -2227,6 +2233,47 @@ export default function Home() {
           });
         };
 
+        const handlePeerLeftImmediately = () => {
+          if (disconnectHandledRoomRef.current === activeRoomId) {
+            return;
+          }
+
+          disconnectHandledRoomRef.current = activeRoomId;
+          setShowNextStrangerPrompt(true);
+          setConnectingStatus(STRANGER_LEFT_PROMPT);
+          setIsConnecting(false);
+          setStrangerIsTyping(false);
+          setMessages((current) => {
+            const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
+            if (alreadyNotified) {
+              return current;
+            }
+
+            const now = new Date();
+            return [
+              ...current,
+              {
+                id: `system-${Date.now()}`,
+                author: "stranger" as const,
+                text: STRANGER_LEFT_PROMPT,
+                sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+              },
+            ];
+          });
+          setActiveRoomId(null);
+
+          void deleteAllRoomData(activeRoomId, [user.uid, otherUid]);
+
+          void updateDoc(roomRef, {
+            status: "ended",
+            endedBy: user.uid,
+            endedAt: serverTimestamp(),
+            endedReason: "peer-connection-lost",
+          }).catch(() => {
+            // Ignore disconnect end race conditions.
+          });
+        };
+
         const attemptIceRestart = () => {
           if (!isOfferer) return;
           void (async () => {
@@ -2263,26 +2310,65 @@ export default function Home() {
         };
 
         peerConnection.onconnectionstatechange = () => {
+          if (peerDisconnectTimeoutRef.current) {
+            window.clearTimeout(peerDisconnectTimeoutRef.current);
+            peerDisconnectTimeoutRef.current = null;
+          }
+
           if (peerConnection.connectionState === "connected") {
             setVideoError(null);
             return;
           }
 
           if (peerConnection.connectionState === "disconnected") {
-            setVideoError("Connection unstable. Reconnecting video...");
-            attemptIceRestart();
+            setVideoError("Stranger disconnected.");
+            peerDisconnectTimeoutRef.current = window.setTimeout(() => {
+              peerDisconnectTimeoutRef.current = null;
+              if (
+                peerConnection.connectionState === "disconnected" ||
+                peerConnection.connectionState === "failed" ||
+                peerConnection.connectionState === "closed"
+              ) {
+                handlePeerLeftImmediately();
+              }
+            }, 1200);
             return;
           }
 
           if (peerConnection.connectionState === "failed") {
-            setVideoError("Video connection failed. Retrying...");
-            attemptIceRestart();
+            setVideoError("Stranger disconnected.");
+            handlePeerLeftImmediately();
+            return;
+          }
+
+          if (peerConnection.connectionState === "closed") {
+            setVideoError("Stranger disconnected.");
+            handlePeerLeftImmediately();
           }
         };
 
         peerConnection.oniceconnectionstatechange = () => {
-          if (peerConnection.iceConnectionState === "failed") {
-            attemptIceRestart();
+          if (peerDisconnectTimeoutRef.current) {
+            window.clearTimeout(peerDisconnectTimeoutRef.current);
+            peerDisconnectTimeoutRef.current = null;
+          }
+
+          if (peerConnection.iceConnectionState === "connected" || peerConnection.iceConnectionState === "completed") {
+            return;
+          }
+
+          if (peerConnection.iceConnectionState === "disconnected") {
+            peerDisconnectTimeoutRef.current = window.setTimeout(() => {
+              peerDisconnectTimeoutRef.current = null;
+              if (peerConnection.iceConnectionState === "disconnected" || peerConnection.iceConnectionState === "failed") {
+                handlePeerLeftImmediately();
+              }
+            }, 1200);
+            return;
+          }
+
+          if (peerConnection.iceConnectionState === "failed" || peerConnection.iceConnectionState === "closed") {
+            handlePeerLeftImmediately();
           }
         };
 
