@@ -123,6 +123,10 @@
   }
 }
 
+body.video-chat-active .global-developed-by {
+  display: none !important;
+}
+
 /* ── Action button press animation ── */
 @keyframes btn-press {
   0%   { transform: scale(1); }

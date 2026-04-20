@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
 	ChevronLeft, X, MessageCircle, Mic, MicOff, Camera, VideoOff, 
@@ -8,6 +8,7 @@ import {
 	Zap, Search, Globe, User
 } from "lucide-react";
 import { TierLogo } from "@/components/tier-logo";
+import { PoweredBy } from "@/components/developed-by";
 
 export function ChatRoomVideoView({
 	chatContainerRef,
@@ -58,40 +59,58 @@ export function ChatRoomVideoView({
     
     const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
+    useEffect(() => {
+        document.body.classList.add("video-chat-active");
+        return () => {
+            document.body.classList.remove("video-chat-active");
+        };
+    }, []);
+
 	return (
 		<section
 			ref={chatContainerRef}
-			className="fixed inset-0 z-50 flex flex-col bg-[#050505] touch-manipulation overscroll-contain overflow-hidden"
+            className="fixed inset-0 z-[60] flex flex-col bg-[#050505] touch-manipulation overscroll-contain overflow-hidden"
 		>
 			{/* ─── VIDEO GRID (CINEMATIC SPLIT) ─── */}
 			<div className="flex h-[calc(var(--vh,1dvh)*100)] w-full flex-col sm:flex-row gap-1 p-1">
 				
                 {/* STRANGER PANEL */}
-				<div className="relative flex-1 overflow-hidden rounded-3xl bg-white/[0.02] border border-white/5">
-					<video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover" />
+				<div className="relative flex-1 overflow-hidden bg-white/[0.02] border border-white/5">
+					<video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover rounded-none" />
 					
                     {/* Status Overlays */}
-					<AnimatePresence>
-						{(isConnecting || !hasRemoteVideo) && (
-							<motion.div 
+                    <AnimatePresence>
+                        {(isConnecting || !hasRemoteVideo) && (
+                            <motion.div 
                                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                 className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-2xl"
                             >
-								<div className="relative mb-8">
-                                    <motion.div 
-                                        animate={{ scale: [1, 1.5, 1], opacity: [0.5, 0, 0.5] }}
-                                        transition={{ duration: 2, repeat: Infinity }}
-                                        className="absolute inset-0 rounded-full border-2 border-pink-500/50"
-                                    />
-                                    <div className="h-24 w-24 rounded-full border border-pink-500/30 flex items-center justify-center bg-pink-500/10">
-                                        <Search className="text-pink-500 animate-pulse" size={32} />
+                                {/* PLANET ANIMATION (copied from text chat UI) */}
+                                <div className="relative h-44 w-44 mb-8">
+                                    <div className="absolute -inset-4 animate-[spin_12s_linear_infinite] rounded-full border border-white/[0.03]" />
+                                    <div className="absolute inset-0 animate-[spin_6s_linear_infinite] rounded-full border border-dashed border-white/[0.06]">
+                                        <div className="absolute -top-1 left-1/2 h-2 w-2 -translate-x-1/2 rounded-full bg-white shadow-[0_0_12px_rgba(255,255,255,0.6)]" />
+                                    </div>
+                                    <div className="absolute inset-6 animate-[spin_4s_linear_infinite_reverse] rounded-full border border-white/[0.08]">
+                                        <div className="absolute -bottom-0.5 left-1/2 h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-white/80 shadow-[0_0_8px_rgba(255,255,255,0.5)]" />
+                                    </div>
+                                    <div className="absolute inset-12 animate-[spin_2.5s_linear_infinite] rounded-full border border-white/[0.1]">
+                                        <div className="absolute -top-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-white/60 shadow-[0_0_6px_rgba(255,255,255,0.4)]" />
+                                    </div>
+                                    <div className="absolute inset-[38%]">
+                                        <div className="relative h-full w-full">
+                                            <div className="absolute -inset-1 animate-ping rounded-full bg-white/[0.06]" />
+                                            <div className="absolute inset-0 rounded-full bg-white/90 shadow-[0_0_30px_rgba(255,255,255,0.25)]" />
+                                            <div className="absolute inset-[3px] rounded-full bg-[#08080c]" />
+                                            <div className="absolute inset-[6px] rounded-full bg-white/80" />
+                                        </div>
                                     </div>
                                 </div>
-								<h3 className="text-xl font-black uppercase tracking-[0.2em] text-white">{isConnecting ? "Scanning..." : "Waiting"}</h3>
-								<p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.3em] mt-3">{connectingStatus}</p>
-							</motion.div>
-						)}
-					</AnimatePresence>
+                                <h3 className="text-xl font-black uppercase tracking-[0.2em] text-white">{isConnecting ? "Scanning..." : "Waiting"}</h3>
+                                <p className="text-[10px] font-bold text-white/30 uppercase tracking-[0.3em] mt-3">{connectingStatus}</p>
+                            </motion.div>
+                        )}
+                    </AnimatePresence>
 
                     {/* Stranger Identity Pill */}
                     {!isConnecting && hasResolvedStrangerProfile && (
@@ -106,8 +125,8 @@ export function ChatRoomVideoView({
 				</div>
 
 				{/* YOU PANEL */}
-				<div className="relative flex-1 overflow-hidden rounded-3xl bg-[#080808] border border-white/5">
-					<video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover [transform:scaleX(-1)] opacity-60 grayscale-[0.2]" />
+				<div className="relative flex-1 overflow-hidden bg-[#080808] border border-white/5">
+					<video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover [transform:scaleX(-1)] opacity-60 grayscale-[0.2] rounded-none" />
 					{!localVideoEnabled && (
 						<div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
 							<VideoOff size={48} className="text-white/10" />
@@ -195,18 +214,17 @@ export function ChatRoomVideoView({
                     {!hasRemoteVideo && <div className="px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-[9px] font-black text-amber-400 uppercase tracking-widest backdrop-blur-md">Stranger Camera Off</div>}
                 </div>
 
-                <div className="flex items-center gap-4 bg-black/40 border border-white/10 backdrop-blur-3xl p-3 rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-                    <RoundButton onClick={() => setShowVideoChatOverlay(!showVideoChatOverlay)} icon={<MessageCircle />} active={showVideoChatOverlay} color="pink" />
-                    <RoundButton onClick={toggleLocalAudio} icon={localAudioEnabled ? <Mic /> : <MicOff />} active={!localAudioEnabled} color="rose" />
-                    
+                <div className="flex items-center gap-2 bg-black/40 border border-white/10 backdrop-blur-3xl p-2 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                    <RoundButton onClick={() => setShowVideoChatOverlay(!showVideoChatOverlay)} icon={<MessageCircle />} active={showVideoChatOverlay} color="pink" size={36} />
+                    <RoundButton onClick={toggleLocalAudio} icon={localAudioEnabled ? <Mic /> : <MicOff />} active={!localAudioEnabled} color="rose" size={36} />
                     {/* THE NEXT/SKIP BUTTON */}
-                    <div className="min-w-[120px] flex justify-center">
+                    <div className="min-w-[80px] flex justify-center">
                         <AnimatePresence mode="wait">
                             {showNextStrangerPrompt ? (
                                 <motion.button 
                                     key="next" initial={{ scale: 0.8, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
                                     onClick={onNextStranger}
-                                    className="h-16 px-10 rounded-[1.5rem] bg-white text-black font-black uppercase tracking-tighter shadow-2xl hover:scale-105 active:scale-95 transition-all"
+                                    className="h-10 px-5 rounded-[1rem] bg-white text-black font-black uppercase tracking-tighter shadow-2xl hover:scale-105 active:scale-95 transition-all text-xs"
                                 >
                                     Next
                                 </motion.button>
@@ -215,22 +233,21 @@ export function ChatRoomVideoView({
                                     <motion.button 
                                         key="skip" initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                                         onClick={() => setShowSkipConfirm(true)}
-                                        className="h-16 px-10 rounded-[1.5rem] bg-white/5 border border-white/10 text-white font-black uppercase tracking-tighter hover:bg-white/10 active:scale-95 transition-all"
+                                        className="h-10 px-5 rounded-[1rem] bg-white/5 border border-white/10 text-white font-black uppercase tracking-tighter hover:bg-white/10 active:scale-95 transition-all text-xs"
                                     >
                                         Skip
                                     </motion.button>
                                 ) : (
-                                    <motion.div key="confirm" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex items-center gap-1.5 bg-rose-500/10 border border-rose-500/20 rounded-2xl p-1">
-                                        <button onClick={() => { setShowSkipConfirm(false); onNextStranger(); }} className="px-5 py-3 text-[10px] font-black uppercase text-rose-400 hover:bg-rose-500/20 rounded-xl">Yes</button>
-                                        <button onClick={() => setShowSkipConfirm(false)} className="px-5 py-3 text-[10px] font-black uppercase text-white/40 hover:bg-white/5 rounded-xl">No</button>
+                                    <motion.div key="confirm" initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex items-center gap-1 bg-rose-500/10 border border-rose-500/20 rounded-2xl p-1">
+                                        <button onClick={() => { setShowSkipConfirm(false); onNextStranger(); }} className="px-3 py-2 text-[10px] font-black uppercase text-rose-400 hover:bg-rose-500/20 rounded-xl">Yes</button>
+                                        <button onClick={() => setShowSkipConfirm(false)} className="px-3 py-2 text-[10px] font-black uppercase text-white/40 hover:bg-white/5 rounded-xl">No</button>
                                     </motion.div>
                                 )
                             )}
                         </AnimatePresence>
                     </div>
-
-                    <RoundButton onClick={toggleLocalVideo} icon={localVideoEnabled ? <Camera /> : <VideoOff />} active={!localVideoEnabled} color="rose" />
-                    <RoundButton onClick={switchCamera} icon={<RefreshCw />} color="white" />
+                    <RoundButton onClick={toggleLocalVideo} icon={localVideoEnabled ? <Camera /> : <VideoOff />} active={!localVideoEnabled} color="rose" size={36} />
+                    <RoundButton onClick={switchCamera} icon={<RefreshCw />} color="white" size={36} />
                 </div>
 			</div>
 
@@ -243,24 +260,26 @@ export function ChatRoomVideoView({
                 )}
             </AnimatePresence>
 
-			{chatFiltersPanel}
+			{/* ─── POWERED BY ZEVARONE ─── */}
+			<div className="absolute left-0 right-0 bottom-2 z-40 flex justify-center pointer-events-none select-none">
+                <PoweredBy />
+			</div>
 		</section>
 	);
 }
 
 // ─── LOCAL UI HELPERS ───
 
-function RoundButton({ icon, active, color, onClick }: any) {
-	const base = "h-14 w-14 rounded-full flex items-center justify-center transition-all active:scale-90 border";
+function RoundButton({ icon, active, color, onClick, size = 36 }: any) {
+    const base = `h-9 w-9 sm:h-10 sm:w-10 rounded-full flex items-center justify-center transition-all active:scale-90 border`;
     const styles: any = {
         pink: active ? "bg-pink-600 border-pink-400 text-white" : "bg-white/5 border-white/10 text-white/40 hover:text-white",
         rose: active ? "bg-rose-600 border-rose-400 text-white" : "bg-white/5 border-white/10 text-white/40 hover:text-white",
         white: "bg-white/5 border-white/10 text-white/40 hover:text-white"
     };
-
-	return (
-		<button onClick={onClick} className={`${base} ${styles[color]}`}>
-			{React.cloneElement(icon, { size: 22 })}
-		</button>
-	);
+    return (
+        <button onClick={onClick} className={`${base} ${styles[color]}`}>
+            {React.cloneElement(icon, { size })}
+        </button>
+    );
 }
