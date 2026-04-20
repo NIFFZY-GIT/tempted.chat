@@ -1356,6 +1356,7 @@ export function ChatRoomView({
         switchCamera={switchCamera}
         videoError={videoError}
         chatFiltersPanel={chatFiltersPanel}
+        onShowPaywall={onShowPaywall}
       />
     );
   }

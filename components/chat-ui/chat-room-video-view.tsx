@@ -1,10 +1,11 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
 	ChevronLeft, X, MessageCircle, Mic, MicOff, Camera, VideoOff, 
-	RefreshCw, Send, Settings2, ArrowRight, ShieldCheck, 
+	RefreshCw, Send, Settings2, ArrowRight, ArrowUpRight, ShieldCheck, 
 	Zap, Search, Globe, User
 } from "lucide-react";
 import { TierLogo } from "@/components/tier-logo";
@@ -55,6 +56,7 @@ export function ChatRoomVideoView({
 	switchCamera,
 	videoError,
 	chatFiltersPanel,
+	onShowPaywall,
 }: any) {
     
     const [showSkipConfirm, setShowSkipConfirm] = useState(false);
@@ -77,6 +79,8 @@ export function ChatRoomVideoView({
                 {/* STRANGER PANEL */}
 				<div className="relative flex-1 overflow-hidden bg-white/[0.02] border border-white/5">
 					<video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-cover rounded-none" />
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/45 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent" />
 					
                     {/* Status Overlays */}
                     <AnimatePresence>
@@ -112,12 +116,12 @@ export function ChatRoomVideoView({
                         )}
                     </AnimatePresence>
 
-                    {/* Stranger Identity Pill */}
+                    {/* Stranger Identity Pill — positioned below header row */}
                     {!isConnecting && hasResolvedStrangerProfile && (
-                        <div className="absolute top-6 left-6 z-30 flex items-center gap-2 px-4 py-2 rounded-full bg-black/40 border border-white/10 backdrop-blur-md">
+						<div className="absolute top-24 left-4 z-30 flex items-center gap-2 px-4 py-2 rounded-full bg-black/65 border border-white/20 backdrop-blur-xl shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
                             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
                             <CountryFlagIcon countryCode={strangerProfile.countryCode} className="h-3 w-4 rounded-sm" />
-                            <span className="text-[11px] font-black text-white uppercase tracking-wider">
+                            <span className="text-[11px] font-black text-white uppercase tracking-wider drop-shadow-[0_1px_2px_rgba(0,0,0,0.7)]">
                                 {strangerProfile.gender}, {strangerProfile.age}
                             </span>
                         </div>
@@ -127,12 +131,14 @@ export function ChatRoomVideoView({
 				{/* YOU PANEL */}
 				<div className="relative flex-1 overflow-hidden bg-[#080808] border border-white/5">
 					<video ref={localVideoRef} autoPlay playsInline muted className="h-full w-full object-cover [transform:scaleX(-1)] rounded-none" />
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-black/35 to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/45 to-transparent" />
 					{!localVideoEnabled && (
 						<div className="absolute inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm">
 							<VideoOff size={48} className="text-white/10" />
 						</div>
 					)}
-                    <div className="absolute bottom-6 right-6 px-3 py-1 rounded-lg bg-black/40 border border-white/10 text-[9px] font-black uppercase text-white/40 tracking-widest">You</div>
+                    <div className="absolute bottom-6 right-6 px-3 py-1 rounded-lg bg-black/65 border border-white/20 text-[10px] font-black uppercase text-white/80 tracking-widest shadow-[0_6px_18px_rgba(0,0,0,0.35)]">You</div>
 				</div>
 			</div>
 
@@ -140,7 +146,7 @@ export function ChatRoomVideoView({
 			<header className="absolute inset-x-0 top-0 z-40 flex items-center justify-between px-6 py-8 pointer-events-none">
 				<div className="pointer-events-auto">
                     {!showBackConfirm ? (
-                        <button onClick={() => setShowBackConfirm(true)} className="h-12 w-12 rounded-full bg-black/40 border border-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-black/60 transition-all">
+						<button onClick={() => setShowBackConfirm(true)} className="h-12 w-12 rounded-full bg-black/65 border border-white/20 backdrop-blur-xl flex items-center justify-center text-white hover:bg-black/75 transition-all shadow-[0_8px_20px_rgba(0,0,0,0.35)]">
                             <ChevronLeft size={24} />
                         </button>
                     ) : (
@@ -154,7 +160,7 @@ export function ChatRoomVideoView({
                 <div className="pointer-events-auto">
                     <button 
                         onClick={() => setShowChatFilters(true)}
-                        className="h-12 px-5 rounded-full bg-black/40 border border-white/10 backdrop-blur-md flex items-center gap-3 text-white/60 hover:text-white transition-all"
+						className="h-12 px-5 rounded-full bg-black/65 border border-white/20 backdrop-blur-xl flex items-center gap-3 text-white/80 hover:text-white transition-all shadow-[0_8px_20px_rgba(0,0,0,0.35)]"
                     >
                         <Settings2 size={18} />
                         <span className="text-[10px] font-black uppercase tracking-widest">Filters</span>
@@ -210,11 +216,11 @@ export function ChatRoomVideoView({
                 
                 {/* Video/Audio Indicators (Floating Toasts) */}
                 <div className="flex gap-2">
-                    {!remoteAudioEnabled && <div className="px-3 py-1 bg-rose-500/20 border border-rose-500/30 rounded-full text-[9px] font-black text-rose-400 uppercase tracking-widest backdrop-blur-md">Stranger Muted</div>}
-                    {!hasRemoteVideo && <div className="px-3 py-1 bg-amber-500/20 border border-amber-500/30 rounded-full text-[9px] font-black text-amber-400 uppercase tracking-widest backdrop-blur-md">Stranger Camera Off</div>}
+                    {!remoteAudioEnabled && <div className="px-3 py-1.5 bg-rose-500/25 border border-rose-500/40 rounded-full text-[10px] font-black text-rose-300 uppercase tracking-widest backdrop-blur-xl shadow-[0_8px_18px_rgba(0,0,0,0.3)]">Stranger Muted</div>}
+                    {!hasRemoteVideo && <div className="px-3 py-1.5 bg-amber-500/25 border border-amber-500/45 rounded-full text-[10px] font-black text-amber-300 uppercase tracking-widest backdrop-blur-xl shadow-[0_8px_18px_rgba(0,0,0,0.3)]">Stranger Camera Off</div>}
                 </div>
 
-                <div className="flex items-center gap-2 bg-black/40 border border-white/10 backdrop-blur-3xl p-2 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+                <div className="flex items-center gap-2 bg-black/65 border border-white/20 backdrop-blur-3xl p-2 rounded-[2rem] shadow-[0_20px_50px_rgba(0,0,0,0.55)]">
                     <RoundButton onClick={() => setShowVideoChatOverlay(!showVideoChatOverlay)} icon={<MessageCircle />} active={showVideoChatOverlay} color="pink" size={36} />
                     <RoundButton onClick={toggleLocalAudio} icon={localAudioEnabled ? <Mic /> : <MicOff />} active={!localAudioEnabled} color="rose" size={36} />
                     {/* THE NEXT/SKIP BUTTON */}
@@ -264,6 +270,9 @@ export function ChatRoomVideoView({
 			<div className="absolute left-0 right-0 bottom-2 z-40 flex justify-center pointer-events-none select-none">
                 <PoweredBy />
 			</div>
+
+            {/* ─── FILTER PANEL (same as text chat) ─── */}
+            {chatFiltersPanel}
 		</section>
 	);
 }
