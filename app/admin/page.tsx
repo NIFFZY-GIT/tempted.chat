@@ -229,6 +229,12 @@ export default function AdminDashboardPage() {
   const [inviteSending, setInviteSending] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [inviteRemovingToken, setInviteRemovingToken] = useState<string | null>(null);
+  const [inviteRemoveError, setInviteRemoveError] = useState<string | null>(null);
+  const [inviteRemoveNotice, setInviteRemoveNotice] = useState<string | null>(null);
+  const [adminActionError, setAdminActionError] = useState<string | null>(null);
+  const [adminActionNotice, setAdminActionNotice] = useState<string | null>(null);
+  const [removingAdminUid, setRemovingAdminUid] = useState<string | null>(null);
   const [adminUsers, setAdminUsers] = useState<AdminUserEntry[]>([]);
   const [userSubscriptions, setUserSubscriptions] = useState<Record<string, UserSubscriptionEntry>>({});
   const [usersLoading, setUsersLoading] = useState(false);
@@ -504,6 +510,8 @@ export default function AdminDashboardPage() {
     setInviteSending(true);
     setInviteError(null);
     setInviteSuccess(false);
+    setInviteRemoveError(null);
+    setInviteRemoveNotice(null);
     try {
       const idToken = await user.getIdToken(true);
       const res = await fetch("/api/admin/invite", {
@@ -523,6 +531,82 @@ export default function AdminDashboardPage() {
       setInviteError("Network error");
     } finally {
       setInviteSending(false);
+    }
+  };
+
+  const removePendingInvite = async (token: string) => {
+    if (!user || !token) {
+      return;
+    }
+
+    const confirmed = confirm("Remove this pending invite?");
+    if (!confirmed) {
+      return;
+    }
+
+    setInviteRemovingToken(token);
+    setInviteRemoveError(null);
+    setInviteRemoveNotice(null);
+
+    try {
+      const idToken = await user.getIdToken(true);
+      const response = await fetch(`/api/admin/invite/${token}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      const data = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !data.success) {
+        setInviteRemoveError(data.error ?? "Failed to remove invite.");
+        return;
+      }
+
+      setInviteRemoveNotice("Invite removed successfully.");
+      await loadAdmins();
+    } catch {
+      setInviteRemoveError("Network error while removing invite.");
+    } finally {
+      setInviteRemovingToken(null);
+    }
+  };
+
+  const removeAdminAccess = async (targetUid: string) => {
+    if (!user || targetUid === user.uid) {
+      return;
+    }
+
+    const confirmed = confirm("Remove this admin's access? They will no longer be able to open the admin dashboard.");
+    if (!confirmed) {
+      return;
+    }
+
+    setRemovingAdminUid(targetUid);
+    setAdminActionError(null);
+    setAdminActionNotice(null);
+
+    try {
+      const idToken = await user.getIdToken(true);
+      const response = await fetch(`/api/admin/admins/${targetUid}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      const data = (await response.json()) as { success?: boolean; error?: string };
+      if (!response.ok || !data.success) {
+        setAdminActionError(data.error ?? "Failed to remove admin.");
+        return;
+      }
+
+      setAdminActionNotice("Admin access removed successfully.");
+      await loadAdmins();
+    } catch {
+      setAdminActionError("Network error while removing admin.");
+    } finally {
+      setRemovingAdminUid(null);
     }
   };
 
@@ -2306,6 +2390,8 @@ export default function AdminDashboardPage() {
                   <h3 className="text-[13px] font-semibold uppercase tracking-widest text-white/30">Current Admins</h3>
                   <button onClick={() => void loadAdmins()} className="text-[12px] text-white/30 hover:text-white/60 transition">Refresh</button>
                 </div>
+                {adminActionError && <p className="mb-3 text-sm text-rose-400">{adminActionError}</p>}
+                {adminActionNotice && <p className="mb-3 text-sm text-emerald-400">{adminActionNotice}</p>}
                 {adminsLoading ? (
                   <p className="text-sm text-white/30">Loading…</p>
                 ) : admins.length === 0 ? (
@@ -2321,7 +2407,18 @@ export default function AdminDashboardPage() {
                           <p className="truncate text-sm font-medium text-white/80">{admin.displayName || admin.email}</p>
                           {admin.displayName && <p className="truncate text-xs text-white/40">{admin.email}</p>}
                         </div>
+                        {admin.uid === user.uid && (
+                          <span className="shrink-0 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400">You</span>
+                        )}
                         <span className="shrink-0 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-400">Admin</span>
+                        <button
+                          type="button"
+                          onClick={() => void removeAdminAccess(admin.uid)}
+                          disabled={admin.uid === user.uid || removingAdminUid === admin.uid}
+                          className="shrink-0 rounded-lg bg-rose-500/10 px-3 py-1.5 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {removingAdminUid === admin.uid ? "Removing..." : "Remove"}
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -2332,6 +2429,8 @@ export default function AdminDashboardPage() {
               {pendingInvites.length > 0 && (
                 <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-6">
                   <h3 className="mb-4 text-[13px] font-semibold uppercase tracking-widest text-white/30">Pending Invites</h3>
+                  {inviteRemoveError && <p className="mb-3 text-sm text-rose-400">{inviteRemoveError}</p>}
+                  {inviteRemoveNotice && <p className="mb-3 text-sm text-emerald-400">{inviteRemoveNotice}</p>}
                   <div className="space-y-2">
                     {pendingInvites.map((invite) => (
                       <div key={invite.token} className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-3">
@@ -2342,6 +2441,14 @@ export default function AdminDashboardPage() {
                           </p>
                         </div>
                         <span className="shrink-0 rounded-full bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-violet-400">Pending</span>
+                        <button
+                          type="button"
+                          onClick={() => void removePendingInvite(invite.token)}
+                          disabled={inviteRemovingToken === invite.token}
+                          className="shrink-0 rounded-lg bg-rose-500/10 px-3 py-1.5 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          {inviteRemovingToken === invite.token ? "Removing..." : "Remove"}
+                        </button>
                       </div>
                     ))}
                   </div>
