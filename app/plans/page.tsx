@@ -99,7 +99,7 @@ export default function PlansPage() {
 	};
 
 	return (
-		<div className="relative min-h-screen w-full bg-[#050508] text-white overflow-x-hidden selection:bg-pink-500/30">
+		<div className="relative min-h-screen w-full text-white overflow-x-hidden selection:bg-pink-500/30">
 			{/* --- Navbar --- */}
 			<TopNav 
 				isAuthenticated={!!user} 

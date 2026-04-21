@@ -23,8 +23,18 @@ export function TopNav({
 	onGoToAdmin,
 }: TopNavProps) {
 	const [isMenuOpen, setIsMenuOpen] = useState(false);
+	const [scrollProgress, setScrollProgress] = useState(0);
 	const pathname = usePathname();
 	const menuRef = useRef<HTMLDivElement | null>(null);
+
+	useEffect(() => {
+		const onScroll = () => {
+			// fully opaque by 80px of scroll
+			setScrollProgress(Math.min(window.scrollY / 80, 1));
+		};
+		window.addEventListener("scroll", onScroll, { passive: true });
+		return () => window.removeEventListener("scroll", onScroll);
+	}, []);
 
 	// Close menu on click outside
 	useEffect(() => {
@@ -47,7 +57,15 @@ export function TopNav({
 	];
 
 	return (
-		<header className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 py-3 pointer-events-none">
+		<header
+			className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 py-3 pointer-events-none"
+			style={{
+				backgroundColor: `rgba(6, 6, 12, ${scrollProgress * 0.85})`,
+				backdropFilter: `blur(${scrollProgress * 16}px)`,
+				WebkitBackdropFilter: `blur(${scrollProgress * 16}px)`,
+				borderBottom: `1px solid rgba(255,255,255,${scrollProgress * 0.07})`,
+			}}
+		>
 			<nav
 				className={`
 					pointer-events-auto

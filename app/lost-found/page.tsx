@@ -195,7 +195,7 @@ export default function LostFoundPage() {
 	};
 
 	return (
-		<div className="min-h-screen bg-[#050508] text-white selection:bg-pink-500/30">
+		<div className="min-h-screen text-white selection:bg-pink-500/30">
 			<TopNav
 				isAuthenticated={!!user}
 				onLogin={() => router.push("/")}
