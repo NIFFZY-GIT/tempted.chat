@@ -1,8 +1,6 @@
 import nodemailer from "nodemailer";
 
 // Lazy transporter — created on first use so env vars are always available
-// regardless of when the module is first imported (avoids cold-start issues
-// where process.env may not be fully populated at import time).
 let _transporter: nodemailer.Transporter | null = null;
 
 function getTransporter() {
@@ -38,6 +36,35 @@ export async function sendMail(to: string, subject: string, html: string): Promi
   console.log(`[email] Sent successfully to ${to}`);
 }
 
+// ─── UI SHARED COMPONENTS ───────────────────────────────────────────────────
+
+const FOOTER_HTML = `
+  <!-- Footer brand -->
+  <tr>
+    <td align="center" style="padding-top:40px;padding-bottom:12px;">
+      <p style="margin:0 0 12px 0;color:#636363;font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">Powered by</p>
+      <img src="https://tempted.chat/asstes/zevaronelogo/Asset 12.png"
+           alt="Zevarone" height="28"
+           style="height:28px;display:block;opacity:0.8;" />
+    </td>
+  </tr>
+  <tr>
+    <td align="center">
+      <p style="margin:0;color:#444;font-size:11px;letter-spacing:0.2px;">
+        &copy; ${new Date().getFullYear()} Zevarone. All rights reserved.
+      </p>
+    </td>
+  </tr>
+`;
+
+function formatDate(ms: number): string {
+  return new Date(ms).toUTCString().replace(" GMT", " UTC");
+}
+
+function formatPrice(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
 // ─── Invoice Email ────────────────────────────────────────────────────────────
 
 export interface InvoiceEmailParams {
@@ -48,14 +75,6 @@ export interface InvoiceEmailParams {
   amountCents: number;
   activatedAt: number;
   expiresAt: number;
-}
-
-function formatDate(ms: number): string {
-  return new Date(ms).toUTCString().replace(" GMT", " UTC");
-}
-
-function formatPrice(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
 }
 
 export function buildInvoiceEmail(params: InvoiceEmailParams): string {
@@ -72,163 +91,86 @@ export function buildInvoiceEmail(params: InvoiceEmailParams): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>tempted.chat — Purchase Confirmation</title>
 </head>
-<body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<body style="margin:0;padding:0;background:#0a0a0f;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-
-          <!-- Header -->
           <tr>
             <td align="center" style="padding-bottom:32px;">
-              <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="tempted.chat" height="48"
-                   style="height:48px;display:block;" />
+              <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png" alt="tempted.chat" height="48" style="height:48px;display:block;" />
             </td>
           </tr>
-
-          <!-- Card -->
           <tr>
-            <td style="background:#13131a;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
-
-              <!-- Card top accent -->
-              <div style="height:3px;background:linear-gradient(90deg,${tierColor},#ec4899);"></div>
-
-              <table width="100%" cellpadding="0" cellspacing="0" style="padding:36px 40px;">
-
-                <!-- Tier badge + icon -->
+            <td style="background:#13131a;border-radius:24px;border:1px solid rgba(255,255,255,0.06);overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.4);">
+              <div style="height:4px;background:linear-gradient(90deg,${tierColor},#ec4899);"></div>
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px;">
                 <tr>
-                  <td align="center" style="padding-bottom:28px;">
-                    <img src="${tierLogo}" alt="${tierLabel}" height="72"
-                         style="height:72px;display:block;margin-bottom:14px;" />
-                    <span style="display:inline-block;padding:6px 18px;border-radius:100px;background:${tierBg};color:${tierColor};font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">
-                      ${tierLabel} Activated
+                  <td align="center" style="padding-bottom:24px;">
+                    <img src="${tierLogo}" alt="${tierLabel}" height="80" style="height:80px;display:block;margin-bottom:16px;" />
+                    <span style="display:inline-block;padding:8px 20px;border-radius:100px;background:${tierBg};color:${tierColor};font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;">
+                      ${tierLabel} Status Active
                     </span>
                   </td>
                 </tr>
-
-                <!-- Thank-you heading -->
                 <tr>
-                  <td align="center" style="padding-bottom:8px;">
-                    <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:800;line-height:1.25;">
-                      Thank you for your purchase!
-                    </h1>
+                  <td align="center" style="padding-bottom:12px;">
+                    <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:800;line-height:1.2;">Thank you for your purchase!</h1>
                   </td>
                 </tr>
                 <tr>
-                  <td align="center" style="padding-bottom:36px;">
-                    <p style="margin:0;color:#888;font-size:15px;line-height:1.6;">
-                      Your ${tierLabel} subscription is now active. Enjoy unlimited access.
-                    </p>
+                  <td align="center" style="padding-bottom:40px;">
+                    <p style="margin:0;color:#94a3b8;font-size:16px;line-height:1.6;">Your subscription is now active. You have full access to all ${tierLabel} features.</p>
                   </td>
                 </tr>
-
-                <!-- Divider -->
                 <tr>
-                  <td style="padding-bottom:28px;">
-                    <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
-                  </td>
-                </tr>
-
-                <!-- Invoice table -->
-                <tr>
-                  <td style="padding-bottom:28px;">
+                  <td style="background:rgba(255,255,255,0.03);border-radius:16px;padding:24px;">
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td style="color:#888;font-size:13px;padding-bottom:14px;">Order ID</td>
-                        <td align="right" style="color:#ccc;font-size:13px;font-family:monospace;padding-bottom:14px;">${orderId}</td>
+                        <td style="color:#64748b;font-size:13px;padding-bottom:12px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Plan Details</td>
+                        <td align="right" style="color:#64748b;font-size:13px;padding-bottom:12px;font-family:monospace;">ID: ${orderId.slice(0,8)}...</td>
                       </tr>
                       <tr>
-                        <td style="color:#888;font-size:13px;padding-bottom:14px;">Plan</td>
-                        <td align="right" style="color:#fff;font-size:13px;font-weight:600;padding-bottom:14px;">${planName}</td>
+                        <td style="color:#94a3b8;font-size:14px;padding-bottom:8px;">Plan Name</td>
+                        <td align="right" style="color:#fff;font-size:14px;font-weight:600;padding-bottom:8px;">${planName}</td>
                       </tr>
                       <tr>
-                        <td style="color:#888;font-size:13px;padding-bottom:14px;">Duration</td>
-                        <td align="right" style="color:#ccc;font-size:13px;padding-bottom:14px;">${durationLabel}</td>
+                        <td style="color:#94a3b8;font-size:14px;padding-bottom:8px;">Billing Period</td>
+                        <td align="right" style="color:#fff;font-size:14px;padding-bottom:8px;">${durationLabel}</td>
                       </tr>
                       <tr>
-                        <td style="color:#888;font-size:13px;padding-bottom:14px;">Activated</td>
-                        <td align="right" style="color:#ccc;font-size:13px;padding-bottom:14px;">${formatDate(activatedAt)}</td>
+                        <td style="color:#94a3b8;font-size:14px;padding-bottom:8px;">Activated On</td>
+                        <td align="right" style="color:#fff;font-size:14px;padding-bottom:8px;">${formatDate(activatedAt)}</td>
                       </tr>
                       <tr>
-                        <td style="color:#888;font-size:13px;padding-bottom:0;">Expires</td>
-                        <td align="right" style="color:#ccc;font-size:13px;padding-bottom:0;">${formatDate(expiresAt)}</td>
+                        <td style="color:#94a3b8;font-size:14px;">Renews/Expires</td>
+                        <td align="right" style="color:#fff;font-size:14px;">${formatDate(expiresAt)}</td>
                       </tr>
                     </table>
                   </td>
                 </tr>
-
-                <!-- Divider -->
                 <tr>
-                  <td style="padding-bottom:24px;">
-                    <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
-                  </td>
-                </tr>
-
-                <!-- Total -->
-                <tr>
-                  <td style="padding-bottom:36px;">
+                  <td style="padding-top:32px;padding-bottom:32px;">
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td style="color:#fff;font-size:16px;font-weight:700;">Total Paid</td>
-                        <td align="right" style="color:${tierColor};font-size:22px;font-weight:800;">${formatPrice(amountCents)}</td>
+                        <td style="color:#fff;font-size:18px;font-weight:700;">Total Paid</td>
+                        <td align="right" style="color:${tierColor};font-size:28px;font-weight:900;">${formatPrice(amountCents)}</td>
                       </tr>
                     </table>
                   </td>
                 </tr>
-
-                <!-- CTA -->
-                <tr>
-                  <td align="center" style="padding-bottom:36px;">
-                    <a href="https://tempted.chat"
-                       style="display:inline-block;padding:14px 40px;background:linear-gradient(135deg,${tierColor},#ec4899);color:#fff;font-size:15px;font-weight:700;text-decoration:none;border-radius:100px;letter-spacing:0.5px;">
-                      Start Chatting
-                    </a>
-                  </td>
-                </tr>
-
-                <!-- Divider -->
-                <tr>
-                  <td style="padding-bottom:24px;">
-                    <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
-                  </td>
-                </tr>
-
-                <!-- Footer note -->
                 <tr>
                   <td align="center">
-                    <p style="margin:0;color:#555;font-size:12px;line-height:1.7;">
-                      If you did not make this purchase, please contact us immediately at
-                      <a href="mailto:support@zevarone.com" style="color:#888;text-decoration:none;">support@zevarone.com</a>.
-                    </p>
+                    <a href="https://tempted.chat" style="display:inline-block;padding:16px 48px;background:linear-gradient(135deg,${tierColor},#ec4899);color:#fff;font-size:16px;font-weight:700;text-decoration:none;border-radius:100px;box-shadow:0 10px 20px rgba(236,72,153,0.2);">Start Chatting Now</a>
                   </td>
                 </tr>
-
               </table>
             </td>
           </tr>
-
-          <!-- Footer brand -->
-          <tr>
-            <td align="center" style="padding-top:32px;padding-bottom:8px;">
-              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
-              <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
-                   alt="Zevarone" height="22"
-                   style="height:22px;display:block;opacity:0.5;" />
-            </td>
-          </tr>
-          <tr>
-            <td align="center">
-              <p style="margin:0;color:#444;font-size:11px;">
-                &copy; ${new Date().getFullYear()} Zevarone. All rights reserved.
-              </p>
-            </td>
-          </tr>
-
+          ${FOOTER_HTML}
         </table>
       </td>
     </tr>
@@ -242,76 +184,25 @@ export function buildInvoiceEmail(params: InvoiceEmailParams): string {
 export function buildAccountBlockedEmail(): string {
   return `<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tempted.chat — Account Restricted</title>
-</head>
-<body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Account Restricted</title></head>
+<body style="margin:0;padding:0;background:#0a0a0f;font-family:sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+          <tr><td align="center" style="padding-bottom:32px;"><img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png" alt="tempted.chat" height="48" style="height:48px;display:block;" /></td></tr>
           <tr>
-            <td align="center" style="padding-bottom:32px;">
-              <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="tempted.chat" height="48" style="height:48px;display:block;" />
-            </td>
-          </tr>
-
-          <tr>
-            <td style="background:#13131a;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
-              <div style="height:3px;background:linear-gradient(90deg,#ef4444,#f97316);"></div>
-              <table width="100%" cellpadding="0" cellspacing="0" style="padding:36px 40px;">
-                <tr>
-                  <td align="center" style="padding-bottom:16px;">
-                    <div style="width:64px;height:64px;border-radius:999px;background:rgba(239,68,68,0.12);display:inline-flex;align-items:center;justify-content:center;font-size:30px;">⚠️</div>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-bottom:10px;">
-                    <h1 style="margin:0;color:#fff;font-size:24px;font-weight:800;">Account Restricted</h1>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-bottom:28px;">
-                    <p style="margin:0;color:#9ca3af;font-size:15px;line-height:1.7;max-width:460px;">
-                      Your tempted.chat account has been blocked by the moderation team. You will not be able to sign in until the restriction is removed.
-                    </p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding-bottom:24px;">
-                    <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-bottom:8px;">
-                    <p style="margin:0;color:#d1d5db;font-size:14px;line-height:1.7;">
-                      If you believe this was a mistake, contact
-                      <a href="mailto:support@zevarone.com" style="color:#f9a8d4;text-decoration:none;">support@zevarone.com</a>
-                      for review.
-                    </p>
-                  </td>
-                </tr>
+            <td style="background:#13131a;border-radius:24px;border:1px solid rgba(239,68,68,0.2);overflow:hidden;">
+              <div style="height:4px;background:#ef4444;"></div>
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding:48px 40px;">
+                <tr><td align="center" style="padding-bottom:24px;"><div style="width:72px;height:72px;border-radius:100px;background:rgba(239,68,68,0.1);line-height:72px;font-size:32px;text-align:center;">🚫</div></td></tr>
+                <tr><td align="center" style="padding-bottom:16px;"><h1 style="margin:0;color:#fff;font-size:26px;font-weight:800;">Account Blocked</h1></td></tr>
+                <tr><td align="center" style="padding-bottom:32px;"><p style="margin:0;color:#94a3b8;font-size:16px;line-height:1.7;">Your account has been permanently restricted for violating our community guidelines. You can no longer access your profile or messages.</p></td></tr>
+                <tr><td align="center" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:32px;"><p style="margin:0;color:#64748b;font-size:14px;">Questions? Contact <a href="mailto:support@zevarone.com" style="color:#ef4444;text-decoration:none;font-weight:600;">support@zevarone.com</a></p></td></tr>
               </table>
             </td>
           </tr>
-
-          <tr>
-            <td align="center" style="padding-top:32px;padding-bottom:8px;">
-              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
-              <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
-                   alt="Zevarone" height="22" style="height:22px;display:block;opacity:0.5;" />
-            </td>
-          </tr>
-          <tr>
-            <td align="center">
-              <p style="margin:0;color:#444;font-size:11px;">
-                &copy; ${new Date().getFullYear()} Zevarone. All rights reserved.
-              </p>
-            </td>
-          </tr>
+          ${FOOTER_HTML}
         </table>
       </td>
     </tr>
@@ -323,75 +214,25 @@ export function buildAccountBlockedEmail(): string {
 export function buildAccountWarningEmail(): string {
   return `<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tempted.chat — Warning Notice</title>
-</head>
-<body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Account Warning</title></head>
+<body style="margin:0;padding:0;background:#0a0a0f;font-family:sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+          <tr><td align="center" style="padding-bottom:32px;"><img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png" alt="tempted.chat" height="48" style="height:48px;display:block;" /></td></tr>
           <tr>
-            <td align="center" style="padding-bottom:32px;">
-              <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="tempted.chat" height="48" style="height:48px;display:block;" />
-            </td>
-          </tr>
-
-          <tr>
-            <td style="background:#13131a;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
-              <div style="height:3px;background:linear-gradient(90deg,#f59e0b,#ec4899);"></div>
-              <table width="100%" cellpadding="0" cellspacing="0" style="padding:36px 40px;">
-                <tr>
-                  <td align="center" style="padding-bottom:16px;">
-                    <div style="width:64px;height:64px;border-radius:999px;background:rgba(245,158,11,0.12);display:inline-flex;align-items:center;justify-content:center;font-size:30px;">⚠️</div>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-bottom:10px;">
-                    <h1 style="margin:0;color:#fff;font-size:24px;font-weight:800;">Warning Notice</h1>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-bottom:28px;">
-                    <p style="margin:0;color:#9ca3af;font-size:15px;line-height:1.7;max-width:460px;">
-                      Your tempted.chat account has received a moderation warning. Continued violations may result in account restrictions or a permanent block.
-                    </p>
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding-bottom:24px;">
-                    <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-bottom:8px;">
-                    <p style="margin:0;color:#d1d5db;font-size:14px;line-height:1.7;">
-                      Please review the platform rules. If you need help or want to appeal, contact
-                      <a href="mailto:support@zevarone.com" style="color:#f9a8d4;text-decoration:none;">support@zevarone.com</a>.
-                    </p>
-                  </td>
-                </tr>
+            <td style="background:#13131a;border-radius:24px;border:1px solid rgba(245,158,11,0.2);overflow:hidden;">
+              <div style="height:4px;background:#f59e0b;"></div>
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding:48px 40px;">
+                <tr><td align="center" style="padding-bottom:24px;"><div style="width:72px;height:72px;border-radius:100px;background:rgba(245,158,11,0.1);line-height:72px;font-size:32px;text-align:center;">⚠️</div></td></tr>
+                <tr><td align="center" style="padding-bottom:16px;"><h1 style="margin:0;color:#fff;font-size:26px;font-weight:800;">Warning Notice</h1></td></tr>
+                <tr><td align="center" style="padding-bottom:32px;"><p style="margin:0;color:#94a3b8;font-size:16px;line-height:1.7;">Our moderation team noticed activity that violates our terms. Continued violations will lead to a permanent account ban.</p></td></tr>
+                <tr><td align="center" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:32px;"><p style="margin:0;color:#64748b;font-size:14px;">Please review the rules to keep your account safe.</p></td></tr>
               </table>
             </td>
           </tr>
-
-          <tr>
-            <td align="center" style="padding-top:32px;padding-bottom:8px;">
-              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
-              <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
-                   alt="Zevarone" height="22" style="height:22px;display:block;opacity:0.5;" />
-            </td>
-          </tr>
-          <tr>
-            <td align="center">
-              <p style="margin:0;color:#444;font-size:11px;">
-                &copy; ${new Date().getFullYear()} Zevarone. All rights reserved.
-              </p>
-            </td>
-          </tr>
+          ${FOOTER_HTML}
         </table>
       </td>
     </tr>
@@ -405,113 +246,26 @@ export function buildAccountWarningEmail(): string {
 export function buildAdminInviteEmail(inviterName: string, inviteLink: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>You&apos;re invited to manage tempted.chat</title>
-</head>
-<body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Admin Invitation</title></head>
+<body style="margin:0;padding:0;background:#0a0a0f;font-family:sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-
+          <tr><td align="center" style="padding-bottom:32px;"><img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png" alt="tempted.chat" height="48" style="height:48px;display:block;" /></td></tr>
           <tr>
-            <td align="center" style="padding-bottom:32px;">
-              <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="tempted.chat" height="48" style="height:48px;display:block;" />
-            </td>
-          </tr>
-
-          <tr>
-            <td style="background:#13131a;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
-              <div style="height:3px;background:linear-gradient(90deg,#a855f7,#ec4899);"></div>
-
-              <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px;">
-
-                <tr>
-                  <td align="center" style="padding-bottom:24px;">
-                    <div style="width:60px;height:60px;border-radius:50%;background:rgba(168,85,247,0.12);display:inline-flex;align-items:center;justify-content:center;">
-                      <span style="font-size:28px;">🛡️</span>
-                    </div>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td align="center" style="padding-bottom:12px;">
-                    <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:800;">Admin Invitation</h1>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td align="center" style="padding-bottom:36px;">
-                    <p style="margin:0;color:#888;font-size:15px;line-height:1.7;max-width:420px;">
-                      <strong style="color:#ccc;">${inviterName}</strong> has invited you to become an
-                      administrator on <strong style="color:#ccc;">tempted.chat</strong>.
-                      Click the button below to accept. This invite expires in <strong style="color:#ccc;">48 hours</strong>.
-                    </p>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td align="center" style="padding-bottom:36px;">
-                    <a href="${inviteLink}"
-                       style="display:inline-block;padding:14px 40px;background:linear-gradient(135deg,#a855f7,#ec4899);color:#fff;font-size:15px;font-weight:700;text-decoration:none;border-radius:100px;letter-spacing:0.5px;">
-                      Accept Admin Invite
-                    </a>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td style="padding-bottom:24px;">
-                    <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td align="center" style="padding-bottom:24px;">
-                    <p style="margin:0;color:#555;font-size:12px;line-height:1.7;">
-                      If the button doesn&apos;t work, copy and paste this link into your browser:
-                    </p>
-                    <p style="margin:8px 0 0;word-break:break-all;">
-                      <a href="${inviteLink}" style="color:#888;font-size:12px;text-decoration:underline;">${inviteLink}</a>
-                    </p>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td style="padding-bottom:24px;">
-                    <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
-                  </td>
-                </tr>
-
-                <tr>
-                  <td align="center">
-                    <p style="margin:0;color:#555;font-size:12px;line-height:1.7;">
-                      If you didn&apos;t expect this invitation, you can safely ignore this email.
-                    </p>
-                  </td>
-                </tr>
-
+            <td style="background:#13131a;border-radius:24px;border:1px solid rgba(168,85,247,0.2);overflow:hidden;">
+              <div style="height:4px;background:linear-gradient(90deg,#a855f7,#ec4899);"></div>
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding:48px 40px;">
+                <tr><td align="center" style="padding-bottom:24px;"><div style="width:72px;height:72px;border-radius:100px;background:rgba(168,85,247,0.1);line-height:72px;font-size:32px;text-align:center;">🛡️</div></td></tr>
+                <tr><td align="center" style="padding-bottom:16px;"><h1 style="margin:0;color:#fff;font-size:26px;font-weight:800;">Admin Invitation</h1></td></tr>
+                <tr><td align="center" style="padding-bottom:32px;"><p style="margin:0;color:#94a3b8;font-size:16px;line-height:1.7;"><strong>${inviterName}</strong> has invited you to join the moderation team of <strong>tempted.chat</strong>.</p></td></tr>
+                <tr><td align="center" style="padding-bottom:40px;"><a href="${inviteLink}" style="display:inline-block;padding:16px 40px;background:#a855f7;color:#fff;font-size:15px;font-weight:700;text-decoration:none;border-radius:100px;">Accept Invitation</a></td></tr>
+                <tr><td align="center"><p style="margin:0;color:#555;font-size:12px;">This link will expire in 48 hours.</p></td></tr>
               </table>
             </td>
           </tr>
-
-          <tr>
-            <td align="center" style="padding-top:32px;padding-bottom:8px;">
-              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
-              <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
-                   alt="Zevarone" height="22" style="height:22px;display:block;opacity:0.5;" />
-            </td>
-          </tr>
-          <tr>
-            <td align="center">
-              <p style="margin:0;color:#444;font-size:11px;">
-                &copy; ${new Date().getFullYear()} Zevarone. All rights reserved.
-              </p>
-            </td>
-          </tr>
-
+          ${FOOTER_HTML}
         </table>
       </td>
     </tr>
@@ -523,119 +277,36 @@ export function buildAdminInviteEmail(inviterName: string, inviteLink: string): 
 // ─── Password Reset Email ─────────────────────────────────────────────────────
 
 export function buildPasswordResetEmail(code: string): string {
-  // Render the 6-digit code as spaced individual character boxes for readability.
   const codeBoxes = code
     .split("")
     .map(
       (d) =>
-        `<span style="display:inline-block;width:44px;height:56px;line-height:56px;text-align:center;font-size:28px;font-weight:900;color:#ffffff;background:#1e1e2a;border:1px solid rgba(255,255,255,0.12);border-radius:10px;margin:0 4px;font-family:monospace,monospace;">${d}</span>`
+        `<span style="display:inline-block;width:42px;height:52px;line-height:52px;text-align:center;font-size:24px;font-weight:900;color:#ffffff;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;margin:0 4px;font-family:monospace;">${d}</span>`
     )
     .join("");
 
   return `<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>tempted.chat — Your Reset Code</title>
-</head>
-<body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+<head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Reset Code</title></head>
+<body style="margin:0;padding:0;background:#0a0a0f;font-family:sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
     <tr>
       <td align="center">
         <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
-
-          <!-- Header -->
+          <tr><td align="center" style="padding-bottom:32px;"><img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png" alt="tempted.chat" height="48" style="height:48px;display:block;" /></td></tr>
           <tr>
-            <td align="center" style="padding-bottom:32px;">
-              <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="tempted.chat" height="48"
-                   style="height:48px;display:block;" />
-            </td>
-          </tr>
-
-          <!-- Card -->
-          <tr>
-            <td style="background:#13131a;border-radius:16px;border:1px solid rgba(255,255,255,0.08);overflow:hidden;">
-
-              <!-- Card top accent -->
-              <div style="height:3px;background:linear-gradient(90deg,#ec4899,#a855f7);"></div>
-
-              <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 40px;">
-
-                <!-- Icon -->
-                <tr>
-                  <td align="center" style="padding-bottom:24px;">
-                    <div style="width:60px;height:60px;border-radius:50%;background:rgba(236,72,153,0.12);display:inline-flex;align-items:center;justify-content:center;">
-                      <span style="font-size:28px;">🔑</span>
-                    </div>
-                  </td>
-                </tr>
-
-                <!-- Heading -->
-                <tr>
-                  <td align="center" style="padding-bottom:12px;">
-                    <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:800;">
-                      Your Password Reset Code
-                    </h1>
-                  </td>
-                </tr>
-                <tr>
-                  <td align="center" style="padding-bottom:32px;">
-                    <p style="margin:0;color:#888;font-size:15px;line-height:1.7;max-width:420px;">
-                      Enter the code below in the app to reset your tempted.chat password.
-                      This code expires in <strong style="color:#ccc;">15 minutes</strong>.
-                    </p>
-                  </td>
-                </tr>
-
-                <!-- Code boxes -->
-                <tr>
-                  <td align="center" style="padding-bottom:36px;">
-                    <div style="display:inline-block;background:rgba(236,72,153,0.04);border:1px solid rgba(236,72,153,0.15);border-radius:16px;padding:20px 24px;">
-                      ${codeBoxes}
-                    </div>
-                  </td>
-                </tr>
-
-                <!-- Divider -->
-                <tr>
-                  <td style="padding-bottom:24px;">
-                    <div style="height:1px;background:rgba(255,255,255,0.06);"></div>
-                  </td>
-                </tr>
-
-                <!-- Security note -->
-                <tr>
-                  <td align="center">
-                    <p style="margin:0;color:#555;font-size:12px;line-height:1.7;">
-                      If you did not request a password reset, you can safely ignore this email.
-                      Your password will not change.
-                    </p>
-                  </td>
-                </tr>
-
+            <td style="background:#13131a;border-radius:24px;border:1px solid rgba(255,255,255,0.06);overflow:hidden;">
+              <div style="height:4px;background:#ec4899;"></div>
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding:48px 40px;">
+                <tr><td align="center" style="padding-bottom:24px;"><div style="width:72px;height:72px;border-radius:100px;background:rgba(236,72,153,0.1);line-height:72px;font-size:32px;text-align:center;">🔑</div></td></tr>
+                <tr><td align="center" style="padding-bottom:12px;"><h1 style="margin:0;color:#fff;font-size:26px;font-weight:800;">Reset Your Password</h1></td></tr>
+                <tr><td align="center" style="padding-bottom:32px;"><p style="margin:0;color:#94a3b8;font-size:16px;">Use the verification code below to secure your account.</p></td></tr>
+                <tr><td align="center" style="padding-bottom:32px;">${codeBoxes}</td></tr>
+                <tr><td align="center" style="border-top:1px solid rgba(255,255,255,0.06);padding-top:32px;"><p style="margin:0;color:#64748b;font-size:13px;">Code expires in 15 minutes. If you didn't request this, ignore this email.</p></td></tr>
               </table>
             </td>
           </tr>
-
-          <!-- Footer brand -->
-          <tr>
-            <td align="center" style="padding-top:32px;padding-bottom:8px;">
-              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
-              <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
-                   alt="Zevarone" height="22"
-                   style="height:22px;display:block;opacity:0.5;" />
-            </td>
-          </tr>
-          <tr>
-            <td align="center">
-              <p style="margin:0;color:#444;font-size:11px;">
-                &copy; ${new Date().getFullYear()} Zevarone. All rights reserved.
-              </p>
-            </td>
-          </tr>
-
+          ${FOOTER_HTML}
         </table>
       </td>
     </tr>
