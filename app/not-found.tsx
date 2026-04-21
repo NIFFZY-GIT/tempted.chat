@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { TopNav } from "@/components/navbar";
 import { motion } from "framer-motion";
-import { Home, MessageCircle, AlertCircle, ArrowRight } from "lucide-react";
+import { Home, AlertCircle } from "lucide-react";
 import { ParticleBackground } from "@/components/particle-background";
 
 export default function NotFound() {

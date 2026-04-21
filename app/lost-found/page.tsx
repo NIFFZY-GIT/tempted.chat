@@ -26,7 +26,6 @@ import {
 	Mail, 
 	User as UserIcon, 
 	AlertCircle,
-	X,
 	MessageSquare
 } from "lucide-react";
 
@@ -40,6 +39,18 @@ type LostFoundPost = {
 	createdAtMs: number;
 	status: "open" | "claimed";
 	claimedAtMs?: number;
+};
+
+type LostFoundPostRecord = {
+	lookingForName?: string;
+	message?: string;
+	contact?: string;
+	createdByUid?: string;
+	createdAtMs?: number;
+	createdAt?: Timestamp | null;
+	status?: string;
+	claimedAtMs?: number;
+	claimedAt?: Timestamp | null;
 };
 
 const toMillis = (value: unknown): number => {
@@ -108,7 +119,7 @@ export default function LostFoundPage() {
 		const unsubscribe = onSnapshot(postsQuery, (snapshot) => {
 			const nextPosts: LostFoundPost[] = [];
 			snapshot.forEach((postDoc) => {
-				const data = postDoc.data() as any;
+				const data = postDoc.data() as LostFoundPostRecord;
 				nextPosts.push({
 					id: postDoc.id,
 					lookingForName: data.lookingForName || "Unknown",
@@ -155,8 +166,8 @@ export default function LostFoundPage() {
 			setLookingForName(""); setMessage(""); setContact("");
 			setCreatePostOpen(false);
 			setSubmitError(null);
-		} catch (err: any) {
-			setSubmitError(err.message);
+		} catch (err: unknown) {
+			setSubmitError(err instanceof Error ? err.message : "Failed to publish post.");
 		} finally {
 			setSubmitting(false);
 		}
@@ -176,8 +187,8 @@ export default function LostFoundPage() {
 				transaction.update(postRef, { status: "claimed", claimedAt: serverTimestamp(), claimedAtMs: Date.now() });
 			});
 			setClaimContactModal({ contact: revealedContact });
-		} catch (err: any) {
-			setActionError(err.message);
+		} catch (err: unknown) {
+			setActionError(err instanceof Error ? err.message : "Failed to identify the post.");
 		} finally {
 			setClaimingPostId(null);
 		}
@@ -206,10 +217,16 @@ export default function LostFoundPage() {
 					<div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
 						<div>
 							<h1 className="text-4xl font-extrabold tracking-tight sm:text-5xl">
+
+					{actionError && (
+						<motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-6 rounded-2xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+							{actionError}
+						</motion.div>
+					)}
 								Lost & <span className="text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-blue-500">Found</span>
 							</h1>
 							<p className="mt-4 text-white/50 max-w-xl">
-								Reconnect with someone you lost during a session. Post who you're looking for and let the community help you find them.
+								Reconnect with someone you lost during a session. Post who you&apos;re looking for and let the community help you find them.
 							</p>
 						</div>
 						
@@ -392,7 +409,7 @@ export default function LostFoundPage() {
 									<CheckCircle2 className="w-8 h-8" />
 								</div>
 							</div>
-							<h3 className="text-2xl font-bold text-center">It's a Match!</h3>
+							<h3 className="text-2xl font-bold text-center">It&apos;s a Match!</h3>
 							<p className="text-white/50 text-center text-sm mt-2 mb-8">
 								You have successfully claimed this reconnection. Here is the contact info provided:
 							</p>

@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { useRouter } from "next/navigation";
 
 import { TierLogo } from "@/components/tier-logo";
 import { auth, storage } from "@/lib/firebase";
 import { getUserRole } from "@/lib/admin";
-import { addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, serverTimestamp, setDoc, updateDoc, where, type Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { deleteObject, getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
 
@@ -92,7 +92,69 @@ type LostFoundEntry = {
   claimedByLabel?: string;
 };
 
-type AdminTab = "overview" | "demo" | "lostfound";
+type AdminUserEntry = {
+  id: string;
+  email: string | null;
+  displayName: string | null;
+  authProvider?: string;
+  isAnonymous?: boolean;
+  isBlocked?: boolean;
+  blockedAt?: Timestamp | number | null;
+  lastSeenAt?: Timestamp | number | null;
+  createdAt?: Timestamp | number | null;
+  role?: string;
+  warningCount?: number;
+  lastWarnedAt?: Timestamp | number | null;
+};
+
+type UserSubscriptionEntry = {
+  tier?: "vip" | "vvip";
+  expiresAt?: number;
+  activatedAt?: number;
+  planId?: string;
+};
+
+type RoomEntry = {
+  id: string;
+  mode?: string;
+  status?: string;
+  participants?: string[];
+  presenceBy?: Record<string, number>;
+  createdAt?: Timestamp | number | null;
+  updatedAt?: Timestamp | number | null;
+};
+
+type AdminTab = "overview" | "users" | "rooms" | "demo" | "lostfound" | "admins" | "feedback";
+
+type AdminRecord = { uid: string; email: string; displayName: string };
+type PendingInvite = { token: string; email: string; inviterName: string; expiresAt: number; createdAt: number };
+
+type FeedbackType = "bug" | "error" | "feedback" | "feature";
+type FeedbackStatus = "open" | "in-progress" | "resolved" | "closed";
+type FeedbackItem = {
+  id: string;
+  uid: string;
+  email: string;
+  displayName: string | null;
+  type: FeedbackType;
+  title: string;
+  description: string;
+  imageUrls: string[];
+  status: FeedbackStatus;
+  createdAt: Timestamp | null;
+};
+const FB_TYPE_CONFIG: Record<FeedbackType, { icon: string; color: string; label: string }> = {
+  bug: { icon: "🐛", color: "bg-red-500/10 text-red-400 border-red-500/20", label: "Bug" },
+  error: { icon: "⚠️", color: "bg-orange-500/10 text-orange-400 border-orange-500/20", label: "Error" },
+  feedback: { icon: "💬", color: "bg-blue-500/10 text-blue-400 border-blue-500/20", label: "Feedback" },
+  feature: { icon: "✨", color: "bg-violet-500/10 text-violet-400 border-violet-500/20", label: "Feature" },
+};
+const FB_STATUS_CONFIG: Record<FeedbackStatus, { color: string; label: string }> = {
+  open: { color: "bg-amber-500/10 text-amber-400 border-amber-500/30", label: "Open" },
+  "in-progress": { color: "bg-blue-500/10 text-blue-400 border-blue-500/30", label: "In Progress" },
+  resolved: { color: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30", label: "Resolved" },
+  closed: { color: "bg-white/5 text-white/30 border-white/10", label: "Closed" },
+};
 
 const resolveVideoContentType = (file: File): string => {
   const type = (file.type || "").trim().toLowerCase();
@@ -160,6 +222,30 @@ export default function AdminDashboardPage() {
   const [lostFoundEntries, setLostFoundEntries] = useState<LostFoundEntry[]>([]);
   const [lostFoundLoading, setLostFoundLoading] = useState(false);
   const [lostFoundDeleting, setLostFoundDeleting] = useState<string | null>(null);
+  const [admins, setAdmins] = useState<AdminRecord[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
+  const [adminsLoading, setAdminsLoading] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [inviteSuccess, setInviteSuccess] = useState(false);
+  const [adminUsers, setAdminUsers] = useState<AdminUserEntry[]>([]);
+  const [userSubscriptions, setUserSubscriptions] = useState<Record<string, UserSubscriptionEntry>>({});
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersSearch, setUsersSearch] = useState("");
+  const [blockingUid, setBlockingUid] = useState<string | null>(null);
+  const [warningUid, setWarningUid] = useState<string | null>(null);
+  const [deletingUid, setDeletingUid] = useState<string | null>(null);
+  const [usersError, setUsersError] = useState<string | null>(null);
+  const [usersNotice, setUsersNotice] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<RoomEntry[]>([]);
+  const [roomsLoading, setRoomsLoading] = useState(false);
+  const [roomsFilter, setRoomsFilter] = useState<"all" | "active" | "text" | "video">("all");
+  const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
+  const [fbFilterType, setFbFilterType] = useState<FeedbackType | "all">("all");
+  const [fbFilterStatus, setFbFilterStatus] = useState<FeedbackStatus | "all">("all");
+  const [fbSelected, setFbSelected] = useState<FeedbackItem | null>(null);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const demoFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -206,11 +292,19 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     const syncTabFromLocation = () => {
       const requestedTab = new URLSearchParams(window.location.search).get("tab");
-      const nextTab: AdminTab = requestedTab === "demo"
+      const nextTab: AdminTab = requestedTab === "users"
+        ? "users"
+        : requestedTab === "rooms"
+          ? "rooms"
+          : requestedTab === "demo"
         ? "demo"
         : requestedTab === "lostfound"
           ? "lostfound"
-          : "overview";
+          : requestedTab === "admins"
+            ? "admins"
+            : requestedTab === "feedback"
+              ? "feedback"
+              : "overview";
       setActiveTab((current) => (current === nextTab ? current : nextTab));
     };
 
@@ -223,17 +317,240 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    void router.prefetch("/admin/feedback");
-  }, [router]);
+    if (!user || !isAdmin || activeTab !== "users") {
+      setAdminUsers([]);
+      setUserSubscriptions({});
+      setUsersLoading(false);
+      return;
+    }
+
+    setUsersLoading(true);
+    const usersQuery = query(collection(db, "users"), orderBy("lastSeenAt", "desc"));
+    const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
+      setAdminUsers(snapshot.docs.map((entry) => ({ id: entry.id, ...(entry.data() as Omit<AdminUserEntry, "id">) })));
+      setUsersLoading(false);
+    }, () => {
+      setUsersLoading(false);
+      setUsersError("Failed to load users.");
+    });
+
+    return () => unsubscribe();
+  }, [activeTab, isAdmin, user]);
+
+  useEffect(() => {
+    if (!user || !isAdmin || activeTab !== "users") {
+      setUserSubscriptions({});
+      return;
+    }
+
+    const unsubscribe = onSnapshot(collection(db, "subscriptions"), (snapshot) => {
+      const nextSubscriptions: Record<string, UserSubscriptionEntry> = {};
+      snapshot.docs.forEach((entry) => {
+        nextSubscriptions[entry.id] = entry.data() as UserSubscriptionEntry;
+      });
+      setUserSubscriptions(nextSubscriptions);
+    });
+
+    return () => unsubscribe();
+  }, [activeTab, isAdmin, user]);
+
+  useEffect(() => {
+    if (!user || !isAdmin || activeTab !== "rooms") {
+      setRooms([]);
+      setRoomsLoading(false);
+      return;
+    }
+
+    setRoomsLoading(true);
+    const roomsQuery = query(collection(db, "rooms"), orderBy("updatedAt", "desc"));
+    const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
+      setRooms(snapshot.docs.map((entry) => ({ id: entry.id, ...(entry.data() as Omit<RoomEntry, "id">) })));
+      setRoomsLoading(false);
+    }, () => {
+      setRoomsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [activeTab, isAdmin, user]);
+
+  useEffect(() => {
+    if (!user || !isAdmin || activeTab !== "feedback") return;
+    const q = query(collection(db, "feedback"), orderBy("createdAt", "desc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      setFeedbackItems(snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as Omit<FeedbackItem, "id">) })));
+    });
+    return () => unsub();
+  }, [user, isAdmin, activeTab]);
+
+  const updateFeedbackStatus = useCallback(async (id: string, status: FeedbackStatus) => {
+    await updateDoc(doc(db, "feedback", id), { status });
+    setFbSelected((prev) => prev?.id === id ? { ...prev, status } : prev);
+  }, []);
+
+  const deleteFeedbackItem = useCallback(async (id: string) => {
+    await deleteDoc(doc(db, "feedback", id));
+    setFbSelected((prev) => prev?.id === id ? null : prev);
+  }, []);
+
+  const toggleUserBlocked = useCallback(async (targetUid: string, blocked: boolean) => {
+    if (!user) return;
+
+    setBlockingUid(targetUid);
+    setUsersError(null);
+    setUsersNotice(null);
+    try {
+      const idToken = await user.getIdToken(true);
+      const response = await fetch(`/api/admin/users/${targetUid}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ blocked }),
+      });
+
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setUsersError(data.error ?? "Failed to update user.");
+      } else {
+        setUsersNotice(blocked ? "User blocked and warning email sent if email existed." : "User unblocked successfully.");
+      }
+    } catch {
+      setUsersError("Network error while updating user.");
+    } finally {
+      setBlockingUid(null);
+    }
+  }, [user]);
+
+  const warnUser = useCallback(async (targetUid: string) => {
+    if (!user) return;
+
+    setWarningUid(targetUid);
+    setUsersError(null);
+    setUsersNotice(null);
+    try {
+      const idToken = await user.getIdToken(true);
+      const response = await fetch(`/api/admin/users/${targetUid}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      const data = (await response.json()) as { error?: string; emailed?: boolean };
+      if (!response.ok) {
+        setUsersError(data.error ?? "Failed to send warning.");
+      } else {
+        setUsersNotice(data.emailed ? "Warning recorded and email sent." : "Warning recorded. No email was available for this account.");
+      }
+    } catch {
+      setUsersError("Network error while sending warning.");
+    } finally {
+      setWarningUid(null);
+    }
+  }, [user]);
+
+  const deleteUserAccount = useCallback(async (targetUid: string) => {
+    if (!user) return;
+    if (!confirm("Delete this account permanently? This removes sign-in access and core user records.")) {
+      return;
+    }
+
+    setDeletingUid(targetUid);
+    setUsersError(null);
+    setUsersNotice(null);
+    try {
+      const idToken = await user.getIdToken(true);
+      const response = await fetch(`/api/admin/users/${targetUid}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setUsersError(data.error ?? "Failed to delete account.");
+      } else {
+        setUsersNotice("User account deleted successfully.");
+      }
+    } catch {
+      setUsersError("Network error while deleting account.");
+    } finally {
+      setDeletingUid(null);
+    }
+  }, [user]);
+
+  const loadAdmins = async () => {
+    if (!user) return;
+    setAdminsLoading(true);
+    try {
+      const idToken = await user.getIdToken(true);
+      const res = await fetch("/api/admin/invite", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { admins: AdminRecord[]; pendingInvites: PendingInvite[] };
+        setAdmins(data.admins ?? []);
+        setPendingInvites(data.pendingInvites ?? []);
+      }
+    } catch { /* non-fatal */ } finally {
+      setAdminsLoading(false);
+    }
+  };
+
+  const sendInvite = async () => {
+    if (!user || !inviteEmail.includes("@")) return;
+    setInviteSending(true);
+    setInviteError(null);
+    setInviteSuccess(false);
+    try {
+      const idToken = await user.getIdToken(true);
+      const res = await fetch("/api/admin/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+        body: JSON.stringify({ email: inviteEmail }),
+      });
+      const data = (await res.json()) as { success?: boolean; error?: string };
+      if (!res.ok || !data.success) {
+        setInviteError(data.error ?? "Failed to send invite");
+      } else {
+        setInviteSuccess(true);
+        setInviteEmail("");
+        void loadAdmins();
+      }
+    } catch {
+      setInviteError("Network error");
+    } finally {
+      setInviteSending(false);
+    }
+  };
 
   const openTab = (tab: AdminTab) => {
     setActiveTab(tab);
+    if (tab === "users") {
+      router.replace("/admin?tab=users");
+      return;
+    }
+    if (tab === "rooms") {
+      router.replace("/admin?tab=rooms");
+      return;
+    }
     if (tab === "demo") {
       router.replace("/admin?tab=demo");
       return;
     }
     if (tab === "lostfound") {
       router.replace("/admin?tab=lostfound");
+      return;
+    }
+    if (tab === "admins") {
+      router.replace("/admin?tab=admins");
+      void loadAdmins();
+      return;
+    }
+    if (tab === "feedback") {
+      router.replace("/admin?tab=feedback");
       return;
     }
     router.replace("/admin");
@@ -440,7 +757,7 @@ export default function AdminDashboardPage() {
 
       // Cross-reference with waitingUsers for gender breakdown
       // (waitingUsers docs are keyed by uid and have profile.gender)
-      const { getDocs, doc, getDoc } = await import("firebase/firestore");
+      const { doc, getDoc } = await import("firebase/firestore");
       for (const sub of activeSubs) {
         try {
           const waitingDoc = await getDoc(doc(db, "waitingUsers", sub.uid));
@@ -892,12 +1209,12 @@ export default function AdminDashboardPage() {
           </button>
 
           <p className="mb-2 mt-5 px-3 text-[10px] font-semibold uppercase tracking-widest text-white/20">Management</p>
-          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 transition hover:bg-white/[0.04] hover:text-white/60">
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>
+          <button onClick={() => openTab("users")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition ${activeTab === "users" ? "bg-white/[0.06] text-white/80" : "text-white/40 hover:bg-white/[0.04] hover:text-white/60"}`}>
+            <svg className={`h-4 w-4 ${activeTab === "users" ? "text-cyan-400" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" /></svg>
             Users
           </button>
-          <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 transition hover:bg-white/[0.04] hover:text-white/60">
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" /></svg>
+          <button onClick={() => openTab("rooms")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition ${activeTab === "rooms" ? "bg-white/[0.06] text-white/80" : "text-white/40 hover:bg-white/[0.04] hover:text-white/60"}`}>
+            <svg className={`h-4 w-4 ${activeTab === "rooms" ? "text-fuchsia-400" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193-.34.027-.68.052-1.02.072v3.091l-3-3c-1.354 0-2.694-.055-4.02-.163a2.115 2.115 0 0 1-.825-.242m9.345-8.334a2.126 2.126 0 0 0-.476-.095 48.64 48.64 0 0 0-8.048 0c-1.131.094-1.976 1.057-1.976 2.192v4.286c0 .837.46 1.58 1.155 1.951m9.345-8.334V6.637c0-1.621-1.152-3.026-2.76-3.235A48.455 48.455 0 0 0 11.25 3c-2.115 0-4.198.137-6.24.402-1.608.209-2.76 1.614-2.76 3.235v6.226c0 1.621 1.152 3.026 2.76 3.235.577.075 1.157.14 1.74.194V21l4.155-4.155" /></svg>
             Rooms
           </button>
           <button onClick={() => openTab("demo")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition ${activeTab === "demo" ? "bg-white/[0.06] text-white/80" : "text-white/40 hover:bg-white/[0.04] hover:text-white/60"}`}>
@@ -908,9 +1225,16 @@ export default function AdminDashboardPage() {
             <svg className={`h-4 w-4 ${activeTab === "lostfound" ? "text-sky-400" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-6-6h12" /><path strokeLinecap="round" strokeLinejoin="round" d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z" /></svg>
             Lost & Found
           </button>
-          <button onClick={() => router.push("/admin/feedback")} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium text-white/40 transition hover:bg-white/[0.04] hover:text-white/60">
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
+          <button onClick={() => openTab("admins")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition ${activeTab === "admins" ? "bg-white/[0.06] text-white/80" : "text-white/40 hover:bg-white/[0.04] hover:text-white/60"}`}>
+            <svg className={`h-4 w-4 ${activeTab === "admins" ? "text-amber-400" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75m-3-7.036A11.959 11.959 0 0 1 3.598 6 11.99 11.99 0 0 0 3 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285Z" /></svg>
+            Admins
+          </button>
+          <button onClick={() => openTab("feedback")} className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-medium transition ${activeTab === "feedback" ? "bg-white/[0.06] text-white/80" : "text-white/40 hover:bg-white/[0.04] hover:text-white/60"}`}>
+            <svg className={`h-4 w-4 ${activeTab === "feedback" ? "text-rose-400" : ""}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>
             Feedback
+            {feedbackItems.filter((i) => i.status === "open").length > 0 && (
+              <span className="ml-auto rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-bold text-rose-400">{feedbackItems.filter((i) => i.status === "open").length}</span>
+            )}
           </button>
         </nav>
 
@@ -940,8 +1264,11 @@ export default function AdminDashboardPage() {
         {/* Top bar */}
         <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-white/[0.06] bg-[#0a0a14]/60 px-5 backdrop-blur-xl md:px-8">
           <div>
-            <h1 className="text-lg font-bold text-white/90">{activeTab === "overview" ? "Overview" : activeTab === "demo" ? "Demo Videos" : "Lost & Found"}</h1>
-            <p className="text-[11px] text-white/30">{activeTab === "overview" ? "Real-time analytics dashboard" : activeTab === "demo" ? "Manage demo fallback videos & settings" : "Review and remove community reconnect posts"}</p>
+            <h1 className="text-lg font-bold text-white/90">{activeTab === "overview" ? "Overview" : activeTab === "users" ? "Users" : activeTab === "rooms" ? "Rooms" : activeTab === "demo" ? "Demo Videos" : activeTab === "lostfound" ? "Lost & Found" : activeTab === "admins" ? "Admins" : activeTab === "feedback" ? "Feedback" : "Overview"}</h1>
+            <p className="text-[11px] text-white/30">{activeTab === "overview" ? "Real-time analytics dashboard" : activeTab === "users" ? `${adminUsers.length} profiles · ${adminUsers.filter((entry) => entry.isBlocked).length} blocked · ${adminUsers.filter((entry) => {
+              const subscription = userSubscriptions[entry.id];
+              return subscription?.expiresAt && subscription.expiresAt > Date.now();
+            }).length} premium` : activeTab === "rooms" ? `${rooms.filter((entry) => entry.status === "active").length} active rooms right now` : activeTab === "demo" ? "Manage demo fallback videos & settings" : activeTab === "lostfound" ? "Review and remove community reconnect posts" : activeTab === "admins" ? "Manage administrator access" : activeTab === "feedback" ? `${feedbackItems.length} total · ${feedbackItems.filter(i=>i.status==="open").length} open · ${feedbackItems.filter(i=>i.status==="in-progress").length} in progress` : ""}</p>
           </div>
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-400">
@@ -955,7 +1282,305 @@ export default function AdminDashboardPage() {
         </header>
 
         {/* Scrollable content */}
-        <main className="flex-1 overflow-y-auto p-5 md:p-8">
+        {activeTab === "feedback" && (
+          <>
+            {/* Filter bar */}
+            <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] px-5 py-3 md:px-8">
+              <span className="text-[11px] font-semibold text-white/20">TYPE:</span>
+              {(["all", "bug", "error", "feedback", "feature"] as const).map((t) => (
+                <button key={t} onClick={() => setFbFilterType(t)} className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${fbFilterType === t ? "bg-white/[0.08] text-white/80" : "text-white/30 hover:bg-white/[0.04] hover:text-white/50"}`}>
+                  {t === "all" ? "All" : FB_TYPE_CONFIG[t].icon + " " + FB_TYPE_CONFIG[t].label}
+                </button>
+              ))}
+              <span className="ml-4 text-[11px] font-semibold text-white/20">STATUS:</span>
+              {(["all", "open", "in-progress", "resolved", "closed"] as const).map((s) => (
+                <button key={s} onClick={() => setFbFilterStatus(s)} className={`rounded-lg px-2.5 py-1 text-[11px] font-medium transition ${fbFilterStatus === s ? "bg-white/[0.08] text-white/80" : "text-white/30 hover:bg-white/[0.04] hover:text-white/50"}`}>
+                  {s === "all" ? "All" : FB_STATUS_CONFIG[s].label}
+                </button>
+              ))}
+            </div>
+            {/* Split panel */}
+            <div className="flex flex-1 overflow-hidden">
+              {/* List */}
+              <div className={`flex-1 overflow-y-auto ${fbSelected ? "hidden md:block md:max-w-md md:border-r md:border-white/[0.06]" : ""}`}>
+                {feedbackItems.filter((item) => (fbFilterType === "all" || item.type === fbFilterType) && (fbFilterStatus === "all" || item.status === fbFilterStatus)).length === 0 ? (
+                  <div className="flex h-full items-center justify-center text-sm text-white/20">No feedback found</div>
+                ) : (
+                  <div className="divide-y divide-white/[0.04]">
+                    {feedbackItems.filter((item) => (fbFilterType === "all" || item.type === fbFilterType) && (fbFilterStatus === "all" || item.status === fbFilterStatus)).map((item) => {
+                      const tc = FB_TYPE_CONFIG[item.type] ?? FB_TYPE_CONFIG.feedback;
+                      const sc = FB_STATUS_CONFIG[item.status] ?? FB_STATUS_CONFIG.open;
+                      const timeStr = item.createdAt ? new Date(item.createdAt.seconds * 1000).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+                      return (
+                        <button key={item.id} onClick={() => setFbSelected(item)} className={`flex w-full items-start gap-3 px-5 py-4 text-left transition md:px-6 ${fbSelected?.id === item.id ? "bg-white/[0.06]" : "hover:bg-white/[0.03]"}`}>
+                          <span className="mt-0.5 text-base">{tc.icon}</span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <p className="truncate text-[13px] font-semibold text-white/80">{item.title}</p>
+                              {item.imageUrls.length > 0 && <svg className="h-3.5 w-3.5 flex-shrink-0 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M3.75 21h16.5A2.25 2.25 0 0 0 22.5 18.75V5.25A2.25 2.25 0 0 0 20.25 3H3.75A2.25 2.25 0 0 0 1.5 5.25v13.5A2.25 2.25 0 0 0 3.75 21Z" /></svg>}
+                            </div>
+                            <p className="mt-0.5 truncate text-[11px] text-white/30">{item.email} · {timeStr}</p>
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${tc.color}`}>{tc.label}</span>
+                              <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${sc.color}`}>{sc.label}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {/* Detail panel */}
+              {fbSelected && (
+                <div className="flex flex-1 flex-col overflow-y-auto bg-[#0a0a14]/40">
+                  <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
+                    <button onClick={() => setFbSelected(null)} className="rounded-lg px-2 py-1 text-[12px] text-white/30 transition hover:bg-white/[0.06] hover:text-white/60 md:hidden">← Back</button>
+                    <div className="flex items-center gap-2">
+                      <select value={fbSelected.status} onChange={(e) => void updateFeedbackStatus(fbSelected.id, e.target.value as FeedbackStatus)} className="rounded-lg border border-white/[0.08] bg-white/[0.04] px-2.5 py-1.5 text-[12px] text-white/70 outline-none">
+                        <option value="open">Open</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="closed">Closed</option>
+                      </select>
+                      <button onClick={() => { if (confirm("Delete this feedback?")) void deleteFeedbackItem(fbSelected.id); }} className="rounded-lg px-2.5 py-1.5 text-[12px] text-rose-400/60 transition hover:bg-rose-500/10 hover:text-rose-400">Delete</button>
+                    </div>
+                  </div>
+                  <div className="flex-1 px-6 py-5">
+                    <div className="flex items-start gap-3">
+                      <span className="text-2xl">{FB_TYPE_CONFIG[fbSelected.type]?.icon ?? "💬"}</span>
+                      <div>
+                        <h2 className="text-lg font-bold text-white/90">{fbSelected.title}</h2>
+                        <p className="mt-1 text-[12px] text-white/30">{fbSelected.email}{fbSelected.displayName && ` (${fbSelected.displayName})`} · {fbSelected.createdAt ? new Date(fbSelected.createdAt.seconds * 1000).toLocaleString() : "—"}</p>
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${FB_TYPE_CONFIG[fbSelected.type]?.color ?? ""}`}>{FB_TYPE_CONFIG[fbSelected.type]?.label ?? fbSelected.type}</span>
+                          <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${FB_STATUS_CONFIG[fbSelected.status]?.color ?? ""}`}>{FB_STATUS_CONFIG[fbSelected.status]?.label ?? fbSelected.status}</span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                      <p className="whitespace-pre-wrap text-[13px] leading-relaxed text-white/70">{fbSelected.description}</p>
+                    </div>
+                    {fbSelected.imageUrls.length > 0 && (
+                      <div className="mt-6">
+                        <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-white/25">Screenshots ({fbSelected.imageUrls.length})</p>
+                        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                          {fbSelected.imageUrls.map((url, i) => (
+                            <button key={i} onClick={() => setLightboxUrl(url)} className="group relative aspect-video overflow-hidden rounded-xl border border-white/[0.08] transition hover:border-white/20">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={url} alt={`Screenshot ${i + 1}`} className="h-full w-full object-cover transition group-hover:scale-105" />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition group-hover:bg-black/30">
+                                <svg className="h-6 w-6 text-white opacity-0 transition group-hover:opacity-100" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607ZM10.5 7.5v6m3-3h-6" /></svg>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="mt-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                      <p className="text-[11px] text-white/20">User ID: <span className="font-mono text-white/40">{fbSelected.uid}</span></p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+        <main className={`${activeTab === "feedback" ? "hidden" : "flex-1 overflow-y-auto p-5 md:p-8"}`}>
+          {activeTab === "users" && (() => {
+            const normalizedSearch = usersSearch.trim().toLowerCase();
+            const filteredUsers = adminUsers.filter((entry) => {
+              if (!normalizedSearch) return true;
+              return [entry.email ?? "", entry.displayName ?? "", entry.id]
+                .some((value) => value.toLowerCase().includes(normalizedSearch));
+            });
+
+            return (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Total Profiles</p>
+                    <p className="mt-3 text-3xl font-extrabold tracking-tight text-white">{adminUsers.length}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Blocked</p>
+                    <p className="mt-3 text-3xl font-extrabold tracking-tight text-rose-300">{adminUsers.filter((entry) => entry.isBlocked).length}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VIP / VVIP</p>
+                    <p className="mt-3 text-3xl font-extrabold tracking-tight text-amber-300">{adminUsers.filter((entry) => {
+                      const subscription = userSubscriptions[entry.id];
+                      return subscription?.expiresAt && subscription.expiresAt > Date.now();
+                    }).length}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4 md:p-6">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <h2 className="text-base font-bold text-white/90">User Moderation</h2>
+                      <p className="mt-1 text-sm text-white/40">Search accounts, send warnings, block sign-in, or delete the account.</p>
+                    </div>
+                    <input
+                      type="search"
+                      value={usersSearch}
+                      onChange={(e) => setUsersSearch(e.target.value)}
+                      placeholder="Search by email, name, or uid"
+                      className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none md:max-w-sm"
+                    />
+                  </div>
+                  {usersNotice && <p className="mt-4 text-sm text-emerald-300">{usersNotice}</p>}
+                  {usersError && <p className="mt-4 text-sm text-rose-300">{usersError}</p>}
+                  <div className="mt-5 space-y-3">
+                    {usersLoading ? (
+                      <p className="text-sm text-white/30">Loading users…</p>
+                    ) : filteredUsers.length === 0 ? (
+                      <p className="text-sm text-white/30">No users matched your search.</p>
+                    ) : (
+                      filteredUsers.map((entry) => {
+                        const lastSeenValue = typeof entry.lastSeenAt === "number"
+                          ? entry.lastSeenAt
+                          : entry.lastSeenAt?.toMillis?.() ?? null;
+                        const blockedAtValue = typeof entry.blockedAt === "number"
+                          ? entry.blockedAt
+                          : entry.blockedAt?.toMillis?.() ?? null;
+                        const warnedAtValue = typeof entry.lastWarnedAt === "number"
+                          ? entry.lastWarnedAt
+                          : entry.lastWarnedAt?.toMillis?.() ?? null;
+                        const subscription = userSubscriptions[entry.id];
+                        const hasPremium = Boolean(subscription?.expiresAt && subscription.expiresAt > Date.now());
+
+                        return (
+                          <div key={entry.id} className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-3">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="truncate text-sm font-semibold text-white/90">{entry.displayName || entry.email || entry.id}</p>
+                                  {entry.role === "admin" && <span className="rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-amber-300">Admin</span>}
+                                  {entry.isBlocked && <span className="rounded-full bg-rose-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-rose-300">Blocked</span>}
+                                  {entry.isAnonymous && <span className="rounded-full bg-cyan-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-cyan-300">Anonymous</span>}
+                                  {!!entry.warningCount && <span className="rounded-full bg-orange-500/10 px-2.5 py-0.5 text-[10px] font-semibold text-orange-300">Warnings {entry.warningCount}</span>}
+                                  {hasPremium && <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${subscription?.tier === "vvip" ? "bg-violet-500/10 text-violet-300" : "bg-yellow-500/10 text-yellow-300"}`}>{subscription?.tier?.toUpperCase()}</span>}
+                                </div>
+                                <p className="mt-1 truncate text-[12px] text-white/45">{entry.email ?? "No email"} · {entry.authProvider ?? "unknown provider"}</p>
+                                <p className="mt-1 text-[11px] text-white/30">UID: {entry.id}</p>
+                                <p className="mt-1 text-[11px] text-white/30">Last seen: {lastSeenValue ? new Date(lastSeenValue).toLocaleString() : "Unknown"}</p>
+                                {blockedAtValue && <p className="mt-1 text-[11px] text-rose-300/80">Blocked at {new Date(blockedAtValue).toLocaleString()}</p>}
+                                {warnedAtValue && <p className="mt-1 text-[11px] text-orange-300/80">Last warning at {new Date(warnedAtValue).toLocaleString()}</p>}
+                                {hasPremium && <p className="mt-1 text-[11px] text-white/35">Plan: {subscription?.planId ?? subscription?.tier?.toUpperCase()} · Expires {new Date(subscription?.expiresAt ?? 0).toLocaleString()}</p>}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void warnUser(entry.id)}
+                                  disabled={warningUid === entry.id || deletingUid === entry.id || entry.id === user?.uid}
+                                  className="rounded-lg bg-amber-500/90 px-3 py-2 text-[11px] font-semibold text-white transition hover:bg-amber-400 disabled:opacity-40"
+                                >
+                                  {warningUid === entry.id ? "Sending..." : "Warn"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void toggleUserBlocked(entry.id, !entry.isBlocked)}
+                                  disabled={blockingUid === entry.id || warningUid === entry.id || deletingUid === entry.id || entry.id === user?.uid || entry.role === "admin"}
+                                  className={`rounded-lg px-3 py-2 text-[11px] font-semibold transition disabled:opacity-40 ${entry.isBlocked ? "bg-emerald-500/90 text-white hover:bg-emerald-400" : "bg-rose-500/90 text-white hover:bg-rose-400"}`}
+                                >
+                                  {blockingUid === entry.id ? "Saving..." : entry.isBlocked ? "Unblock" : "Block"}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void deleteUserAccount(entry.id)}
+                                  disabled={deletingUid === entry.id || blockingUid === entry.id || warningUid === entry.id || entry.id === user?.uid || entry.role === "admin"}
+                                  className="rounded-lg bg-white/[0.08] px-3 py-2 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/10 hover:text-rose-200 disabled:opacity-40"
+                                >
+                                  {deletingUid === entry.id ? "Deleting..." : "Delete"}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {activeTab === "rooms" && (() => {
+            const filteredRooms = rooms.filter((entry) => {
+              if (roomsFilter === "all") return true;
+              if (roomsFilter === "active") return entry.status === "active";
+              return entry.mode === roomsFilter;
+            });
+
+            return (
+              <div className="space-y-6">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Total Rooms</p>
+                    <p className="mt-3 text-3xl font-extrabold tracking-tight text-white">{rooms.length}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Active Rooms</p>
+                    <p className="mt-3 text-3xl font-extrabold tracking-tight text-fuchsia-300">{rooms.filter((entry) => entry.status === "active").length}</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/[0.06] bg-[#0d0d16] p-5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">Fresh Participants</p>
+                    <p className="mt-3 text-3xl font-extrabold tracking-tight text-sky-300">{rooms.reduce((sum, entry) => sum + countFreshRoomParticipants(entry.participants, entry.presenceBy), 0)}</p>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-4 md:p-6">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {(["all", "active", "text", "video"] as const).map((filter) => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setRoomsFilter(filter)}
+                        className={`rounded-lg px-3 py-1.5 text-[11px] font-semibold transition ${roomsFilter === filter ? "bg-white/[0.08] text-white/90" : "text-white/35 hover:bg-white/[0.04] hover:text-white/60"}`}
+                      >
+                        {filter === "all" ? "All" : filter[0].toUpperCase() + filter.slice(1)}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-5 space-y-3">
+                    {roomsLoading ? (
+                      <p className="text-sm text-white/30">Loading rooms…</p>
+                    ) : filteredRooms.length === 0 ? (
+                      <p className="text-sm text-white/30">No rooms found.</p>
+                    ) : (
+                      filteredRooms.map((entry) => {
+                        const updatedAtValue = typeof entry.updatedAt === "number"
+                          ? entry.updatedAt
+                          : entry.updatedAt?.toMillis?.() ?? null;
+                        const participantCount = countFreshRoomParticipants(entry.participants, entry.presenceBy);
+
+                        return (
+                          <div key={entry.id} className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-3">
+                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="truncate text-sm font-semibold text-white/90">Room {entry.id}</p>
+                                  <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${entry.status === "active" ? "bg-emerald-500/10 text-emerald-300" : "bg-white/[0.06] text-white/50"}`}>{entry.status ?? "unknown"}</span>
+                                  <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${entry.mode === "video" ? "bg-fuchsia-500/10 text-fuchsia-300" : "bg-sky-500/10 text-sky-300"}`}>{entry.mode ?? "unknown"}</span>
+                                </div>
+                                <p className="mt-1 text-[12px] text-white/40">Participants: {participantCount} fresh / {entry.participants?.length ?? 0} total</p>
+                                <p className="mt-1 text-[11px] text-white/30">Updated: {updatedAtValue ? new Date(updatedAtValue).toLocaleString() : "Unknown"}</p>
+                                {entry.participants && entry.participants.length > 0 && (
+                                  <p className="mt-1 truncate text-[11px] text-white/35">UIDs: {entry.participants.join(", ")}</p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {activeTab === "overview" && (<>
           {/* ── Primary stats row ── */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1642,8 +2267,100 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           </>)}
+
+          {/* ── Admins Tab ── */}
+          {activeTab === "admins" && (
+            <div className="space-y-8">
+              <div>
+                <h2 className="text-xl font-bold text-white/90">Admin Management</h2>
+                <p className="mt-1 text-sm text-white/40">Invite users to become administrators by sending them an invite link.</p>
+              </div>
+
+              {/* Invite form */}
+              <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-6">
+                <h3 className="mb-4 text-[13px] font-semibold uppercase tracking-widest text-white/30">Send Invite</h3>
+                <div className="flex gap-3">
+                  <input
+                    type="email"
+                    placeholder="user@example.com"
+                    value={inviteEmail}
+                    onChange={(e) => { setInviteEmail(e.target.value); setInviteError(null); setInviteSuccess(false); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") void sendInvite(); }}
+                    className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none focus:border-violet-500/50 transition"
+                  />
+                  <button
+                    onClick={() => void sendInvite()}
+                    disabled={inviteSending || !inviteEmail.includes("@")}
+                    className="rounded-xl bg-gradient-to-r from-pink-600 to-violet-600 px-5 py-2.5 text-sm font-bold text-white disabled:opacity-40 transition hover:opacity-90 active:scale-[0.97]"
+                  >
+                    {inviteSending ? "Sending…" : "Send Invite"}
+                  </button>
+                </div>
+                {inviteError && <p className="mt-3 text-sm text-red-400">{inviteError}</p>}
+                {inviteSuccess && <p className="mt-3 text-sm text-emerald-400">✓ Invite sent successfully.</p>}
+              </div>
+
+              {/* Current admins */}
+              <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-[13px] font-semibold uppercase tracking-widest text-white/30">Current Admins</h3>
+                  <button onClick={() => void loadAdmins()} className="text-[12px] text-white/30 hover:text-white/60 transition">Refresh</button>
+                </div>
+                {adminsLoading ? (
+                  <p className="text-sm text-white/30">Loading…</p>
+                ) : admins.length === 0 ? (
+                  <p className="text-sm text-white/30">No admins found.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {admins.map((admin) => (
+                      <div key={admin.uid} className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-500/20 text-amber-400 text-xs font-bold">
+                          {(admin.displayName || admin.email || "A")[0].toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium text-white/80">{admin.displayName || admin.email}</p>
+                          {admin.displayName && <p className="truncate text-xs text-white/40">{admin.email}</p>}
+                        </div>
+                        <span className="shrink-0 rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-amber-400">Admin</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Pending invites */}
+              {pendingInvites.length > 0 && (
+                <div className="rounded-2xl border border-white/[0.07] bg-white/[0.03] p-6">
+                  <h3 className="mb-4 text-[13px] font-semibold uppercase tracking-widest text-white/30">Pending Invites</h3>
+                  <div className="space-y-2">
+                    {pendingInvites.map((invite) => (
+                      <div key={invite.token} className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm text-white/70">{invite.email}</p>
+                          <p className="text-[11px] text-white/30">
+                            Invited by {invite.inviterName} · Expires {new Date(invite.expiresAt).toLocaleString()}
+                          </p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-violet-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-violet-400">Pending</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </main>
       </div>
+      {/* ── Lightbox ── */}
+      {lightboxUrl && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm" onClick={() => setLightboxUrl(null)}>
+          <button onClick={() => setLightboxUrl(null)} className="absolute right-4 top-4 rounded-full bg-white/10 p-2 text-white transition hover:bg-white/20">
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={lightboxUrl} alt="Full screenshot" className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
     </div>
   );
 }

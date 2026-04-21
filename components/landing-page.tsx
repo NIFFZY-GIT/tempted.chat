@@ -3,9 +3,8 @@
 import React, { useCallback } from "react";
 import { motion } from "framer-motion";
 import { 
-  ShieldCheck, Zap, Timer, Eye, Globe, 
-  MessageCircle, Video, ArrowRight, Sparkles,
-  Lock, Ghost, Radio
+  Zap, Timer, Globe,
+  ArrowRight, Lock, Ghost, Radio
 } from "lucide-react";
 import { ParticleBackground } from "./particle-background";
 
@@ -94,7 +93,7 @@ export function LandingPageSection() {
             <Lock className="text-pink-500 mb-20" size={40} />
             <div>
               <h3 className="text-2xl font-black mb-2">P2P ENCRYPTION</h3>
-              <p className="text-white/40 text-sm">What happens in the chat, stays in the chat. We can't see your data.</p>
+              <p className="text-white/40 text-sm">What happens in the chat, stays in the chat. We can&apos;t see your data.</p>
             </div>
           </div>
 
@@ -123,7 +122,7 @@ export function LandingPageSection() {
                 <div className="text-[10px] font-black bg-blue-500 text-white px-2 py-1 rounded">LIVE FEED</div>
              </div>
              <h3 className="text-3xl font-black mb-2">CONNECT GLOBALLY</h3>
-             <p className="text-white/40 text-sm">Filter by 140+ countries and meet people you'd never meet in real life.</p>
+             <p className="text-white/40 text-sm">Filter by 140+ countries and meet people you&apos;d never meet in real life.</p>
           </div>
 
           {/* Card 5: Media */}
@@ -133,7 +132,7 @@ export function LandingPageSection() {
             </div>
             <div>
               <h3 className="text-2xl font-black mb-2">SELF-DESTRUCT MEDIA</h3>
-              <p className="text-white/40 text-sm">Send images with timers. They vanish from existence after being seen.</p>
+              <p className="text-white/40 text-sm">Send images with timers. They vanish from existence after they&apos;re seen.</p>
             </div>
           </div>
         </div>
@@ -189,7 +188,15 @@ export function LandingPageSection() {
 
 /* ─── HELPER COMPONENTS ─── */
 
-function FloatingBubble({ label, x, y, delay, color }: any) {
+type FloatingBubbleProps = {
+  label: string;
+  x: string;
+  y: string;
+  delay: number;
+  color: string;
+};
+
+function FloatingBubble({ label, x, y, delay, color }: FloatingBubbleProps) {
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.5 }}
@@ -213,7 +220,7 @@ function FloatingBubble({ label, x, y, delay, color }: any) {
   );
 }
 
-function Stat({ label, value }: any) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="text-center md:text-left">
       <div className="text-3xl font-black text-white">{value}</div>

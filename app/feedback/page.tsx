@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useState, useRef, useEffect } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { auth, db, storage } from "@/lib/firebase";
@@ -51,7 +52,6 @@ export default function FeedbackPage() {
 	const [submitting, setSubmitting] = useState(false);
 	const [submitted, setSubmitted] = useState(false);
 	const [error, setError] = useState("");
-	const [dragOver, setDragOver] = useState(false);
 	const [uploadProgress, setUploadProgress] = useState(0);
 
 	useEffect(() => {
@@ -95,7 +95,7 @@ export default function FeedbackPage() {
 				description: description.trim(), imageUrls, status: "open", createdAt: serverTimestamp(),
 			});
 			setSubmitted(true);
-		} catch (err) {
+		} catch {
 			setError("Failed to submit.");
 		} finally {
 			setSubmitting(false);
@@ -121,7 +121,7 @@ export default function FeedbackPage() {
 						<motion.div key="success" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center py-20">
 							<CheckCircle2 className="mx-auto w-16 h-16 text-emerald-400 mb-8" />
 							<h1 className="text-4xl font-extrabold mb-4">Thank You!</h1>
-							<p className="text-white/50 mb-10">We've received your feedback.</p>
+							<p className="text-white/50 mb-10">We&apos;ve received your feedback.</p>
 							<div className="flex justify-center gap-4">
 								<button onClick={() => setSubmitted(false)} className="px-6 py-3 rounded-xl border border-white/10 text-sm font-bold">Submit Another</button>
 								<Link href="/" className="px-6 py-3 rounded-xl bg-white text-black font-bold text-sm">Return Home</Link>
@@ -155,7 +155,7 @@ export default function FeedbackPage() {
 								<div className="grid grid-cols-5 gap-3">
 									{previews.map((src, i) => (
 										<div key={src} className="relative aspect-square rounded-xl overflow-hidden border border-white/10 group">
-											<img src={src} className="w-full h-full object-cover" />
+											<Image src={src} alt={`Feedback upload ${i + 1}`} fill className="object-cover" unoptimized />
 											<button type="button" onClick={() => removeImage(i)} className="absolute top-1 right-1 p-1 bg-black/60 rounded-md opacity-0 group-hover:opacity-100"><X className="w-3 h-3" /></button>
 										</div>
 									))}

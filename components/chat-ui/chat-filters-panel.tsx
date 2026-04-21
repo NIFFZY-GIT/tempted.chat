@@ -1,6 +1,35 @@
 "use client";
 
 import { TierLogo } from "@/components/tier-logo";
+import type { AgeGroupFilter, ChatStyleFilter, CountryFilter, GenderFilter } from "@/components/chat-ui";
+
+type CountryOption = { code: string; label: string };
+
+type ChatFiltersPanelProps = {
+  showChatFilters: boolean;
+  setShowChatFilters: (value: boolean) => void;
+  hasActiveSubscription: boolean;
+  onShowPaywall?: () => void;
+  filterGender: GenderFilter;
+  setFilterGender: React.Dispatch<React.SetStateAction<GenderFilter>>;
+  filterStyle: ChatStyleFilter;
+  setFilterStyle: React.Dispatch<React.SetStateAction<ChatStyleFilter>>;
+  filterHideCountry: boolean;
+  setFilterHideCountry: React.Dispatch<React.SetStateAction<boolean>>;
+  subscriptionTier: "vip" | "vvip" | null;
+  filterAgeGroup: AgeGroupFilter;
+  setFilterAgeGroup: React.Dispatch<React.SetStateAction<AgeGroupFilter>>;
+  filterCountryMenuRef: React.RefObject<HTMLDivElement | null>;
+  filterCountryMenuOpen: boolean;
+  setFilterCountryMenuOpen: (value: boolean | ((current: boolean) => boolean)) => void;
+  filterSelectedCountryCode?: string;
+  CountryFlagIcon: React.ComponentType<{ countryCode?: string; className?: string }>;
+  filterCountry: CountryFilter;
+  setFilterCountry: React.Dispatch<React.SetStateAction<CountryFilter>>;
+  COUNTRY_OPTIONS: CountryOption[];
+  getCountryLabel: (countryCode: string) => string;
+  handleApplyFilters: () => void;
+};
 
 export function ChatFiltersPanel({
   showChatFilters,
@@ -9,7 +38,6 @@ export function ChatFiltersPanel({
   onShowPaywall,
   filterGender,
   setFilterGender,
-  chatFilterChip,
   filterStyle,
   setFilterStyle,
   filterHideCountry,
@@ -27,7 +55,7 @@ export function ChatFiltersPanel({
   COUNTRY_OPTIONS,
   getCountryLabel,
   handleApplyFilters,
-}: any) {
+}: ChatFiltersPanelProps) {
   if (!showChatFilters) {
     return null;
   }

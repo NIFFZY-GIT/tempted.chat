@@ -93,7 +93,7 @@ export default function SafetyPage() {
 								Safety Pro-Tips
 							</h2>
 							<div className="mt-4 grid gap-4 text-white/70">
-								<p>• Use a <strong>unique nickname</strong> that doesn't reveal your real name.</p>
+								<p>• Use a <strong>unique nickname</strong> that doesn&apos;t reveal your real name.</p>
 								<p>• Be cautious of users who try to move you to <strong>third-party apps</strong> too quickly.</p>
 								<p>• Remember: You are never obligated to stay in a chat that makes you uncomfortable.</p>
 							</div>

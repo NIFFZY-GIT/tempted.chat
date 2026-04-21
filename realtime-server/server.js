@@ -326,13 +326,6 @@ const toParticipantProfile = (entry) => ({
   nickname: entry.nickname,
 });
 
-const createGroupRoomPayload = (entries) => {
-  const roomId = crypto.randomUUID();
-  const participants = entries.map((entry) => entry.uid);
-  const participantProfiles = entries.map(toParticipantProfile);
-  return { roomId, participants, participantProfiles };
-};
-
 const createGroupRoom = (entries) => {
   const roomId = crypto.randomUUID();
   return {
@@ -683,6 +676,17 @@ wss.on("connection", (ws) => {
       await dequeueRedis(state.uid, state.queueMode || null);
       socketState.set(ws, { ...state, queueMode: null });
       send(ws, "queue_left", { ok: true });
+      return;
+    }
+
+    if (event === "peer_left") {
+      const roomId = payload?.roomId;
+      const toUid = payload?.toUid;
+      if (!roomId || !toUid) {
+        send(ws, "error", { code: "invalid-peer-left" });
+        return;
+      }
+      broadcastToUid(toUid, "peer_left", { roomId, fromUid: state.uid });
       return;
     }
 

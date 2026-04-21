@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useRef, useState, type ChangeEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type RefObject } from "react";
 
 import { TierLogo } from "@/components/tier-logo";
 import { ChatFiltersPanel } from "./chat-ui/chat-filters-panel";
@@ -87,13 +87,14 @@ export function ChatMedia({
 }: {
   src: string;
   alt: string;
-  className: string;
+  className?: string;
   mimeType?: string;
 }) {
   if (isGifMimeType(mimeType)) {
-    return <img src={src} alt={alt} className={className} loading="lazy" decoding="async" />;
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt={alt} className={className ?? ""} loading="lazy" decoding="async" />;
   }
-  return <Image src={src} alt={alt} width={300} height={200} className={className} unoptimized />;
+  return <Image src={src} alt={alt} width={300} height={200} className={className ?? ""} unoptimized />;
 }
 
 const pickRandomGender = (): ProfileGender => {
@@ -219,17 +220,6 @@ const pickRandomCountryCode = (): string => {
   return countryCodes[Math.floor(Math.random() * countryCodes.length)];
 };
 
-const toFlagEmoji = (countryCode?: string): string => {
-  const normalizedCode = normalizeCountryCode(countryCode);
-  if (!normalizedCode) {
-    return "🌐";
-  }
-
-  return String.fromCodePoint(
-    ...normalizedCode.split("").map((char) => 127397 + char.charCodeAt(0)),
-  );
-};
-
 const getFlagIconUrl = (countryCode?: string): string | null => {
   const normalizedCode = normalizeCountryCode(countryCode);
   if (!normalizedCode) {
@@ -239,15 +229,16 @@ const getFlagIconUrl = (countryCode?: string): string | null => {
   return `https://flagcdn.com/24x18/${normalizedCode.toLowerCase()}.png`;
 };
 
-export function CountryFlagIcon({ countryCode, className }: { countryCode?: string; className?: string }) {
-  const iconUrl = getFlagIconUrl(countryCode);
-  const normalizedCode = normalizeCountryCode(countryCode);
+export function CountryFlagIcon({ countryCode, className }: { countryCode?: string | null; className?: string }) {
+  const iconUrl = getFlagIconUrl(countryCode ?? undefined);
+  const normalizedCode = normalizeCountryCode(countryCode ?? undefined);
 
   if (!iconUrl || !normalizedCode) {
     return <span className={className ?? ""}>🌐</span>;
   }
 
   return (
+    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={iconUrl}
       alt={`${normalizedCode} flag`}
@@ -277,8 +268,9 @@ export const generateRandomStrangerProfile = (filters?: ChatFilters): UserProfil
   };
 };
 
-export function GenderIcon({ gender }: { gender: ProfileGender }) {
-  if (gender === "Male") {
+export function GenderIcon({ gender }: { gender?: ProfileGender | null }) {
+  const resolvedGender: ProfileGender = gender === "Male" || gender === "Female" || gender === "Other" ? gender : "Other";
+  if (resolvedGender === "Male") {
     return (
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
         <circle cx="9" cy="15" r="5" />
@@ -287,7 +279,7 @@ export function GenderIcon({ gender }: { gender: ProfileGender }) {
     );
   }
 
-  if (gender === "Female") {
+  if (resolvedGender === "Female") {
     return (
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
         <circle cx="12" cy="8" r="5" />
@@ -407,6 +399,7 @@ export function ProfileSetupView({
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function ModeAndFiltersViewLegacy({
   onStart,
   onBack,
@@ -420,6 +413,7 @@ function ModeAndFiltersViewLegacy({
   subscriptionTier?: "vip" | "vvip" | null;
   onShowPaywall?: () => void;
 }) {
+  void onBack;
   const [selectedMode, setSelectedMode] = useState<ChatMode>("text");
   const [interestsInput, setInterestsInput] = useState("");
   const [interests, setInterests] = useState<string[]>([]);
@@ -496,21 +490,6 @@ function ModeAndFiltersViewLegacy({
     country !== "Any",
     hideCountry,
   ].filter(Boolean).length;
-
-  const chip = (active: boolean, color?: "pink" | "violet" | "blue" | "amber") => {
-    const c = color ?? "pink";
-    const activeColors: Record<string, string> = {
-      pink: "bg-pink-500/15 text-pink-300 border-pink-500/30 shadow-[0_0_12px_rgba(236,72,153,0.1)]",
-      violet: "bg-violet-500/15 text-violet-300 border-violet-500/30 shadow-[0_0_12px_rgba(139,92,246,0.1)]",
-      blue: "bg-blue-500/15 text-blue-300 border-blue-500/30 shadow-[0_0_12px_rgba(59,130,246,0.1)]",
-      amber: "bg-amber-500/15 text-amber-300 border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.1)]",
-    };
-    return `rounded-xl px-4 py-2.5 text-[13px] font-semibold text-center transition-all duration-300 cursor-pointer select-none border ${
-      active
-        ? activeColors[c]
-        : "bg-white/[0.02] text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/55 hover:bg-white/[0.04]"
-    }`;
-  };
 
   const modeConfig: Array<{
     id: ChatMode;
@@ -802,7 +781,6 @@ function ModeAndFiltersViewLegacy({
         onShowPaywall={onShowPaywall}
         filterGender={gender}
         setFilterGender={setGender}
-        chatFilterChip={(active: boolean) => chip(active, activeModeConfig.chipColor)}
         filterStyle={style}
         setFilterStyle={setStyle}
         filterHideCountry={hideCountry}
@@ -919,6 +897,7 @@ export function ChatRoomView({
   hasActiveSubscription?: boolean;
   onShowPaywall?: () => void;
 }) {
+  void isDemoMode;
   const chatContainerRef = useRef<HTMLElement | null>(null);
   const messagesViewportRef = useRef<HTMLDivElement | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
@@ -961,16 +940,8 @@ export function ChatRoomView({
   const SWIPE_REPLY_MAX_PX = 84;
 
   const modeLabel = chatMode === "text" ? "Text" : chatMode === "video" ? "Video" : "Group";
-  const ageLabel = chatFilters?.ageGroup ?? "Any age";
   const genderLabel = chatFilters?.gender && chatFilters.gender !== "Any" ? chatFilters.gender : "Any gender";
-  const styleLabel = chatFilters?.style ?? "Any style";
-  const countryLabel = getCountryLabel(chatFilters?.country ?? "Any");
-  const selectedStyle = chatFilters?.style && chatFilters.style !== "Any style" ? chatFilters.style : null;
-  const selectedCountryCode = chatFilters?.country && chatFilters.country !== "Any" ? chatFilters.country : undefined;
   const hasResolvedStrangerProfile = !isConnecting && strangerProfile.age > 0;
-  const strangerProfileLabel = hasResolvedStrangerProfile
-    ? `${strangerProfile.gender}, ${strangerProfile.age}`
-    : "Searching...";
 
   const chatFilterActiveCount = [
     chatFilters?.gender !== "Any" && chatFilters?.gender,
@@ -995,13 +966,6 @@ export function ChatRoomView({
     onLeaveChat({ gender: filterGender, ageGroup: filterAgeGroup, style: filterStyle, country: filterCountry, hideCountry: filterHideCountry });
   };
 
-  const chatFilterChip = (active: boolean) =>
-    `rounded-xl px-3.5 py-2 text-[12px] font-semibold text-center transition-all duration-300 cursor-pointer select-none border ${
-      active
-        ? "bg-pink-500/15 text-pink-300 border-pink-500/30 shadow-[0_0_12px_rgba(236,72,153,0.1)]"
-        : "bg-white/[0.02] text-white/35 border-white/[0.06] hover:border-white/[0.12] hover:text-white/55 hover:bg-white/[0.04]"
-    }`;
-
   const renderChatFilterPanel = () => (
     <ChatFiltersPanel
       showChatFilters={showChatFilters}
@@ -1010,7 +974,6 @@ export function ChatRoomView({
       onShowPaywall={onShowPaywall}
       filterGender={filterGender}
       setFilterGender={setFilterGender}
-      chatFilterChip={chatFilterChip}
       filterStyle={filterStyle}
       setFilterStyle={setFilterStyle}
       filterHideCountry={filterHideCountry}
@@ -1116,8 +1079,10 @@ export function ChatRoomView({
     }
 
     messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-    setShowScrollToLatestBubble(false);
-    setUnreadReceivedCount(0);
+    window.requestAnimationFrame(() => {
+      setShowScrollToLatestBubble(false);
+      setUnreadReceivedCount(0);
+    });
   }, [messages, strangerProfile]);
 
   useEffect(() => {
@@ -1275,19 +1240,21 @@ export function ChatRoomView({
   }, [expandedActionMsgId]);
 
   useEffect(() => {
-    setRevealedTimedImageIds((current) => {
-      const next = new Set(current);
-      let changed = false;
+    window.requestAnimationFrame(() => {
+      setRevealedTimedImageIds((current) => {
+        const next = new Set(current);
+        let changed = false;
 
-      for (const message of messages) {
-        if (message.imageDeleted || !message.image) {
-          if (next.delete(message.id)) {
-            changed = true;
+        for (const message of messages) {
+          if (message.imageDeleted || !message.image) {
+            if (next.delete(message.id)) {
+              changed = true;
+            }
           }
         }
-      }
 
-      return changed ? next : current;
+        return changed ? next : current;
+      });
     });
   }, [messages]);
 
@@ -1354,7 +1321,6 @@ export function ChatRoomView({
         showBackConfirm={showBackConfirm}
         setShowBackConfirm={setShowBackConfirm}
         onChangeMode={onChangeMode}
-        GenderIcon={GenderIcon}
         strangerProfile={strangerProfile}
         CountryFlagIcon={CountryFlagIcon}
         subscriptionTier={subscriptionTier}
@@ -1406,9 +1372,7 @@ export function ChatRoomView({
       connectingStatus={connectingStatus}
       modeLabel={modeLabel}
       genderLabel={genderLabel}
-      ageLabel={ageLabel}
       setShowChatFilters={setShowChatFilters}
-      hasActiveSubscription={hasActiveSubscription}
       chatFilterActiveCount={chatFilterActiveCount}
       showNextStrangerPrompt={showNextStrangerPrompt}
       onNextStranger={onNextStranger}

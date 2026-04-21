@@ -7,7 +7,6 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import type { PlanId, PlanTier } from "@/lib/stripe";
 import { TopNav } from "@/components/navbar";
-import { TierLogo } from "@/components/tier-logo";
 import { getUserRole } from "@/lib/admin";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -15,10 +14,11 @@ import {
 	X, 
 	ChevronLeft, 
 	ShieldCheck, 
-	Zap, 
 	AlertTriangle,
 	Loader2,
-	ArrowRight
+	ArrowRight,
+	Clock,
+	Calendar,
 } from "lucide-react";
 
 // --- Types & Constants ---
@@ -45,6 +45,7 @@ const FEATURES = [
 ];
 
 const fmt = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+const INITIAL_NOW_MS = Date.now();
 
 export default function PlansPage() {
 	const router = useRouter();
@@ -53,7 +54,7 @@ export default function PlansPage() {
 	const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [duration, setDuration] = useState<Duration>("7d");
-	const [subStatus, setSubStatus] = useState<{active: boolean, tier?: PlanTier, expiresAt?: number} | null>(null);
+	const [subStatus, setSubStatus] = useState<{active: boolean, tier?: PlanTier, expiresAt?: number, activatedAt?: number, planId?: string} | null>(null);
 	const [isAdmin, setIsAdmin] = useState(false);
 
 	// Auth Listener
@@ -91,8 +92,8 @@ export default function PlansPage() {
 			const data = await res.json();
 			if (!res.ok) throw new Error(data.error || "Purchase failed");
 			window.location.href = data.url;
-		} catch (err: any) {
-			setError(err.message);
+		} catch (err: unknown) {
+			setError(err instanceof Error ? err.message : "Purchase failed");
 			setLoadingPlan(null);
 		}
 	};
@@ -129,17 +130,22 @@ export default function PlansPage() {
 							Go Back
 						</button>
 
-						{isAdmin ? (
+						{isAdmin && (
 							<div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px] font-black uppercase tracking-wider">
 								<ShieldCheck className="w-3.5 h-3.5" /> Admin Access Locked
 							</div>
-						) : subStatus?.active && (
-							<div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[11px] font-black uppercase tracking-wider">
-								<Zap className="w-3.5 h-3.5" /> 
-								{subStatus.tier} active · Exp: {new Date(subStatus.expiresAt!).toLocaleDateString()}
-							</div>
 						)}
 					</div>
+
+					{/* Active Subscription Banner */}
+					{subStatus?.active && subStatus.expiresAt && (
+						<ActiveSubscriptionBanner
+							tier={subStatus.tier!}
+							planId={subStatus.planId}
+							activatedAt={subStatus.activatedAt}
+							expiresAt={subStatus.expiresAt}
+						/>
+					)}
 
 					{/* Header */}
 					<div className="text-center mb-12">
@@ -190,7 +196,6 @@ export default function PlansPage() {
 							onPurchase={() => handlePurchase("vip")}
 							disabled={authLoading || !!user?.isAnonymous}
 							features={FEATURES.map(f => ({ ...f, included: f.vip }))}
-							accent="pink"
 						/>
 
 						{/* VVIP CARD */}
@@ -202,7 +207,6 @@ export default function PlansPage() {
 							onPurchase={() => handlePurchase("vvip")}
 							disabled={authLoading || !!user?.isAnonymous}
 							features={FEATURES.map(f => ({ ...f, included: f.vvip }))}
-							accent="amber"
 							recommended
 						/>
 					</div>
@@ -223,7 +227,18 @@ export default function PlansPage() {
 }
 
 // --- Sub-component for Cards ---
-function PlanCard({ tier, price, durationLabel, features, onPurchase, isLoading, disabled, accent, recommended }: any) {
+type PlanCardProps = {
+	tier: PlanTier;
+	price: number;
+	durationLabel: Duration;
+	features: Array<{ label: string; included: boolean }>;
+	onPurchase: () => void;
+	isLoading: boolean;
+	disabled: boolean;
+	recommended?: boolean;
+};
+
+function PlanCard({ tier, price, durationLabel, features, onPurchase, isLoading, disabled, recommended }: PlanCardProps) {
 	const isVVIP = tier === "vvip";
 	
 	return (
@@ -268,7 +283,7 @@ function PlanCard({ tier, price, durationLabel, features, onPurchase, isLoading,
 			</div>
 
 			<ul className="space-y-4 mb-10 flex-1">
-				{features.map((f: any) => (
+				{features.map((f) => (
 					<li key={f.label} className={`flex items-center gap-3 text-sm font-medium ${f.included ? "text-white/60" : "text-white/10"}`}>
 						{f.included ? (
 							<Check className={`w-4 h-4 ${isVVIP ? "text-amber-400" : "text-pink-400"}`} />
@@ -305,5 +320,114 @@ function PlanCard({ tier, price, durationLabel, features, onPurchase, isLoading,
 				</span>
 			</button>
 		</motion.div>
+	);
+}
+
+// --- Active Subscription Banner ---
+function ActiveSubscriptionBanner({
+	tier,
+	planId,
+	activatedAt,
+	expiresAt,
+}: {
+	tier: string;
+	planId?: string;
+	activatedAt?: number;
+	expiresAt: number;
+}) {
+	const [now, setNow] = useState(INITIAL_NOW_MS);
+	useEffect(() => {
+		const t = setInterval(() => setNow(Date.now()), 1000);
+		return () => clearInterval(t);
+	}, []);
+
+	const remaining = expiresAt - now;
+	const totalMs = activatedAt ? expiresAt - activatedAt : null;
+	const progress = totalMs ? Math.max(0, Math.min(100, (remaining / totalMs) * 100)) : null;
+
+	const days = Math.floor(remaining / 86400000);
+	const hours = Math.floor((remaining % 86400000) / 3600000);
+	const mins = Math.floor((remaining % 3600000) / 60000);
+	const secs = Math.floor((remaining % 60000) / 1000);
+
+	let countdownStr = "";
+	if (days > 0) countdownStr = `${days}d ${hours}h ${mins}m remaining`;
+	else if (hours > 0) countdownStr = `${hours}h ${mins}m ${secs}s remaining`;
+	else countdownStr = `${mins}m ${secs}s remaining`;
+
+	// Infer friendly plan name from planId e.g. "vip_7d" -> "7 Days"
+	const durationMap: Record<string, string> = { "1h": "1 Hour", "24h": "24 Hours", "7d": "7 Days", "30d": "30 Days" };
+	const durationKey = planId?.split("_")[1] ?? "";
+	const durationLabel = durationMap[durationKey] ?? durationKey;
+
+	const isVVIP = tier === "vvip";
+	const accentColor = isVVIP ? "#f59e0b" : "#ec4899";
+	const accentBg = isVVIP ? "rgba(245,158,11,0.08)" : "rgba(236,72,153,0.08)";
+	const accentBorder = isVVIP ? "rgba(245,158,11,0.25)" : "rgba(236,72,153,0.25)";
+
+	return (
+		<motion.div
+			initial={{ opacity: 0, y: -10 }}
+			animate={{ opacity: 1, y: 0 }}
+			style={{ background: accentBg, borderColor: accentBorder }}
+			className="mb-10 rounded-3xl border p-6"
+		>
+			{/* Header row */}
+			<div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+				<div className="flex items-center gap-3">
+					<div
+						style={{ background: `${accentColor}20`, border: `1px solid ${accentColor}40` }}
+						className="p-2 rounded-xl"
+					>
+						<Zap style={{ color: accentColor }} className="w-5 h-5" />
+					</div>
+					<div>
+						<p className="text-[10px] font-black uppercase tracking-widest" style={{ color: accentColor }}>Active Subscription</p>
+						<p className="text-white font-black text-lg uppercase tracking-tight">
+							{tier.toUpperCase()} {durationLabel && `— ${durationLabel}`}
+						</p>
+					</div>
+				</div>
+				<div className="text-right">
+					<p className="text-[10px] text-white/30 uppercase tracking-widest font-bold flex items-center gap-1 justify-end">
+						<Clock className="w-3 h-3" /> Expires
+					</p>
+					<p className="text-white font-bold text-sm">{new Date(expiresAt).toLocaleString()}</p>
+				</div>
+			</div>
+
+			{/* Progress bar */}
+			{progress !== null && (
+				<div className="mb-3">
+					<div className="h-1.5 w-full rounded-full bg-white/5 overflow-hidden">
+						<motion.div
+							className="h-full rounded-full"
+							style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${accentColor}, ${accentColor}99)` }}
+							initial={false}
+						/>
+					</div>
+				</div>
+			)}
+
+			{/* Countdown */}
+			<p className="text-sm font-bold" style={{ color: accentColor }}>
+				{countdownStr}
+			</p>
+
+			{/* Activated at */}
+			{activatedAt && (
+				<p className="mt-1 text-[11px] text-white/25 flex items-center gap-1">
+					<Calendar className="w-3 h-3" /> Activated {new Date(activatedAt).toLocaleString()}
+				</p>
+			)}
+		</motion.div>
+	);
+}
+
+function Zap({ className, style }: { className?: string; style?: React.CSSProperties }) {
+	return (
+		<svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
+			<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+		</svg>
 	);
 }

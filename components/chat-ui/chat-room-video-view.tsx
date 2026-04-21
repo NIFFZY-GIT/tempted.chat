@@ -1,15 +1,61 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-import Image from "next/image";
+import React, { useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import type { ChatFilters, ChatMessage } from "@/components/chat-ui";
 import { 
-	ChevronLeft, X, MessageCircle, Mic, MicOff, Camera, VideoOff, 
-	RefreshCw, Send, Settings2, ArrowRight, ArrowUpRight, ShieldCheck, 
-	Zap, Search, Globe, User
+    ChevronLeft, X, MessageCircle, Mic, MicOff, Camera, VideoOff, 
+    RefreshCw, Send, Settings2
 } from "lucide-react";
-import { TierLogo } from "@/components/tier-logo";
 import { PoweredBy } from "@/components/developed-by";
+
+type ChatRoomVideoViewProps = {
+    chatContainerRef: React.RefObject<HTMLElement | null>;
+    remoteVideoRef: React.RefObject<HTMLVideoElement | null>;
+    localVideoRef: React.RefObject<HTMLVideoElement | null>;
+    isConnecting: boolean;
+    hasResolvedStrangerProfile: boolean;
+    remoteAudioEnabled: boolean;
+    hasRemoteVideo: boolean;
+    connectingStatus: string;
+    showNextStrangerPrompt: boolean;
+    localVideoEnabled: boolean;
+    showBackConfirm: boolean;
+    setShowBackConfirm: (value: boolean) => void;
+    onChangeMode: () => void;
+    GenderIcon?: React.ComponentType<{ gender?: string | null; className?: string }>;
+    strangerProfile: { gender?: string | null; age?: string | number; countryCode?: string | null };
+    CountryFlagIcon: React.ComponentType<{ countryCode?: string | null; className?: string }>;
+    subscriptionTier?: "vip" | "vvip" | null;
+    showLeaveConfirm: boolean;
+    setShowLeaveConfirm: (value: boolean) => void;
+    chatFilters: ChatFilters | null;
+    onLeaveChat: (filters: ChatFilters) => void;
+    onNextStranger: () => void;
+    setShowChatFilters: (value: boolean) => void;
+    hasActiveSubscription?: boolean;
+    chatFilterActiveCount: number;
+    showVideoChatOverlay: boolean;
+    setShowVideoChatOverlay: (value: boolean) => void;
+    messagesViewportRef: React.RefObject<HTMLDivElement | null>;
+    handleMessagesScroll: () => void;
+    messages: ChatMessage[];
+    messagesEndRef: React.RefObject<HTMLDivElement | null>;
+    replyingTo?: ChatMessage | null;
+    clearReply?: () => void;
+    messageInputRef: React.RefObject<HTMLInputElement | null>;
+    text: string;
+    setText: (value: string) => void;
+    isSendingMessage: boolean;
+    sendMessage: () => void;
+    toggleLocalAudio: () => void;
+    localAudioEnabled: boolean;
+    toggleLocalVideo: () => void;
+    switchCamera: () => void;
+    videoError: string | null;
+    chatFiltersPanel: React.ReactNode;
+    onShowPaywall?: () => void;
+};
 
 export function ChatRoomVideoView({
 	chatContainerRef,
@@ -25,17 +71,17 @@ export function ChatRoomVideoView({
 	showBackConfirm,
 	setShowBackConfirm,
 	onChangeMode,
-	GenderIcon,
+    GenderIcon,
 	strangerProfile,
 	CountryFlagIcon,
-	subscriptionTier,
+    subscriptionTier,
 	showLeaveConfirm,
 	setShowLeaveConfirm,
 	chatFilters,
 	onLeaveChat,
 	onNextStranger,
 	setShowChatFilters,
-	hasActiveSubscription,
+    hasActiveSubscription,
 	chatFilterActiveCount,
 	showVideoChatOverlay,
 	setShowVideoChatOverlay,
@@ -43,8 +89,8 @@ export function ChatRoomVideoView({
 	handleMessagesScroll,
 	messages,
 	messagesEndRef,
-	replyingTo,
-	clearReply,
+    replyingTo,
+    clearReply,
 	messageInputRef,
 	text,
 	setText,
@@ -56,9 +102,19 @@ export function ChatRoomVideoView({
 	switchCamera,
 	videoError,
 	chatFiltersPanel,
-	onShowPaywall,
-}: any) {
-    
+    	onShowPaywall,
+    }: ChatRoomVideoViewProps) {
+        void GenderIcon;
+        void subscriptionTier;
+    void showLeaveConfirm;
+    void setShowLeaveConfirm;
+    void chatFilters;
+    void onLeaveChat;
+        void hasActiveSubscription;
+        void replyingTo;
+        void clearReply;
+    void isSendingMessage;
+        void onShowPaywall;
 
 
     useEffect(() => {
@@ -186,7 +242,7 @@ export function ChatRoomVideoView({
                             ref={messagesViewportRef} onScroll={handleMessagesScroll}
                             className="flex-1 overflow-y-auto p-6 space-y-4 no-scrollbar"
                         >
-                            {messages.map((msg: any) => (
+                            {messages.map((msg) => (
                                 <div key={msg.id} className={`flex ${msg.author === 'you' ? 'justify-end' : 'justify-start'}`}>
                                     <div className={`max-w-[80%] px-5 py-3 rounded-2xl text-[14px] leading-relaxed shadow-xl ${msg.author === 'you' ? 'bg-pink-600 text-white rounded-tr-none' : 'bg-white/10 border border-white/10 text-white rounded-tl-none'}`}>
                                         {msg.text}
@@ -272,9 +328,17 @@ export function ChatRoomVideoView({
 
 // ─── LOCAL UI HELPERS ───
 
-function RoundButton({ icon, active, color, onClick, size = 36 }: any) {
+type RoundButtonProps = {
+    icon: React.ReactElement<{ size?: number }>;
+    active?: boolean;
+    color: "pink" | "rose" | "white";
+    onClick: () => void;
+    size?: number;
+};
+
+function RoundButton({ icon, active, color, onClick, size = 36 }: RoundButtonProps) {
     const base = `h-9 w-9 sm:h-10 sm:w-10 rounded-full flex items-center justify-center transition-all active:scale-90 border`;
-    const styles: any = {
+    const styles: Record<RoundButtonProps["color"], string> = {
         pink: active ? "bg-pink-600 border-pink-400 text-white" : "bg-white/5 border-white/10 text-white/40 hover:text-white",
         rose: active ? "bg-rose-600 border-rose-400 text-white" : "bg-white/5 border-white/10 text-white/40 hover:text-white",
         white: "bg-white/5 border-white/10 text-white/40 hover:text-white"

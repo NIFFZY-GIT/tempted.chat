@@ -32,9 +32,21 @@ export async function POST(request: NextRequest) {
 
     const origin = request.headers.get("origin") ?? process.env.NEXT_PUBLIC_APP_URL ?? "https://tempted.chat";
 
+    // Fetch user email from Firebase Admin so Stripe can pre-fill it at checkout
+    // and so the webhook always has it in session.customer_details.email.
+    let customerEmail: string | undefined;
+    try {
+      const { getAdminAuth } = await import("@/lib/firebase-admin");
+      const userRecord = await getAdminAuth().getUser(uid);
+      if (userRecord.email) customerEmail = userRecord.email;
+    } catch {
+      // Non-fatal — checkout still works without it.
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
+      ...(customerEmail ? { customer_email: customerEmail } : {}),
       line_items: [
         {
           price_data: {
@@ -53,6 +65,7 @@ export async function POST(request: NextRequest) {
         planId: plan.id,
         tier: plan.tier,
         durationMs: String(plan.durationMs),
+        userEmail: customerEmail ?? "",
       },
       success_url: `${origin}/?payment=success`,
       cancel_url: `${origin}/?payment=cancelled`,

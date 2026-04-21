@@ -53,7 +53,6 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import {
   createUserWithEmailAndPassword,
   onAuthStateChanged,
-  sendPasswordResetEmail,
   signInAnonymously,
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -77,20 +76,20 @@ declare global {
 const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!;
 
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
-const ROOM_PRESENCE_HEARTBEAT_MS = 5000;
+const ROOM_PRESENCE_HEARTBEAT_MS = 3000;
 const ROOM_PRESENCE_TIMEOUT_MS = 12000;
 const NO_SHOW_TIMEOUT_MS = 30_000;
-const MATCH_RETRY_INTERVAL_MS = 1200;
-const MATCH_HEARTBEAT_INTERVAL_MS = 3000;
-const E2EE_WAIT_BEFORE_QUEUE_MS = 1800;
-const REALTIME_QUEUE_PING_MS = 2000;
+const MATCH_RETRY_INTERVAL_MS = 800;
+const MATCH_HEARTBEAT_INTERVAL_MS = 1500;
+const E2EE_WAIT_BEFORE_QUEUE_MS = 400;
+const REALTIME_QUEUE_PING_MS = 1500;
 const REALTIME_WS_URL = process.env.NEXT_PUBLIC_REALTIME_WS_URL || "ws://localhost:8787";
 const REALTIME_WS_ENABLED = process.env.NEXT_PUBLIC_DISABLE_REALTIME_WS !== "true";
-const REALTIME_WS_RECONNECT_BASE_MS = 1000;
-const REALTIME_WS_RECONNECT_MAX_MS = 10000;
+const REALTIME_WS_RECONNECT_BASE_MS = 500;
+const REALTIME_WS_RECONNECT_MAX_MS = 8000;
 const REALTIME_SIGNAL_BUFFER_LIMIT = 100;
 const REALTIME_SIGNAL_BUFFER_TTL_MS = 60_000;
-const NEGOTIATION_DEBOUNCE_MS = 500;
+const NEGOTIATION_DEBOUNCE_MS = 100;
 const MAX_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
 const DEMO_FALLBACK_TRIGGER_MS = 9000;
 const DEMO_CONNECT_MIN_MS = 2000;
@@ -285,12 +284,12 @@ export default function Home() {
   const [localAudioEnabled, setLocalAudioEnabled] = useState(true);
   const [cameraFacingMode, setCameraFacingMode] = useState<"user" | "environment">("user");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [adminRoleLoading, setAdminRoleLoading] = useState(false);
+  const [, setAdminRoleLoading] = useState(false);
 
   const [e2eeReadyVersion, setE2eeReadyVersion] = useState(0);
   const [subscriptionExpiresAt, setSubscriptionExpiresAt] = useState<number | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState<"vip" | "vvip" | null>(null);
-  const [subscriptionLoading, setSubscriptionLoading] = useState(false);
+  const [, setSubscriptionLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -1505,6 +1504,26 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) {
+      return;
+    }
+
+    const unsubscribe = onSnapshot(doc(db, "users", user.uid), async (snapshot) => {
+      const data = snapshot.data() as { isBlocked?: boolean } | undefined;
+      if (!data?.isBlocked) {
+        return;
+      }
+
+      setAuthNotice("This account has been blocked. Contact support.");
+      await signOut(auth).catch(() => {
+        // Ignore sign-out failures while enforcing blocked accounts.
+      });
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
       setProfile(null);
       setChatMode(null);
       setChatFilters(null);
@@ -1641,7 +1660,6 @@ export default function Home() {
     return () => {
       cancelled = true;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
@@ -1889,6 +1907,36 @@ export default function Home() {
         }
 
         bufferRealtimeSignal(signalEvent);
+        return;
+      }
+
+      if (eventName === "peer_left") {
+        const roomId = typeof payload?.roomId === "string" ? payload.roomId : null;
+        if (!roomId || activeRoomIdRef.current !== roomId) return;
+        if (disconnectHandledRoomRef.current === roomId) return;
+        disconnectHandledRoomRef.current = roomId;
+
+        setShowNextStrangerPrompt(true);
+        setConnectingStatus(STRANGER_LEFT_PROMPT);
+        setIsConnecting(false);
+        setStrangerIsTyping(false);
+        setMessages((current) => {
+          const alreadyNotified = current.some((m) => m.text === STRANGER_LEFT_PROMPT);
+          if (alreadyNotified) return current;
+          const now = new Date();
+          return [
+            ...current,
+            {
+              id: `system-${Date.now()}`,
+              author: "stranger" as const,
+              text: STRANGER_LEFT_PROMPT,
+              sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+            },
+          ];
+        });
+        setActiveRoomId(null);
+        void deleteAllRoomData(roomId, [user.uid]);
+        return;
       }
     };
 
@@ -1951,6 +1999,8 @@ export default function Home() {
         realtimeSocketRef.current = null;
       }
     };
+  // The socket lifecycle intentionally keys off auth and queue controls, not every callback captured by message handlers.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sendRealtimeEvent, startRealtimeQueueHeartbeat, stopDemoMode, stopRealtimeQueueHeartbeat, user]);
 
   useEffect(() => {
@@ -1967,7 +2017,7 @@ export default function Home() {
     setStrangerProfile(PENDING_STRANGER_PROFILE);
 
     clearE2EECaches();
-  }, [activeRoomId, stopDemoMode]);
+  }, [activeRoomId, chatMode, stopDemoMode]);
 
   useEffect(() => {
     const configRef = doc(db, "appConfig", "matchmaking");
@@ -2059,6 +2109,8 @@ export default function Home() {
     };
     void startPreview();
     return () => { cancelled = true; };
+  // Preview startup is intentionally gated by UI state; expanding deps here causes unnecessary camera churn.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatMode, chatFilters, isConnecting, activeRoomId, cameraFacingMode]);
 
   useEffect(() => {
@@ -2112,16 +2164,8 @@ export default function Home() {
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
-            { urls: "stun:stun2.l.google.com:19302" },
-            { urls: "stun:stun3.l.google.com:19302" },
-            { urls: "stun:stun4.l.google.com:19302" },
             {
               urls: "turn:a.relay.metered.ca:80",
-              username: "e53a8cec5765272ee7307826",
-              credential: "uWdKMi+UeI1VNmNG",
-            },
-            {
-              urls: "turn:a.relay.metered.ca:80?transport=tcp",
               username: "e53a8cec5765272ee7307826",
               credential: "uWdKMi+UeI1VNmNG",
             },
@@ -2137,6 +2181,8 @@ export default function Home() {
             },
           ],
           iceCandidatePoolSize: 10,
+          bundlePolicy: "max-bundle",
+          rtcpMuxPolicy: "require",
         });
         peerConnectionRef.current = peerConnection;
 
@@ -2266,41 +2312,6 @@ export default function Home() {
           }).catch(() => {
             // Ignore disconnect end race conditions.
           });
-        };
-
-        const attemptIceRestart = () => {
-          if (!isOfferer) return;
-          void (async () => {
-            try {
-              if (!markNegotiationAttempt(lastOfferAttemptAtRef)) {
-                return;
-              }
-
-              // Safari on some Apple devices may not expose restartIce reliably.
-              // createOffer({ iceRestart: true }) is the compatibility-safe fallback.
-              if (typeof peerConnection.restartIce === "function") {
-                peerConnection.restartIce();
-              }
-              const restartOffer = await peerConnection.createOffer({ iceRestart: true });
-              await peerConnection.setLocalDescription(restartOffer);
-              videoOfferSentRef.current = true;
-              if (isRealtimeRoom) {
-                emitRealtimeSignal(activeRoomId, otherUid, "offer", {
-                  type: restartOffer.type,
-                  sdp: restartOffer.sdp,
-                });
-              }
-              await updateDoc(roomRef, {
-                [`webrtc.offerBy.${user.uid}`]: {
-                  type: restartOffer.type,
-                  sdp: restartOffer.sdp,
-                },
-                webrtcUpdatedAt: serverTimestamp(),
-              });
-            } catch {
-              // Ignore restart races.
-            }
-          })();
         };
 
         peerConnection.onconnectionstatechange = () => {
@@ -2584,6 +2595,8 @@ export default function Home() {
       // panel doesn't go black between stranger connections.
       cleanupVideoSession(chatMode === "video");
     };
+  // WebRTC setup intentionally avoids rebinding on every helper callback identity change while a room is active.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRoomId, chatMode, publishLocalMediaState, roomParticipants, user]);
 
   useEffect(() => {
@@ -2687,7 +2700,9 @@ export default function Home() {
         noShowTimeoutRef.current = null;
       }
     };
-  }, [activeRoomId, user, chatFilters]);
+  // This timeout should restart only when room/user/filter state changes, not when helper identities are recreated.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeRoomId, chatFilters, user]);
 
   useEffect(() => {
     if (!user) {
@@ -2819,7 +2834,7 @@ export default function Home() {
     void deleteDoc(doc(db, "waitingUsers", user.uid)).catch(() => {
       // Ignore if queue entry already removed.
     });
-  }, [activeRoomId, user]);
+  }, [activeRoomId, sendRealtimeEvent, stopRealtimeQueueHeartbeat, user]);
 
   useEffect(() => {
     if (!activeRoomId || !user) {
@@ -2997,6 +3012,8 @@ export default function Home() {
       roomUnsubRef.current?.();
       roomUnsubRef.current = null;
     };
+  // Room subscriptions intentionally stay bound to room/auth state while helper callbacks remain implementation details.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRoomId, user]);
 
   useEffect(() => {
@@ -3449,25 +3466,22 @@ export default function Home() {
       return;
     }
 
-    // 1-on-1 mode: end the whole room
-    let participantUids: string[] = [user.uid];
-    try {
-      const roomSnapshot = await getDoc(doc(db, "rooms", activeRoomId));
-      if (roomSnapshot.exists()) {
-        const roomData = roomSnapshot.data() as { participants?: string[] };
-        if (Array.isArray(roomData.participants) && roomData.participants.length > 0) {
-          participantUids = roomData.participants;
-        }
-      }
-    } catch {
-      // Ignore participant fetch failures and fall back to current user.
+    setShowNextStrangerPrompt(false);
+    void setTypingStatus(false);
+
+    const roomIdToEnd = activeRoomId;
+    const peerUid = realtimePeerUidRef.current;
+    setActiveRoomId(null);
+    setMessages([]);
+
+    // Notify the stranger instantly over WebSocket — zero Firestore round-trip.
+    if (peerUid) {
+      sendRealtimeEvent("peer_left", { roomId: roomIdToEnd, toUid: peerUid });
     }
 
-    setShowNextStrangerPrompt(false);
-    await setTypingStatus(false);
-
+    // Also write to Firestore so the stranger is notified even if WS is down.
     try {
-      await updateDoc(doc(db, "rooms", activeRoomId), {
+      await updateDoc(doc(db, "rooms", roomIdToEnd), {
         status: "ended",
         endedBy: user.uid,
         endedAt: serverTimestamp(),
@@ -3476,10 +3490,22 @@ export default function Home() {
       // Ignore room end race conditions.
     }
 
-    await deleteAllRoomData(activeRoomId, participantUids);
-
-    setActiveRoomId(null);
-    setMessages([]);
+    // Cleanup participant subcollections in the background.
+    void (async () => {
+      let participantUids: string[] = [user.uid];
+      try {
+        const roomSnapshot = await getDoc(doc(db, "rooms", roomIdToEnd));
+        if (roomSnapshot.exists()) {
+          const roomData = roomSnapshot.data() as { participants?: string[] };
+          if (Array.isArray(roomData.participants) && roomData.participants.length > 0) {
+            participantUids = roomData.participants;
+          }
+        }
+      } catch {
+        // Fall back to current user only.
+      }
+      await deleteAllRoomData(roomIdToEnd, participantUids);
+    })();
   };
 
   const startSearching = async (
@@ -3804,7 +3830,8 @@ export default function Home() {
         // Remove reaction
         const updated = senders.filter((id: string) => id !== user.uid);
         if (updated.length === 0) {
-          const { [emoji]: _, ...rest } = current;
+          const rest = { ...current };
+          delete rest[emoji];
           await updateDoc(msgRef, { reactions: rest });
         } else {
           await updateDoc(msgRef, { [`reactions.${emoji}`]: updated });
@@ -4254,28 +4281,24 @@ export default function Home() {
     }
   };
 
-  const resetPassword = async () => {
-    if (!email) {
-      setAuthError("Enter your email address first, then tap Forgot password.");
-      return;
-    }
+  const sendResetCode = async (emailAddr: string): Promise<void> => {
+    const res = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: emailAddr }),
+    });
+    if (!res.ok) throw new Error("Failed to send code");
+  };
 
-    try {
-      setAuthBusy(true);
-      setAuthError(null);
-      setAuthNotice(null);
-      await sendPasswordResetEmail(auth, email);
-      setAuthNotice("Reset link sent — check your inbox (and spam folder).");
-    } catch (error) {
-      const code =
-        typeof error === "object" && error !== null && "code" in error
-          ? String((error as { code?: unknown }).code)
-          : "";
-      const message = firebaseAuthErrorMessage(code) ?? (error instanceof Error ? error.message : "Could not send reset email. Try again.");
-      setAuthError(message);
-    } finally {
-      setAuthBusy(false);
-    }
+  const confirmResetCode = async (emailAddr: string, code: string, newPassword: string): Promise<{ error?: string }> => {
+    const res = await fetch("/api/auth/reset-password/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: emailAddr, code, newPassword }),
+    });
+    const data = (await res.json()) as { success?: boolean; error?: string };
+    if (!res.ok || data.error) return { error: data.error ?? "Something went wrong." };
+    return {};
   };
 
   const logout = async () => {
@@ -4459,15 +4482,15 @@ export default function Home() {
             setEmail={setEmail}
             password={password}
             setPassword={setPassword}
-            setAuthError={setAuthError}
+            setAuthNotice={setAuthNotice}
             authError={authError}
             authNotice={authNotice}
-            emailInputRef={emailInputRef}
             loginAnonymously={loginAnonymously}
             renderRecaptcha={renderRecaptcha}
             loginWithGoogle={loginWithGoogle}
             loginWithEmail={loginWithEmail}
-            resetPassword={resetPassword}
+            sendResetCode={sendResetCode}
+            confirmResetCode={confirmResetCode}
           />
           <LandingPageSection />
         </main>
@@ -4639,7 +4662,10 @@ export default function Home() {
               return;
             }
 
-            void startSearching(chatFilters);
+            void (async () => {
+              await markRoomEnded();
+              void startSearching(chatFilters);
+            })();
           }}
         />
       </main>

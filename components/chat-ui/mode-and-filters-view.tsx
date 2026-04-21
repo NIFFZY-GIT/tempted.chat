@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { 
 	MessageCircle, Video, Globe, X, Plus,
 	Settings2, Rocket, ChevronRight, Cpu,
-	ArrowUpRight, Lock
+	ArrowUpRight
 } from "lucide-react";
 
 import { COUNTRY_OPTIONS, getCountryLabel } from "@/components/chat-ui";
@@ -47,7 +47,7 @@ export function ModeAndFiltersView({
 	const [ageGroup, setAgeGroup] = useState<AgeGroupFilter>("Any age");
 	const [style, setStyle] = useState<ChatStyleFilter>("Any style");
 	const [country, setCountry] = useState<CountryFilter>("Any");
-	const [hideCountry, setHideCountry] = useState(false);
+	const [hideCountry] = useState(false);
 	const [adminGender, setAdminGender] = useState<ProfileGender>(initialAdminProfile?.gender ?? "Other");
 	const [adminAge, setAdminAge] = useState(initialAdminProfile?.age ? String(initialAdminProfile.age) : "25");
 	const [adminCountryCode, setAdminCountryCode] = useState(initialAdminProfile?.countryCode ?? "Any");
@@ -276,13 +276,13 @@ export function ModeAndFiltersView({
 								{/* VIP SECTION */}
 								<FilterSection label="Target Identity">
 									{["Any", "Male", "Female", "Other"].map(o => (
-										<FilterPill key={o} label={o} active={gender === o} onClick={() => setGender(o as any)} color="pink" />
+										<FilterPill key={o} label={o} active={gender === o} onClick={() => setGender(o as GenderFilter)} color="pink" />
 									))}
 								</FilterSection>
 
 								<FilterSection label="Match Intensity">
 									{["Any style", "Casual", "Intimate"].map(o => (
-										<FilterPill key={o} label={o === "Any style" ? "Any" : o} active={style === o} onClick={() => setStyle(o as any)} color="pink" />
+										<FilterPill key={o} label={o === "Any style" ? "Any" : o} active={style === o} onClick={() => setStyle(o as ChatStyleFilter)} color="pink" />
 									))}
 								</FilterSection>
 
@@ -294,7 +294,7 @@ export function ModeAndFiltersView({
 									
 									<FilterSection label="Preferred Age Group">
 										{["Any age", "Under 18", "18-25", "25+"].map(o => (
-											<FilterPill key={o} label={o} active={ageGroup === o} onClick={() => isVvip && setAgeGroup(o as any)} color="amber" />
+											<FilterPill key={o} label={o} active={ageGroup === o} onClick={() => isVvip && setAgeGroup(o as AgeGroupFilter)} color="amber" />
 										))}
 									</FilterSection>
 

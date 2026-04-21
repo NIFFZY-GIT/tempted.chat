@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { loadStripe } from "@stripe/stripe-js";
+import { useEffect, useState } from "react";
 
 import { TierLogo } from "@/components/tier-logo";
 import { auth } from "@/lib/firebase";
@@ -57,24 +56,29 @@ const PLANS: Plan[] = [
   },
 ];
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
+const INITIAL_NOW_MS = Date.now();
 
 function formatPrice(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
 export function SubscriptionPaywall({
-  uid,
   onClose,
   expiresAt,
 }: {
-  uid: string;
   onClose: () => void;
   expiresAt: number | null;
 }) {
   const [loading, setLoading] = useState<PlanId | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const isActive = expiresAt !== null && expiresAt > Date.now();
+  const [nowMs, setNowMs] = useState(INITIAL_NOW_MS);
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(timerId);
+  }, []);
+
+  const isActive = expiresAt !== null && expiresAt > nowMs;
 
   const handlePurchase = async (planId: PlanId) => {
     setLoading(planId);
@@ -102,15 +106,8 @@ export function SubscriptionPaywall({
         return;
       }
 
-      const stripeInstance = await stripePromise;
-      if (!stripeInstance) {
-        setError("Payment system unavailable");
-        setLoading(null);
-        return;
-      }
-
       // Redirect to Stripe Checkout
-      window.location.href = data.url;
+      window.location.assign(data.url);
     } catch {
       setError("Network error. Please try again.");
       setLoading(null);

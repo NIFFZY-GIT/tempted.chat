@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { stripe, getPlanById, type PlanId } from "@/lib/stripe";
+import { getAdminDb, getAdminAuth } from "@/lib/firebase-admin";
+import { sendMail, buildInvoiceEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -66,6 +67,49 @@ export async function POST(request: NextRequest) {
     );
 
     console.log(`Subscription activated: uid=${uid}, plan=${planId}, expires=${new Date(startFrom + durationMs).toISOString()}`);
+
+    // Send invoice email — awaited so it completes before the serverless function exits.
+    try {
+      // Email priority: stored in metadata at checkout → Stripe customer_details → Firebase Auth lookup
+      let userEmail: string | null =
+        (session.metadata?.userEmail || null) ??
+        session.customer_details?.email ??
+        null;
+
+      if (!userEmail) {
+        try {
+          const userRecord = await getAdminAuth().getUser(uid);
+          userEmail = userRecord.email ?? null;
+        } catch (authErr) {
+          console.error("[webhook] getUser failed:", authErr);
+        }
+      }
+
+      console.log(`[webhook] email resolved: ${userEmail ?? "NONE"} for uid=${uid}`);
+
+      if (userEmail) {
+        const plan = getPlanById(planId as PlanId);
+        const planName = plan?.name ?? planId;
+        const durationLabel = plan?.description ?? "";
+        const amountCents = session.amount_total ?? (plan?.price ?? 0);
+
+        const html = buildInvoiceEmail({
+          orderId: session.id,
+          planName,
+          tier: tier as "vip" | "vvip",
+          durationLabel,
+          amountCents,
+          activatedAt: now,
+          expiresAt: startFrom + durationMs,
+        });
+
+        await sendMail(userEmail, `Your Tempted Chat ${tier.toUpperCase()} Invoice`, html);
+        console.log(`Invoice email sent to ${userEmail} for plan ${planId}`);
+      }
+    } catch (emailErr) {
+      // Log but don't fail the webhook — Stripe will retry on non-200 responses.
+      console.error("Failed to send invoice email:", emailErr);
+    }
   }
 
   return NextResponse.json({ received: true });

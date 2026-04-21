@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { motion } from "framer-motion";
-import { Lock, Users, Eye, EyeOff, Mail, KeyRound } from "lucide-react";
+import { useEffect, useRef, useState, useCallback, type ReactNode } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Lock, Users, Eye, EyeOff, Mail, KeyRound, ArrowLeft } from "lucide-react";
 
 const SectionWrapper = ({ children }: { children: ReactNode }) => (
   <motion.div
@@ -27,6 +27,88 @@ function GoogleIcon() {
   );
 }
 
+function OtpInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const inputs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const focus = (i: number) => inputs.current[i]?.focus();
+
+  const handleChange = useCallback(
+    (i: number, char: string) => {
+      const digit = char.replace(/\D/g, "").slice(-1);
+      const arr = value.padEnd(6, " ").split("");
+      arr[i] = digit || " ";
+      const next = arr.join("").replace(/ /g, "");
+      onChange(next);
+      if (digit && i < 5) focus(i + 1);
+    },
+    [value, onChange]
+  );
+
+  const handleKeyDown = useCallback(
+    (i: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Backspace") {
+        e.preventDefault();
+        const arr = value.padEnd(6, " ").split("");
+        if (arr[i] && arr[i] !== " ") {
+          arr[i] = " ";
+          onChange(arr.join("").replace(/ /g, ""));
+        } else if (i > 0) {
+          const prev = arr.slice(0, i + 1);
+          prev[i - 1] = " ";
+          onChange(prev.concat(arr.slice(i + 1)).join("").replace(/ /g, ""));
+          focus(i - 1);
+        }
+      } else if (e.key === "ArrowLeft" && i > 0) {
+        focus(i - 1);
+      } else if (e.key === "ArrowRight" && i < 5) {
+        focus(i + 1);
+      }
+    },
+    [value, onChange]
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      e.preventDefault();
+      const pasted = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+      onChange(pasted);
+      const nextIdx = Math.min(pasted.length, 5);
+      focus(nextIdx);
+    },
+    [onChange]
+  );
+
+  return (
+    <div className="flex justify-center gap-2">
+      {Array.from({ length: 6 }).map((_, i) => {
+        const digit = value[i] ?? "";
+        const isFilled = digit !== "";
+        return (
+          <input
+            key={i}
+            ref={(el) => { inputs.current[i] = el; }}
+            type="text"
+            inputMode="numeric"
+            maxLength={1}
+            value={digit}
+            onChange={(e) => handleChange(i, e.target.value)}
+            onKeyDown={(e) => handleKeyDown(i, e)}
+            onPaste={handlePaste}
+            onFocus={(e) => e.target.select()}
+            className={`w-11 h-14 rounded-xl border text-center text-xl font-black font-mono text-white outline-none transition-all
+              ${
+                isFilled
+                  ? "bg-pink-500/10 border-pink-500/60 shadow-[0_0_12px_rgba(236,72,153,0.2)]"
+                  : "bg-white/[0.03] border-white/[0.07] focus:border-pink-500/50 focus:bg-white/[0.06]"
+              }
+            `}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 function AuthButton({ onClick, icon, title, sub }: { onClick: () => void; icon: ReactNode; title: string; sub: string }) {
   return (
     <button
@@ -45,6 +127,30 @@ function AuthButton({ onClick, icon, title, sub }: { onClick: () => void; icon: 
   );
 }
 
+type AuthMethod = "email" | "google" | "anonymous";
+type AuthMode = "signin" | "signup";
+
+type AuthViewProps = {
+  authBusy: boolean;
+  loginAnonymously: () => void | Promise<void>;
+  loginWithGoogle: () => void | Promise<void>;
+  authMethod: AuthMethod;
+  setAuthMethod: (method: AuthMethod) => void;
+  email: string;
+  setEmail: (value: string) => void;
+  password: string;
+  setPassword: (value: string) => void;
+  loginWithEmail: () => void | Promise<void>;
+  setAuthMode: (mode: AuthMode) => void;
+  authMode: AuthMode;
+  sendResetCode: (emailAddr: string) => Promise<void>;
+  confirmResetCode: (emailAddr: string, code: string, newPassword: string) => Promise<{ error?: string }>;
+  authError: string | null;
+  authNotice: string | null;
+  setAuthNotice?: (message: string | null) => void;
+  renderRecaptcha: (containerId: string) => void;
+};
+
 export function AuthView({
   authBusy,
   loginAnonymously,
@@ -58,14 +164,82 @@ export function AuthView({
   loginWithEmail,
   setAuthMode,
   authMode,
-  resetPassword,
+  sendResetCode,
+  confirmResetCode,
   authError,
   authNotice,
+  setAuthNotice,
   renderRecaptcha,
-}: any) {
+}: AuthViewProps) {
   const captchaRendered = useRef(false);
   const [showCaptcha, setShowCaptcha] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // Forgot-password multi-step state (local — not shared with login form)
+  type ForgotStep = "send" | "code" | "new-pw";
+  const [forgotStep, setForgotStep] = useState<ForgotStep | null>(null);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotCode, setForgotCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
+  const [forgotNotice, setForgotNotice] = useState<string | null>(null);
+
+  const openForgot = () => {
+    setForgotEmail(email ?? "");
+    setForgotCode("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setForgotError(null);
+    setForgotNotice(null);
+    setForgotStep("send");
+  };
+
+  const closeForgot = () => {
+    setForgotStep(null);
+    setForgotError(null);
+    setForgotNotice(null);
+  };
+
+  const handleSendCode = async () => {
+    if (!forgotEmail) { setForgotError("Enter your email address."); return; }
+    setForgotBusy(true);
+    setForgotError(null);
+    try {
+      await sendResetCode(forgotEmail.trim().toLowerCase());
+      setForgotStep("code");
+      setForgotNotice("Code sent — check your inbox (and spam folder).");
+    } catch {
+      setForgotError("Could not send code. Try again.");
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const handleVerifyCode = async () => {
+    if (forgotCode.length !== 6) { setForgotError("Enter the 6-digit code from your email."); return; }
+    if (!newPassword) { setForgotError("Enter a new password."); return; }
+    if (newPassword.length < 6) { setForgotError("Password must be at least 6 characters."); return; }
+    if (newPassword !== confirmPassword) { setForgotError("Passwords do not match."); return; }
+    setForgotBusy(true);
+    setForgotError(null);
+    try {
+      const result = await confirmResetCode(forgotEmail, forgotCode, newPassword);
+      if (result?.error) {
+        setForgotError(result.error);
+      } else {
+        setForgotStep(null);
+        setAuthNotice?.("Password updated! Sign in with your new password.");
+      }
+    } catch {
+      setForgotError("Something went wrong. Try again.");
+    } finally {
+      setForgotBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!showCaptcha || captchaRendered.current) return;
@@ -136,85 +310,225 @@ export function AuthView({
             animate={{ opacity: 1, y: 0 }}
             className="overflow-hidden rounded-[2rem] border border-white/[0.08] bg-gradient-to-b from-white/[0.04] to-[#0c0c12]"
           >
-            <div className="flex border-b border-white/[0.06]">
-              {(["signin", "signup"] as const).map((mode) => (
-                <button
-                  key={mode}
-                  onClick={() => setAuthMode(mode)}
-                  className={`relative flex-1 py-3.5 text-[11px] font-black uppercase tracking-widest transition-colors ${authMode === mode ? "text-white" : "text-white/25 hover:text-white/50"}`}
+            <AnimatePresence mode="wait">
+              {forgotStep ? (
+                /* ── Forgot-password panel ── */
+                <motion.div
+                  key="forgot"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="p-5 space-y-4"
                 >
-                  {mode === "signin" ? "Sign In" : "Create Account"}
-                  {authMode === mode && (
-                    <motion.div
-                      layoutId="email-tab-indicator"
-                      className="absolute bottom-0 left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-full bg-pink-500"
-                    />
+                  {/* Header row */}
+                  <div className="flex items-center gap-3 pb-1">
+                    <button
+                      type="button"
+                      onClick={closeForgot}
+                      className="text-white/30 hover:text-white transition-colors"
+                    >
+                      <ArrowLeft className="h-4 w-4" />
+                    </button>
+                    <span className="text-[11px] font-black uppercase tracking-widest text-white/40">
+                      {forgotStep === "send" ? "Forgot Password" : forgotStep === "code" ? "Enter Code & New Password" : "Set New Password"}
+                    </span>
+                  </div>
+
+                  {forgotStep === "send" && (
+                    <>
+                      <p className="text-xs text-white/40 leading-relaxed">
+                        Enter your email and we&apos;ll send a 6-digit code to reset your password.
+                      </p>
+                      <div className="group relative">
+                        <Mail className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 transition-colors group-focus-within:text-pink-400" />
+                        <input
+                          type="email"
+                          value={forgotEmail}
+                          onChange={(e) => setForgotEmail(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleSendCode()}
+                          placeholder="Email address"
+                          autoComplete="email"
+                          className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.03] py-4 pl-11 pr-4 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/50 focus:bg-white/[0.06] sm:text-sm"
+                        />
+                      </div>
+                      <button
+                        onClick={handleSendCode}
+                        disabled={forgotBusy}
+                        className="w-full py-4 rounded-2xl bg-pink-600 text-white font-black text-[13px] uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50 hover:bg-pink-500"
+                      >
+                        {forgotBusy ? "Sending..." : "Send Code"}
+                      </button>
+                    </>
                   )}
-                </button>
-              ))}
-            </div>
 
-            <div className="space-y-3 p-5">
-              <div className="group relative">
-                <Mail className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 transition-colors group-focus-within:text-pink-400" />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Email address"
-                  autoComplete="email"
-                  className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.03] py-4 pl-11 pr-4 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/50 focus:bg-white/[0.06] sm:text-sm"
-                />
-              </div>
+                  {forgotStep === "code" && (
+                    <>
+                      <p className="text-xs text-white/40 leading-relaxed">
+                        Check <span className="text-white/60">{forgotEmail}</span> for a 6-digit code, then enter your new password below.
+                      </p>
+                      {/* Code input — 6 individual boxes */}
+                      <OtpInput value={forgotCode} onChange={setForgotCode} />
+                      {/* New password */}
+                      <div className="group relative">
+                        <KeyRound className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 transition-colors group-focus-within:text-pink-400" />
+                        <input
+                          type={showNewPw ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="New password"
+                          autoComplete="new-password"
+                          className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.03] py-4 pl-11 pr-12 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/50 focus:bg-white/[0.06] sm:text-sm"
+                        />
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          onClick={() => setShowNewPw((p) => !p)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 hover:text-white/60 transition-colors"
+                        >
+                          {showNewPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      {/* Confirm password */}
+                      <div className="group relative">
+                        <KeyRound className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 transition-colors group-focus-within:text-pink-400" />
+                        <input
+                          type={showConfirmPw ? "text" : "password"}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && handleVerifyCode()}
+                          placeholder="Confirm new password"
+                          autoComplete="new-password"
+                          className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.03] py-4 pl-11 pr-12 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/50 focus:bg-white/[0.06] sm:text-sm"
+                        />
+                        <button
+                          type="button"
+                          tabIndex={-1}
+                          onClick={() => setShowConfirmPw((p) => !p)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 hover:text-white/60 transition-colors"
+                        >
+                          {showConfirmPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <button
+                        onClick={handleVerifyCode}
+                        disabled={forgotBusy}
+                        className="w-full py-4 rounded-2xl bg-pink-600 text-white font-black text-[13px] uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50 hover:bg-pink-500"
+                      >
+                        {forgotBusy ? "Verifying..." : "Set New Password"}
+                      </button>
+                      <div className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => { setForgotCode(""); setForgotStep("send"); setForgotError(null); setForgotNotice(null); }}
+                          className="text-[11px] text-white/25 hover:text-pink-400 transition"
+                        >
+                          Resend code
+                        </button>
+                      </div>
+                    </>
+                  )}
 
-              <div className="group relative">
-                <KeyRound className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 transition-colors group-focus-within:text-pink-400" />
-                <input
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Password"
-                  autoComplete={authMode === "signup" ? "new-password" : "current-password"}
-                  className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.03] py-4 pl-11 pr-12 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/50 focus:bg-white/[0.06] sm:text-sm"
-                />
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  onClick={() => setShowPassword((p) => !p)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 hover:text-white/60 transition-colors"
+                  {forgotError && (
+                    <div className="rounded-xl border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-center text-sm text-red-300">
+                      {forgotError}
+                    </div>
+                  )}
+                  {forgotNotice && (
+                    <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-4 py-3 text-center text-sm text-emerald-300">
+                      {forgotNotice}
+                    </div>
+                  )}
+                </motion.div>
+              ) : (
+                /* ── Normal sign-in / sign-up panel ── */
+                <motion.div
+                  key="login"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
+                  <div className="flex border-b border-white/[0.06]">
+                    {(["signin", "signup"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => setAuthMode(mode)}
+                        className={`relative flex-1 py-3.5 text-[11px] font-black uppercase tracking-widest transition-colors ${authMode === mode ? "text-white" : "text-white/25 hover:text-white/50"}`}
+                      >
+                        {mode === "signin" ? "Sign In" : "Create Account"}
+                        {authMode === mode && (
+                          <motion.div
+                            layoutId="email-tab-indicator"
+                            className="absolute bottom-0 left-1/2 h-[2px] w-8 -translate-x-1/2 rounded-full bg-pink-500"
+                          />
+                        )}
+                      </button>
+                    ))}
+                  </div>
 
-              <button
-                onClick={loginWithEmail}
-                disabled={authBusy}
-                className={`relative w-full overflow-hidden rounded-2xl py-4 font-black text-[13px] uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50 ${
-                  authMode === "signin"
-                    ? "bg-white text-black hover:bg-white/90"
-                    : "bg-pink-600 text-white shadow-lg shadow-pink-900/30 hover:bg-pink-500"
-                }`}
-              >
-                <span className="pointer-events-none absolute inset-0 translate-x-[-100%] bg-white/10 transition-transform duration-700 group-hover:translate-x-[100%]" />
-                <span className="relative">
-                  {authBusy ? "Please wait..." : authMode === "signin" ? "Welcome Back" : "Create Account"}
-                </span>
-              </button>
+                  <div className="space-y-3 p-5">
+                    <div className="group relative">
+                      <Mail className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 transition-colors group-focus-within:text-pink-400" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="Email address"
+                        autoComplete="email"
+                        className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.03] py-4 pl-11 pr-4 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/50 focus:bg-white/[0.06] sm:text-sm"
+                      />
+                    </div>
 
-              {authMode === "signin" && (
-                <div className="text-center pt-1">
-                  <button
-                    type="button"
-                    onClick={resetPassword}
-                    disabled={authBusy}
-                    className="text-[11px] text-white/25 transition hover:text-pink-400"
-                  >
-                    Forgot password?
-                  </button>
-                </div>
+                    <div className="group relative">
+                      <KeyRound className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-white/20 transition-colors group-focus-within:text-pink-400" />
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Password"
+                        autoComplete={authMode === "signup" ? "new-password" : "current-password"}
+                        className="w-full rounded-2xl border border-white/[0.07] bg-white/[0.03] py-4 pl-11 pr-12 text-base text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/50 focus:bg-white/[0.06] sm:text-sm"
+                      />
+                      <button
+                        type="button"
+                        tabIndex={-1}
+                        onClick={() => setShowPassword((p) => !p)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/20 hover:text-white/60 transition-colors"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+
+                    <button
+                      onClick={loginWithEmail}
+                      disabled={authBusy}
+                      className={`relative w-full overflow-hidden rounded-2xl py-4 font-black text-[13px] uppercase tracking-widest transition-all active:scale-[0.98] disabled:opacity-50 ${
+                        authMode === "signin"
+                          ? "bg-white text-black hover:bg-white/90"
+                          : "bg-pink-600 text-white shadow-lg shadow-pink-900/30 hover:bg-pink-500"
+                      }`}
+                    >
+                      <span className="pointer-events-none absolute inset-0 translate-x-[-100%] bg-white/10 transition-transform duration-700 group-hover:translate-x-[100%]" />
+                      <span className="relative">
+                        {authBusy ? "Please wait..." : authMode === "signin" ? "Welcome Back" : "Create Account"}
+                      </span>
+                    </button>
+
+                    {authMode === "signin" && (
+                      <div className="text-center pt-1">
+                        <button
+                          type="button"
+                          onClick={openForgot}
+                          disabled={authBusy}
+                          className="text-[11px] text-white/25 transition hover:text-pink-400"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
               )}
-            </div>
+            </AnimatePresence>
           </motion.div>
         )}
       </div>

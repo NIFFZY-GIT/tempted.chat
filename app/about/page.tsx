@@ -83,7 +83,7 @@ export default function AboutPage() {
 							</div>
 							<h2 className="text-3xl font-bold">Our Direction</h2>
 							<p className="mt-4 text-lg text-white/50 leading-relaxed">
-								Tempted.Chat isn't just a chat site; it's an evolving ecosystem. We are constantly iterating on our moderation AI, trust signals, and safety protocols to ensure a premium environment for every user.
+								Tempted.Chat isn&apos;t just a chat site; it&apos;s an evolving ecosystem. We are constantly iterating on our moderation AI, trust signals, and safety protocols to ensure a premium environment for every user.
 							</p>
 						</div>
 						

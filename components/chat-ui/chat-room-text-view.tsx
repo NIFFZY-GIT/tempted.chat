@@ -2,6 +2,119 @@
 
 import Image from "next/image";
 import { TierLogo } from "@/components/tier-logo";
+import type { ChatFilters, ProfileGender } from "@/components/chat-ui";
+
+type CountryFlagIconProps = { countryCode?: string | null; className?: string };
+type GenderIconProps = { gender?: ProfileGender | null; className?: string };
+
+type ChatMessage = {
+  id: string;
+  author: "you" | "stranger";
+  text?: string;
+  sentAt: string;
+  deletedForEveryone?: boolean;
+  imageDeleted?: boolean;
+  image?: string | null;
+  imageMimeType?: string;
+  imageViewTimerSeconds?: number;
+  imageExpiresAtMs?: number;
+  imageRevealAtMs?: number;
+  linkImageUrl?: string | null;
+  linkImageMimeType?: string;
+  imageUnavailable?: boolean;
+  imageDecrypting?: boolean;
+  isPending?: boolean;
+  reactions?: Record<string, string[]>;
+  createdAtMs?: number;
+  replyToId?: string;
+  replyToText?: string;
+  replyToAuthor?: "you" | "stranger";
+};
+
+type ChatMediaProps = {
+  src: string;
+  alt: string;
+  mimeType?: string;
+  className?: string;
+};
+
+type ReplyTarget = {
+  author: "you" | "stranger";
+  text?: string;
+  image?: string | null;
+};
+
+type ChatRoomTextViewProps = {
+  chatContainerRef: React.RefObject<HTMLElement | null>;
+  isFullscreenActive: boolean;
+  showBackConfirm: boolean;
+  setShowBackConfirm: (value: boolean) => void;
+  onChangeMode: () => void;
+  GenderIcon: React.ComponentType<GenderIconProps>;
+  strangerProfile: { gender?: ProfileGender | null; age?: string | number; countryCode?: string | null };
+  isConnecting: boolean;
+  hasResolvedStrangerProfile: boolean;
+  CountryFlagIcon: React.ComponentType<CountryFlagIconProps>;
+  subscriptionTier?: "vip" | "vvip" | null;
+  connectingStatus: string;
+  modeLabel: string;
+  genderLabel: string;
+  setShowChatFilters: (value: boolean) => void;
+  chatFilterActiveCount: number;
+  showNextStrangerPrompt: boolean;
+  onNextStranger: () => void;
+  showLeaveConfirm: boolean;
+  setShowLeaveConfirm: (value: boolean) => void;
+  chatFilters: ChatFilters | null;
+  onLeaveChat: (filters: ChatFilters) => void;
+  toggleFullscreen: () => void;
+  messagesViewportRef: React.RefObject<HTMLDivElement | null>;
+  handleMessagesScroll: () => void;
+  messages: ChatMessage[];
+  IMAGE_DELETED_NOTICE: string;
+  nowMs: number;
+  swipePreview: { id: string; offset: number } | null;
+  expandedActionMsgId: string | null;
+  setExpandedActionMsgId: (value: string | null | ((current: string | null) => string | null)) => void;
+  activeEmojiPickerMsgId: string | null;
+  setActiveEmojiPickerMsgId: (value: string | null) => void;
+  currentUserId: string;
+  onReplyToMessage: (messageId: string) => void;
+  onDeleteMessage: (messageId: string) => void;
+  handleMessageTap: (messageId: string) => void;
+  handleMessagePointerDown: (messageId: string, event: React.PointerEvent<HTMLDivElement>) => void;
+  handleMessagePointerMove: (messageId: string, authoredByCurrentUser: boolean, event: React.PointerEvent<HTMLDivElement>) => void;
+  handleMessagePointerEnd: (event?: React.PointerEvent<HTMLDivElement>) => void;
+  ChatMedia: React.ComponentType<ChatMediaProps>;
+  revealedTimedImageIds: Set<string>;
+  setRevealedTimedImageIds: React.Dispatch<React.SetStateAction<Set<string>>>;
+  onRevealTimedImage: (messageId: string, seconds: number) => void;
+  onReactToMessage: (messageId: string, emoji: string) => void;
+  QUICK_REACTIONS: string[];
+  strangerIsTyping: boolean;
+  showScrollToLatestBubble: boolean;
+  scrollToLatestMessage: () => void;
+  unreadReceivedCount: number;
+  messagesEndRef: React.RefObject<HTMLDivElement | null>;
+  replyingTo: ReplyTarget | null;
+  clearReply: () => void;
+  imagePreview: string | null;
+  isGifFilename: (filename?: string | null) => boolean;
+  selectedFileName: string | null;
+  isSendingMessage: boolean;
+  imageUploadProgress: number | null;
+  imageTimerSeconds: number;
+  setImageTimerSeconds?: (seconds: number) => void;
+  clearAttachment: () => void;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  messageInputRef: React.RefObject<HTMLInputElement | null>;
+  text: string;
+  setText: (value: string) => void;
+  sendMessage: () => void;
+  sendError: string | null;
+  onSelectImage: React.ChangeEventHandler<HTMLInputElement>;
+  chatFiltersPanel: React.ReactNode;
+};
 
 export function ChatRoomTextView({
   chatContainerRef,
@@ -18,9 +131,7 @@ export function ChatRoomTextView({
   connectingStatus,
   modeLabel,
   genderLabel,
-  ageLabel,
   setShowChatFilters,
-  hasActiveSubscription,
   chatFilterActiveCount,
   showNextStrangerPrompt,
   onNextStranger,
@@ -75,7 +186,7 @@ export function ChatRoomTextView({
   sendError,
   onSelectImage,
   chatFiltersPanel,
-}: any) {
+}: ChatRoomTextViewProps) {
   return (
     <section
       ref={chatContainerRef}
@@ -244,7 +355,7 @@ export function ChatRoomTextView({
             </div>
           )}
 
-          {messages.map((msg: any) => {
+          {messages.map((msg) => {
             if (msg.deletedForEveryone) {
               return (
                 <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
@@ -437,7 +548,7 @@ export function ChatRoomTextView({
                             onClick={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
-                              setRevealedTimedImageIds((current: Set<string>) => {
+                              setRevealedTimedImageIds((current) => {
                                 const next = new Set(current);
                                 next.add(msg.id);
                                 return next;
@@ -496,7 +607,7 @@ export function ChatRoomTextView({
 
                   {hasReactions && (
                     <div className={`flex flex-wrap gap-1 ${isYou ? "justify-end" : "justify-start"}`}>
-                      {Object.entries(msg.reactions!).map(([emoji, senderIds]: [string, any]) => {
+                      {Object.entries(msg.reactions ?? {}).map(([emoji, senderIds]) => {
                         if (!senderIds || senderIds.length === 0) return null;
                         const didReact = senderIds.includes(currentUserId);
                         return (
@@ -587,6 +698,7 @@ export function ChatRoomTextView({
             <div className="animate-fade-in relative flex items-center gap-4 rounded-[1.5rem] border border-white/[0.04] bg-white/[0.02] p-4 shadow-2xl backdrop-blur-2xl">
               <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-white/[0.06] shadow-inner">
                 {isGifFilename(selectedFileName) ? (
+                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={imagePreview} alt="Preview" className="h-full w-full object-cover" />
                 ) : (
                   <Image src={imagePreview} alt="Preview" width={64} height={64} className="h-full w-full object-cover" unoptimized />
