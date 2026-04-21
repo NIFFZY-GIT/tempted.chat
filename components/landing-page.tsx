@@ -179,7 +179,7 @@ export function LandingPageSection() {
 
       <footer className="py-10 text-center border-t border-white/5">
         <p className="text-[10px] font-black text-white/20 tracking-[0.5em] uppercase">
-          Tempted Chat &copy; 2024 • Privacy is a Human Right
+          tempted.chat &copy; 2024 • Privacy is a Human Right
         </p>
       </footer>
     </div>

@@ -29,7 +29,7 @@ function getTransporter() {
 
 export async function sendMail(to: string, subject: string, html: string): Promise<void> {
   const transport = getTransporter();
-  const from = `"Tempted Chat" <${process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "no-reply@zevarone.com"}>`;
+  const from = `"tempted.chat" <${process.env.SMTP_FROM ?? process.env.SMTP_USER ?? "no-reply@zevarone.com"}>`;
 
   console.log(`[email] Sending "${subject}" to ${to} via ${process.env.SMTP_HOST ?? "smtp.zoho.com"}`);
 
@@ -74,7 +74,7 @@ export function buildInvoiceEmail(params: InvoiceEmailParams): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tempted Chat — Purchase Confirmation</title>
+  <title>tempted.chat — Purchase Confirmation</title>
 </head>
 <body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
@@ -86,7 +86,7 @@ export function buildInvoiceEmail(params: InvoiceEmailParams): string {
           <tr>
             <td align="center" style="padding-bottom:32px;">
               <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="Tempted Chat" height="48"
+                   alt="tempted.chat" height="48"
                    style="height:48px;display:block;" />
             </td>
           </tr>
@@ -215,6 +215,7 @@ export function buildInvoiceEmail(params: InvoiceEmailParams): string {
           <!-- Footer brand -->
           <tr>
             <td align="center" style="padding-top:32px;padding-bottom:8px;">
+              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
               <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
                    alt="Zevarone" height="22"
                    style="height:22px;display:block;opacity:0.5;" />
@@ -244,7 +245,7 @@ export function buildAccountBlockedEmail(): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tempted Chat — Account Restricted</title>
+  <title>tempted.chat — Account Restricted</title>
 </head>
 <body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
@@ -254,7 +255,7 @@ export function buildAccountBlockedEmail(): string {
           <tr>
             <td align="center" style="padding-bottom:32px;">
               <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="Tempted Chat" height="48" style="height:48px;display:block;" />
+                   alt="tempted.chat" height="48" style="height:48px;display:block;" />
             </td>
           </tr>
 
@@ -275,7 +276,7 @@ export function buildAccountBlockedEmail(): string {
                 <tr>
                   <td align="center" style="padding-bottom:28px;">
                     <p style="margin:0;color:#9ca3af;font-size:15px;line-height:1.7;max-width:460px;">
-                      Your Tempted Chat account has been blocked by the moderation team. You will not be able to sign in until the restriction is removed.
+                      Your tempted.chat account has been blocked by the moderation team. You will not be able to sign in until the restriction is removed.
                     </p>
                   </td>
                 </tr>
@@ -296,6 +297,21 @@ export function buildAccountBlockedEmail(): string {
               </table>
             </td>
           </tr>
+
+          <tr>
+            <td align="center" style="padding-top:32px;padding-bottom:8px;">
+              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
+              <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
+                   alt="Zevarone" height="22" style="height:22px;display:block;opacity:0.5;" />
+            </td>
+          </tr>
+          <tr>
+            <td align="center">
+              <p style="margin:0;color:#444;font-size:11px;">
+                &copy; ${new Date().getFullYear()} Zevarone. All rights reserved.
+              </p>
+            </td>
+          </tr>
         </table>
       </td>
     </tr>
@@ -310,7 +326,7 @@ export function buildAccountWarningEmail(): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tempted Chat — Warning Notice</title>
+  <title>tempted.chat — Warning Notice</title>
 </head>
 <body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
@@ -320,7 +336,7 @@ export function buildAccountWarningEmail(): string {
           <tr>
             <td align="center" style="padding-bottom:32px;">
               <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="Tempted Chat" height="48" style="height:48px;display:block;" />
+                   alt="tempted.chat" height="48" style="height:48px;display:block;" />
             </td>
           </tr>
 
@@ -341,7 +357,7 @@ export function buildAccountWarningEmail(): string {
                 <tr>
                   <td align="center" style="padding-bottom:28px;">
                     <p style="margin:0;color:#9ca3af;font-size:15px;line-height:1.7;max-width:460px;">
-                      Your Tempted Chat account has received a moderation warning. Continued violations may result in account restrictions or a permanent block.
+                      Your tempted.chat account has received a moderation warning. Continued violations may result in account restrictions or a permanent block.
                     </p>
                   </td>
                 </tr>
@@ -361,6 +377,21 @@ export function buildAccountWarningEmail(): string {
               </table>
             </td>
           </tr>
+
+          <tr>
+            <td align="center" style="padding-top:32px;padding-bottom:8px;">
+              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
+              <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
+                   alt="Zevarone" height="22" style="height:22px;display:block;opacity:0.5;" />
+            </td>
+          </tr>
+          <tr>
+            <td align="center">
+              <p style="margin:0;color:#444;font-size:11px;">
+                &copy; ${new Date().getFullYear()} Zevarone. All rights reserved.
+              </p>
+            </td>
+          </tr>
         </table>
       </td>
     </tr>
@@ -377,7 +408,7 @@ export function buildAdminInviteEmail(inviterName: string, inviteLink: string): 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>You&apos;re invited to manage Tempted Chat</title>
+  <title>You&apos;re invited to manage tempted.chat</title>
 </head>
 <body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
@@ -388,7 +419,7 @@ export function buildAdminInviteEmail(inviterName: string, inviteLink: string): 
           <tr>
             <td align="center" style="padding-bottom:32px;">
               <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="Tempted Chat" height="48" style="height:48px;display:block;" />
+                   alt="tempted.chat" height="48" style="height:48px;display:block;" />
             </td>
           </tr>
 
@@ -416,7 +447,7 @@ export function buildAdminInviteEmail(inviterName: string, inviteLink: string): 
                   <td align="center" style="padding-bottom:36px;">
                     <p style="margin:0;color:#888;font-size:15px;line-height:1.7;max-width:420px;">
                       <strong style="color:#ccc;">${inviterName}</strong> has invited you to become an
-                      administrator on <strong style="color:#ccc;">Tempted Chat</strong>.
+                      administrator on <strong style="color:#ccc;">tempted.chat</strong>.
                       Click the button below to accept. This invite expires in <strong style="color:#ccc;">48 hours</strong>.
                     </p>
                   </td>
@@ -468,6 +499,7 @@ export function buildAdminInviteEmail(inviterName: string, inviteLink: string): 
 
           <tr>
             <td align="center" style="padding-top:32px;padding-bottom:8px;">
+              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
               <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
                    alt="Zevarone" height="22" style="height:22px;display:block;opacity:0.5;" />
             </td>
@@ -505,7 +537,7 @@ export function buildPasswordResetEmail(code: string): string {
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Tempted Chat — Your Reset Code</title>
+  <title>tempted.chat — Your Reset Code</title>
 </head>
 <body style="margin:0;padding:0;background:#0a0a0f;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
   <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
@@ -517,7 +549,7 @@ export function buildPasswordResetEmail(code: string): string {
           <tr>
             <td align="center" style="padding-bottom:32px;">
               <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png"
-                   alt="Tempted Chat" height="48"
+                   alt="tempted.chat" height="48"
                    style="height:48px;display:block;" />
             </td>
           </tr>
@@ -551,7 +583,7 @@ export function buildPasswordResetEmail(code: string): string {
                 <tr>
                   <td align="center" style="padding-bottom:32px;">
                     <p style="margin:0;color:#888;font-size:15px;line-height:1.7;max-width:420px;">
-                      Enter the code below in the app to reset your Tempted Chat password.
+                      Enter the code below in the app to reset your tempted.chat password.
                       This code expires in <strong style="color:#ccc;">15 minutes</strong>.
                     </p>
                   </td>
@@ -590,6 +622,7 @@ export function buildPasswordResetEmail(code: string): string {
           <!-- Footer brand -->
           <tr>
             <td align="center" style="padding-top:32px;padding-bottom:8px;">
+              <p style="margin:0 0 8px 0;color:#666;font-size:11px;letter-spacing:0.3px;">Powered by Zevarone</p>
               <img src="https://tempted.chat/asstes/zevaronelogo/Asset 13.svg"
                    alt="Zevarone" height="22"
                    style="height:22px;display:block;opacity:0.5;" />

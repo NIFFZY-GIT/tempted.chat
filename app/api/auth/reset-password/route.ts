@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     });
 
     const html = buildPasswordResetEmail(code);
-    await sendMail(email, "Your Tempted Chat reset code", html);
+    await sendMail(email, "Your tempted.chat reset code", html);
   } catch (err) {
     console.error("[reset-password] error:", err);
   }

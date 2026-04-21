@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     "online chat platform",
     "talk to strangers",
     "image chat",
-    "tempted chat"
+    "tempted.chat"
   ],
 
   authors: [{ name: "Tempted.Chat Team" }],

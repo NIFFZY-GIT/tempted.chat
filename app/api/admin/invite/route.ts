@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const html = buildAdminInviteEmail(inviterName, inviteLink);
-    await sendMail(email, "You've been invited to manage Tempted Chat", html);
+    await sendMail(email, "You've been invited to manage tempted.chat", html);
   } catch (err) {
     console.error("[invite-admin] email error:", err);
     // Don't fail — the invite token is stored, they can be resent

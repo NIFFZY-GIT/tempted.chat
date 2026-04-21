@@ -110,7 +110,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   if (blocked && targetEmail) {
     try {
-      await sendMail(targetEmail, "Tempted Chat account restricted", buildAccountBlockedEmail());
+      await sendMail(targetEmail, "tempted.chat account restricted", buildAccountBlockedEmail());
     } catch (error) {
       console.error("[admin-users] failed sending block warning email", error);
     }
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   let emailed = false;
   if (targetEmail) {
     try {
-      await sendMail(targetEmail, "Tempted Chat warning notice", buildAccountWarningEmail());
+      await sendMail(targetEmail, "tempted.chat warning notice", buildAccountWarningEmail());
       emailed = true;
     } catch (error) {
       console.error("[admin-users] failed sending warning email", error);

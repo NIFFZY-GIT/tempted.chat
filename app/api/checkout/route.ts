@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
           price_data: {
             currency: plan.currency,
             product_data: {
-              name: `${plan.name} — Tempted Chat`,
+              name: `${plan.name} — tempted.chat`,
               description: plan.description,
             },
             unit_amount: plan.price,

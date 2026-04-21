@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
           expiresAt: startFrom + durationMs,
         });
 
-        await sendMail(userEmail, `Your Tempted Chat ${tier.toUpperCase()} Invoice`, html);
+        await sendMail(userEmail, `Your tempted.chat ${tier.toUpperCase()} Invoice`, html);
         console.log(`Invoice email sent to ${userEmail} for plan ${planId}`);
       }
     } catch (emailErr) {

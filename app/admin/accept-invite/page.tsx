@@ -74,7 +74,7 @@ function AcceptInvitePageContent() {
             <div>
               <h1 className="text-2xl font-black tracking-tight">Admin Invite</h1>
               <p className="mt-2 text-sm text-white/40">
-                You&apos;ve been invited to become an admin on Tempted Chat.
+                You&apos;ve been invited to become an admin on tempted.chat.
               </p>
             </div>
 

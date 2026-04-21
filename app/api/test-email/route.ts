@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
   if (!to) return NextResponse.json({ error: "Missing 'to' field" }, { status: 400 });
 
   try {
-    await sendMail(to, "Tempted Chat — SMTP test", `<p style="font-family:sans-serif;">SMTP is working ✅<br/>Sent at: ${new Date().toISOString()}</p>`);
+    await sendMail(to, "tempted.chat — SMTP test", `<p style="font-family:sans-serif;">SMTP is working ✅<br/>Sent at: ${new Date().toISOString()}</p>`);
     return NextResponse.json({ success: true, to });
   } catch (err) {
     console.error("[test-email] error:", err);
