@@ -7,9 +7,26 @@ const crypto = require("crypto");
 const PORT = Number(process.env.REALTIME_PORT || 8787);
 const REDIS_URL = process.env.REDIS_URL || "";
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID || process.env.GCLOUD_PROJECT || "";
+const FIREBASE_SERVICE_ACCOUNT_KEY = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "";
 
 if (!admin.apps.length) {
-  admin.initializeApp(FIREBASE_PROJECT_ID ? { projectId: FIREBASE_PROJECT_ID } : undefined);
+  let credential;
+  if (FIREBASE_SERVICE_ACCOUNT_KEY) {
+    try {
+      const serviceAccount = JSON.parse(FIREBASE_SERVICE_ACCOUNT_KEY);
+      credential = admin.credential.cert(serviceAccount);
+    } catch (err) {
+      console.error("[realtime] Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY:", err.message);
+    }
+  }
+
+  if (credential) {
+    admin.initializeApp({ credential, projectId: FIREBASE_PROJECT_ID || undefined });
+  } else if (FIREBASE_PROJECT_ID) {
+    admin.initializeApp({ projectId: FIREBASE_PROJECT_ID });
+  } else {
+    admin.initializeApp();
+  }
 }
 
 const redis = REDIS_URL
@@ -813,5 +830,10 @@ server.listen(PORT, () => {
     console.log("[realtime] redis enabled");
   } else {
     console.log("[realtime] redis disabled (in-memory fallback)");
+  }
+  if (FIREBASE_SERVICE_ACCOUNT_KEY) {
+    console.log("[realtime] firebase auth: service account key");
+  } else {
+    console.log("[realtime] firebase auth: application default credentials (no FIREBASE_SERVICE_ACCOUNT_KEY set)");
   }
 });

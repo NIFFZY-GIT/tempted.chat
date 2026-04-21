@@ -95,6 +95,12 @@ const DEMO_FALLBACK_TRIGGER_MS = 9000;
 const DEMO_CONNECT_MIN_MS = 2000;
 const DEMO_CONNECT_MAX_MS = 3000;
 
+// TURN credentials – read from env vars so they can be rotated without a code deploy.
+// Fallback to the hardcoded trial values only in development.
+const TURN_HOST = process.env.NEXT_PUBLIC_TURN_HOST || "a.relay.metered.ca";
+const TURN_USERNAME = process.env.NEXT_PUBLIC_TURN_USERNAME || "e53a8cec5765272ee7307826";
+const TURN_CREDENTIAL = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || "uWdKMi+UeI1VNmNG";
+
 type DemoVideo = {
   id: string;
   url: string;
@@ -1833,8 +1839,14 @@ export default function Home() {
             ? [user.uid, peerUid]
             : [user.uid];
 
-        if (!roomId || !peerUid || !mode || activeRoomIdRef.current || isDemoModeRef.current) {
+        if (!roomId || !peerUid || !mode || activeRoomIdRef.current) {
           return;
+        }
+
+        // A real match always supersedes demo mode — stop it immediately so
+        // isDemoModeRef is cleared before any subsequent guard checks.
+        if (isDemoModeRef.current) {
+          stopDemoMode();
         }
 
         realtimeRoomIdRef.current = roomId;
@@ -2164,20 +2176,22 @@ export default function Home() {
           iceServers: [
             { urls: "stun:stun.l.google.com:19302" },
             { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "stun:stun3.l.google.com:19302" },
             {
-              urls: "turn:a.relay.metered.ca:80",
-              username: "e53a8cec5765272ee7307826",
-              credential: "uWdKMi+UeI1VNmNG",
+              urls: `turn:${TURN_HOST}:80`,
+              username: TURN_USERNAME,
+              credential: TURN_CREDENTIAL,
             },
             {
-              urls: "turn:a.relay.metered.ca:443",
-              username: "e53a8cec5765272ee7307826",
-              credential: "uWdKMi+UeI1VNmNG",
+              urls: `turn:${TURN_HOST}:443`,
+              username: TURN_USERNAME,
+              credential: TURN_CREDENTIAL,
             },
             {
-              urls: "turns:a.relay.metered.ca:443?transport=tcp",
-              username: "e53a8cec5765272ee7307826",
-              credential: "uWdKMi+UeI1VNmNG",
+              urls: `turns:${TURN_HOST}:443?transport=tcp`,
+              username: TURN_USERNAME,
+              credential: TURN_CREDENTIAL,
             },
           ],
           iceCandidatePoolSize: 10,
