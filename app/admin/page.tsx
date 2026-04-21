@@ -242,6 +242,7 @@ export default function AdminDashboardPage() {
   const [blockingUid, setBlockingUid] = useState<string | null>(null);
   const [warningUid, setWarningUid] = useState<string | null>(null);
   const [deletingUid, setDeletingUid] = useState<string | null>(null);
+  const [deletingAnonymousUsers, setDeletingAnonymousUsers] = useState(false);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [usersNotice, setUsersNotice] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomEntry[]>([]);
@@ -486,6 +487,41 @@ export default function AdminDashboardPage() {
       setDeletingUid(null);
     }
   }, [user]);
+
+  const deleteAllAnonymousUsers = useCallback(async () => {
+    if (!user || deletingAnonymousUsers) return;
+
+    const confirmed = confirm("Delete all anonymous users at once? This permanently removes their auth accounts and user records.");
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingAnonymousUsers(true);
+    setUsersError(null);
+    setUsersNotice(null);
+
+    try {
+      const idToken = await user.getIdToken(true);
+      const response = await fetch("/api/admin/users/anonymous", {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      });
+
+      const data = (await response.json()) as { error?: string; deletedCount?: number; skippedCount?: number; failedCount?: number };
+      if (!response.ok) {
+        setUsersError(data.error ?? "Failed to delete anonymous users.");
+        return;
+      }
+
+      setUsersNotice(`Deleted ${data.deletedCount ?? 0} anonymous users. Skipped ${data.skippedCount ?? 0}. Failed ${data.failedCount ?? 0}.`);
+    } catch {
+      setUsersError("Network error while deleting anonymous users.");
+    } finally {
+      setDeletingAnonymousUsers(false);
+    }
+  }, [deletingAnonymousUsers, user]);
 
   const loadAdmins = async () => {
     if (!user) return;
@@ -1473,6 +1509,7 @@ export default function AdminDashboardPage() {
         <main className={`${activeTab === "feedback" ? "hidden" : "flex-1 overflow-y-auto p-5 md:p-8"}`}>
           {activeTab === "users" && (() => {
             const normalizedSearch = usersSearch.trim().toLowerCase();
+            const anonymousCount = adminUsers.filter((entry) => entry.isAnonymous || entry.authProvider === "anonymous").length;
             const filteredUsers = adminUsers.filter((entry) => {
               if (!normalizedSearch) return true;
               return [entry.email ?? "", entry.displayName ?? "", entry.id]
@@ -1505,13 +1542,23 @@ export default function AdminDashboardPage() {
                       <h2 className="text-base font-bold text-white/90">User Moderation</h2>
                       <p className="mt-1 text-sm text-white/40">Search accounts, send warnings, block sign-in, or delete the account.</p>
                     </div>
-                    <input
-                      type="search"
-                      value={usersSearch}
-                      onChange={(e) => setUsersSearch(e.target.value)}
-                      placeholder="Search by email, name, or uid"
-                      className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none md:max-w-sm"
-                    />
+                    <div className="flex w-full flex-col gap-2 md:max-w-xl md:flex-row md:items-center md:justify-end">
+                      <button
+                        type="button"
+                        onClick={() => void deleteAllAnonymousUsers()}
+                        disabled={deletingAnonymousUsers || anonymousCount === 0}
+                        className="rounded-xl bg-rose-500/90 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-400 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        {deletingAnonymousUsers ? "Deleting..." : `Delete all anonymous (${anonymousCount})`}
+                      </button>
+                      <input
+                        type="search"
+                        value={usersSearch}
+                        onChange={(e) => setUsersSearch(e.target.value)}
+                        placeholder="Search by email, name, or uid"
+                        className="w-full rounded-xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none md:max-w-sm"
+                      />
+                    </div>
                   </div>
                   {usersNotice && <p className="mt-4 text-sm text-emerald-300">{usersNotice}</p>}
                   {usersError && <p className="mt-4 text-sm text-rose-300">{usersError}</p>}
