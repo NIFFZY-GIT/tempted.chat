@@ -26,7 +26,7 @@ export const viewport: Viewport = {
 
 
 export const metadata: Metadata = {
-  title: "Tempted.Chat – Random Video & Text Chat with Strangers",
+  title: "Chat with Strangers Online — Talk to Strangers Free | Tempted.Chat",
   description:
     "Tempted.Chat is a modern random chat platform where you can instantly meet and chat with strangers worldwide. Start anonymous text or image chats securely with Google login.",
   
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
   authors: [{ name: "Tempted.Chat Team" }],
 
   openGraph: {
-    title: "Tempted.Chat – Meet Strangers Instantly",
+    title: "Chat with Strangers Online — Talk to Strangers Free | Tempted.Chat",
     description:
       "Connect with people around the world through random chats. Secure, fast, and anonymous conversations.",
     url: "https://tempted.chat",
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
 
   twitter: {
     card: "summary_large_image",
-    title: "Tempted.Chat – Random Chat Platform",
+    title: "Chat with Strangers Online — Talk to Strangers Free | Tempted.Chat",
     description:
       "Start chatting with strangers instantly. A modern alternative to Omegle.",
   },
