@@ -3103,10 +3103,10 @@ export default function Home() {
                       text: nextText,
                     });
                   } catch {
-                    decryptedText = "Encrypted message";
+                    decryptedText = data.text ?? "Encrypted message";
                   }
                 } else {
-                  decryptedText = "Decrypting secure message...";
+                  decryptedText = data.text ?? "Decrypting secure message...";
                 }
               }
 
