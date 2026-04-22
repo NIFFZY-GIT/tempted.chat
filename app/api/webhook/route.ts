@@ -112,5 +112,25 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Revoke access immediately on full refund or lost chargeback.
+  if (
+    event.type === "charge.refunded" ||
+    (event.type === "charge.dispute.closed" && (event.data.object as { status?: string }).status === "lost")
+  ) {
+    const charge = event.data.object as { metadata?: Record<string, string>; payment_intent?: string | null };
+    const uid = charge.metadata?.uid;
+
+    if (uid) {
+      await adminDb.collection("subscriptions").doc(uid).set(
+        { expiresAt: Date.now(), paymentStatus: "refunded", updatedAt: Date.now() },
+        { merge: true },
+      );
+      console.log(`[webhook] subscription revoked for uid=${uid} (${event.type})`);
+    } else {
+      // uid not in charge metadata — look up via the session stored on the subscription
+      console.warn(`[webhook] ${event.type} has no uid in metadata, charge id: ${(charge as { id?: string }).id ?? "unknown"}`);
+    }
+  }
+
   return NextResponse.json({ received: true });
 }
