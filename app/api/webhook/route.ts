@@ -119,8 +119,20 @@ export async function POST(request: NextRequest) {
   ) {
     const isChargeback = event.type === "charge.dispute.closed";
     const charge = event.data.object as { metadata?: Record<string, string>; payment_intent?: string | null; amount_refunded?: number; id?: string };
-    const uid = charge.metadata?.uid;
     const revokedAt = Date.now();
+
+    // uid is on the charge metadata for new checkouts (payment_intent_data.metadata).
+    // For older charges that lack it, fall back to looking up the checkout session via payment_intent.
+    let uid: string | undefined = charge.metadata?.uid;
+
+    if (!uid && charge.payment_intent) {
+      try {
+        const sessions = await stripe.checkout.sessions.list({ payment_intent: charge.payment_intent, limit: 1 });
+        uid = sessions.data[0]?.metadata?.uid ?? undefined;
+      } catch (lookupErr) {
+        console.error("[webhook] failed to look up session for payment_intent:", charge.payment_intent, lookupErr);
+      }
+    }
 
     if (uid) {
       // Read existing sub data so we know the tier and amount for the email.
@@ -151,7 +163,7 @@ export async function POST(request: NextRequest) {
         console.error("[webhook] failed to send refund email:", emailErr);
       }
     } else {
-      console.warn(`[webhook] ${event.type} has no uid in metadata, charge id: ${charge.id ?? "unknown"}`);
+      console.warn(`[webhook] ${event.type} could not resolve uid, charge id: ${charge.id ?? "unknown"}`);
     }
   }
 

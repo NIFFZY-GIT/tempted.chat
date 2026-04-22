@@ -67,6 +67,14 @@ export async function POST(request: NextRequest) {
         durationMs: String(plan.durationMs),
         userEmail: customerEmail ?? "",
       },
+      // Propagate uid to the payment intent so charges inherit it for refund webhooks.
+      payment_intent_data: {
+        metadata: {
+          uid,
+          planId: plan.id,
+          tier: plan.tier,
+        },
+      },
       success_url: `${origin}/?payment=success`,
       cancel_url: `${origin}/?payment=cancelled`,
     });
