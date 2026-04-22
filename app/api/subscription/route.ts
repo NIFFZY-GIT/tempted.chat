@@ -20,15 +20,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ active: false, expiresAt: null });
     }
 
-    const data = doc.data() as { expiresAt?: number; tier?: string; planId?: string; activatedAt?: number };
+    const data = doc.data() as { expiresAt?: number; tier?: string; planId?: string; activatedAt?: number; paymentStatus?: string };
     const active = typeof data.expiresAt === "number" && data.expiresAt > Date.now();
 
     return NextResponse.json({
       active,
       expiresAt: data.expiresAt ?? null,
       activatedAt: data.activatedAt ?? null,
-      tier: active ? (data.tier ?? null) : null,
-      planId: active ? (data.planId ?? null) : null,
+      tier: data.tier ?? null,
+      planId: data.planId ?? null,
+      paymentStatus: data.paymentStatus ?? null,
     });
   } catch (error) {
     console.error("Subscription status check error:", error);

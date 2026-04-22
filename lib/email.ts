@@ -274,6 +274,119 @@ export function buildAdminInviteEmail(inviterName: string, inviteLink: string): 
 </html>`;
 }
 
+// ─── Refund / Subscription Revoked Email ─────────────────────────────────────
+
+export interface RefundEmailParams {
+  tier: "vip" | "vvip";
+  amountCents: number;
+  revokedAt: number;
+  reason: "refund" | "chargeback";
+}
+
+export function buildRefundEmail(params: RefundEmailParams): string {
+  const { tier, amountCents, revokedAt, reason } = params;
+  const tierLabel = tier === "vvip" ? "VVIP" : "VIP";
+  const tierColor = tier === "vvip" ? "#a855f7" : "#f59e0b";
+  const tierLogo =
+    tier === "vvip"
+      ? "https://tempted.chat/asstes/vvip/vviplogo.png"
+      : "https://tempted.chat/asstes/vip/viplogo.png";
+  const reasonLabel = reason === "chargeback" ? "chargeback" : "refund";
+  const reasonNote =
+    reason === "chargeback"
+      ? "A dispute was filed for this charge and resolved in your favour."
+      : "You requested a refund for this charge.";
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tempted.chat — Subscription Revoked</title>
+</head>
+<body style="margin:0;padding:0;background:#0a0a0f;font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#0a0a0f;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+          <tr>
+            <td align="center" style="padding-bottom:32px;">
+              <img src="https://tempted.chat/asstes/logo/logologoheartandtempetedchat.png" alt="tempted.chat" height="48" style="height:48px;display:block;" />
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#13131a;border-radius:24px;border:1px solid rgba(239,68,68,0.2);overflow:hidden;box-shadow:0 20px 40px rgba(0,0,0,0.4);">
+              <div style="height:4px;background:linear-gradient(90deg,#ef4444,${tierColor});"></div>
+              <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px;">
+                <tr>
+                  <td align="center" style="padding-bottom:24px;">
+                    <div style="position:relative;display:inline-block;">
+                      <img src="${tierLogo}" alt="${tierLabel}" height="72" style="height:72px;display:block;opacity:0.4;margin:0 auto 12px;" />
+                    </div>
+                    <span style="display:inline-block;padding:8px 20px;border-radius:100px;background:rgba(239,68,68,0.12);color:#ef4444;font-size:12px;font-weight:800;letter-spacing:2px;text-transform:uppercase;">
+                      ${tierLabel} Access Revoked
+                    </span>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-bottom:12px;">
+                    <h1 style="margin:0;color:#ffffff;font-size:26px;font-weight:800;line-height:1.2;">Your ${tierLabel} subscription has been cancelled</h1>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding-bottom:32px;">
+                    <p style="margin:0;color:#94a3b8;font-size:15px;line-height:1.7;">${reasonNote} Your ${tierLabel} features have been removed and your money has been returned to your account.</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background:rgba(239,68,68,0.05);border:1px solid rgba(239,68,68,0.15);border-radius:16px;padding:24px;margin-bottom:24px;">
+                    <table width="100%" cellpadding="0" cellspacing="0">
+                      <tr>
+                        <td style="color:#64748b;font-size:13px;padding-bottom:12px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Refund Summary</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#94a3b8;font-size:14px;padding-bottom:8px;">Subscription Tier</td>
+                        <td align="right" style="color:#fff;font-size:14px;font-weight:600;padding-bottom:8px;">${tierLabel}</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#94a3b8;font-size:14px;padding-bottom:8px;">Reason</td>
+                        <td align="right" style="color:#fff;font-size:14px;padding-bottom:8px;text-transform:capitalize;">${reasonLabel}</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#94a3b8;font-size:14px;padding-bottom:8px;">Revoked At</td>
+                        <td align="right" style="color:#fff;font-size:14px;padding-bottom:8px;">${formatDate(revokedAt)}</td>
+                      </tr>
+                      <tr>
+                        <td style="color:#94a3b8;font-size:14px;">Amount Refunded</td>
+                        <td align="right" style="color:#22c55e;font-size:18px;font-weight:900;">${formatPrice(amountCents)}</td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding-top:28px;padding-bottom:28px;">
+                    <p style="margin:0;color:#64748b;font-size:13px;line-height:1.7;text-align:center;">
+                      The refunded amount may take 5–10 business days to appear depending on your bank.<br/>
+                      Questions? Reply to this email or contact <a href="mailto:support@zevarone.com" style="color:${tierColor};text-decoration:none;font-weight:600;">support@zevarone.com</a>
+                    </p>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center">
+                    <a href="https://tempted.chat/plans" style="display:inline-block;padding:14px 40px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);color:#fff;font-size:14px;font-weight:700;text-decoration:none;border-radius:100px;">View Plans Again</a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          ${FOOTER_HTML}
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
 // ─── Password Reset Email ─────────────────────────────────────────────────────
 
 export function buildPasswordResetEmail(code: string): string {

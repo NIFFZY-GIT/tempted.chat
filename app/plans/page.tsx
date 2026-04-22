@@ -54,7 +54,7 @@ export default function PlansPage() {
 	const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [duration, setDuration] = useState<Duration>("7d");
-	const [subStatus, setSubStatus] = useState<{active: boolean, tier?: PlanTier, expiresAt?: number, activatedAt?: number, planId?: string} | null>(null);
+	const [subStatus, setSubStatus] = useState<{active: boolean, tier?: PlanTier, expiresAt?: number, activatedAt?: number, planId?: string, paymentStatus?: string} | null>(null);
 	const [isAdmin, setIsAdmin] = useState(false);
 
 	// Auth Listener
@@ -145,6 +145,11 @@ export default function PlansPage() {
 							activatedAt={subStatus.activatedAt}
 							expiresAt={subStatus.expiresAt}
 						/>
+					)}
+
+					{/* Refunded / Cancelled Banner */}
+					{subStatus && !subStatus.active && subStatus.paymentStatus === "refunded" && subStatus.tier && (
+						<RefundedBanner tier={subStatus.tier as PlanTier} />
 					)}
 
 					{/* Header */}
@@ -421,6 +426,44 @@ function ActiveSubscriptionBanner({
 					<Calendar className="w-3 h-3" /> Activated {new Date(activatedAt).toLocaleString()}
 				</p>
 			)}
+		</motion.div>
+	);
+}
+
+// --- Refunded Banner ---
+function RefundedBanner({ tier }: { tier: PlanTier }) {
+	const isVVIP = tier === "vvip";
+	return (
+		<motion.div
+			initial={{ opacity: 0, y: -10 }}
+			animate={{ opacity: 1, y: 0 }}
+			className="mb-10 rounded-3xl border border-red-500/25 p-6"
+			style={{ background: "rgba(239,68,68,0.06)" }}
+		>
+			<div className="flex items-center gap-4">
+				<div className="relative shrink-0">
+					<Image
+						src={isVVIP ? "/asstes/vvip/vviplogo.png" : "/asstes/vip/viplogo.png"}
+						alt={isVVIP ? "VVIP" : "VIP"}
+						width={48}
+						height={48}
+						className="object-contain opacity-40 grayscale"
+					/>
+				</div>
+				<div className="flex-1 min-w-0">
+					<p className="text-[10px] font-black uppercase tracking-widest text-red-400 mb-0.5">Subscription Cancelled</p>
+					<p className="text-white font-black text-base uppercase tracking-tight">
+						{tier.toUpperCase()} access has been revoked
+					</p>
+					<p className="text-white/35 text-xs mt-1 leading-relaxed">
+						Your payment was refunded. {tier.toUpperCase()} features are no longer active. You can repurchase a plan below.
+					</p>
+				</div>
+				<div className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-400 text-[11px] font-black uppercase tracking-wider">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="w-3 h-3"><polyline points="20 6 9 17 4 12"/></svg>
+					Refunded
+				</div>
+			</div>
 		</motion.div>
 	);
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { stripe, getPlanById, type PlanId } from "@/lib/stripe";
 import { getAdminDb, getAdminAuth } from "@/lib/firebase-admin";
-import { sendMail, buildInvoiceEmail } from "@/lib/email";
+import { sendMail, buildInvoiceEmail, buildRefundEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 
@@ -117,18 +117,41 @@ export async function POST(request: NextRequest) {
     event.type === "charge.refunded" ||
     (event.type === "charge.dispute.closed" && (event.data.object as { status?: string }).status === "lost")
   ) {
-    const charge = event.data.object as { metadata?: Record<string, string>; payment_intent?: string | null };
+    const isChargeback = event.type === "charge.dispute.closed";
+    const charge = event.data.object as { metadata?: Record<string, string>; payment_intent?: string | null; amount_refunded?: number; id?: string };
     const uid = charge.metadata?.uid;
+    const revokedAt = Date.now();
 
     if (uid) {
+      // Read existing sub data so we know the tier and amount for the email.
+      const subDoc = await adminDb.collection("subscriptions").doc(uid).get();
+      const subData = subDoc.data() as { tier?: string; planId?: string } | undefined;
+
       await adminDb.collection("subscriptions").doc(uid).set(
-        { expiresAt: Date.now(), paymentStatus: "refunded", updatedAt: Date.now() },
+        { expiresAt: revokedAt, paymentStatus: "refunded", updatedAt: revokedAt },
         { merge: true },
       );
       console.log(`[webhook] subscription revoked for uid=${uid} (${event.type})`);
+
+      // Send refund notification email.
+      try {
+        const userRecord = await getAdminAuth().getUser(uid);
+        const userEmail = userRecord.email ?? null;
+        if (userEmail && subData?.tier) {
+          const html = buildRefundEmail({
+            tier: subData.tier as "vip" | "vvip",
+            amountCents: charge.amount_refunded ?? 0,
+            revokedAt,
+            reason: isChargeback ? "chargeback" : "refund",
+          });
+          await sendMail(userEmail, `Your tempted.chat ${subData.tier.toUpperCase()} subscription has been cancelled`, html);
+          console.log(`[webhook] refund email sent to ${userEmail}`);
+        }
+      } catch (emailErr) {
+        console.error("[webhook] failed to send refund email:", emailErr);
+      }
     } else {
-      // uid not in charge metadata — look up via the session stored on the subscription
-      console.warn(`[webhook] ${event.type} has no uid in metadata, charge id: ${(charge as { id?: string }).id ?? "unknown"}`);
+      console.warn(`[webhook] ${event.type} has no uid in metadata, charge id: ${charge.id ?? "unknown"}`);
     }
   }
 
