@@ -4381,20 +4381,50 @@ export default function Home() {
   }, [user, checkSubscription]);
 
   // Re-check subscription when returning from Stripe checkout.
+  // Poll until the webhook has written to Firestore (can take 5-20s).
   useEffect(() => {
     if (!user) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success") {
-      // Remove query param and re-check after a short delay for webhook processing.
       window.history.replaceState({}, "", "/");
       setShowPaymentSuccess(true);
-      const timer = setTimeout(() => void checkSubscription(user.uid), 2000);
-      return () => clearTimeout(timer);
+
+      let attempts = 0;
+      const MAX_ATTEMPTS = 12; // poll up to ~30s
+      const POLL_INTERVAL_MS = 2500;
+      let timerId: ReturnType<typeof setTimeout>;
+
+      const poll = async () => {
+        attempts += 1;
+        try {
+          const token = await auth.currentUser?.getIdToken(true);
+          if (!token) return;
+          const res = await fetch(`/api/subscription?uid=${encodeURIComponent(user.uid)}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.active) {
+              setSubscriptionExpiresAt(data.expiresAt ?? null);
+              setSubscriptionTier(data.tier ?? null);
+              return; // done
+            }
+          }
+        } catch {
+          // ignore, retry
+        }
+        if (attempts < MAX_ATTEMPTS) {
+          timerId = setTimeout(() => void poll(), POLL_INTERVAL_MS);
+        }
+      };
+
+      timerId = setTimeout(() => void poll(), 1500);
+      return () => clearTimeout(timerId);
     }
     if (params.get("payment") === "cancelled") {
       window.history.replaceState({}, "", "/");
     }
-  }, [user, checkSubscription]);
+  }, [user]);
 
   const hasActiveSubscription = isAdmin || (subscriptionExpiresAt !== null && subscriptionExpiresAt > Date.now());
   const effectiveSubscriptionTier: "vip" | "vvip" | null = isAdmin ? "vvip" : subscriptionTier;
