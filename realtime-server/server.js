@@ -15,6 +15,10 @@ if (!admin.apps.length) {
   if (FIREBASE_SERVICE_ACCOUNT_KEY) {
     try {
       const serviceAccount = JSON.parse(FIREBASE_SERVICE_ACCOUNT_KEY);
+      // Env files store \n as literal backslash-n; convert to real newlines for PEM
+      if (serviceAccount.private_key) {
+        serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+      }
       credential = admin.credential.cert(serviceAccount);
     } catch (err) {
       console.error("[realtime] Failed to parse FIREBASE_SERVICE_ACCOUNT_KEY:", err.message);
@@ -579,7 +583,7 @@ const heartbeatQueue = async (uid, mode) => {
 };
 
 const verifyToken = async (token) => {
-  const decoded = await admin.auth().verifyIdToken(token, true);
+  const decoded = await admin.auth().verifyIdToken(token);
   return decoded.uid;
 };
 
