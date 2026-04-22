@@ -1,3 +1,4 @@
+require("dotenv").config();
 const http = require("http");
 const { WebSocketServer } = require("ws");
 const Redis = require("ioredis");
