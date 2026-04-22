@@ -375,12 +375,13 @@ function ActiveSubscriptionBanner({
 			{/* Header row */}
 			<div className="flex flex-wrap items-center justify-between gap-4 mb-4">
 				<div className="flex items-center gap-3">
-					<div
-						style={{ background: `${accentColor}20`, border: `1px solid ${accentColor}40` }}
-						className="p-2 rounded-xl"
-					>
-						<Zap style={{ color: accentColor }} className="w-5 h-5" />
-					</div>
+					<Image
+						src={isVVIP ? "/asstes/vvip/vviplogo.png" : "/asstes/vip/viplogo.png"}
+						alt={isVVIP ? "VVIP Badge" : "VIP Badge"}
+						width={52}
+						height={52}
+						className="object-contain"
+					/>
 					<div>
 						<p className="text-[10px] font-black uppercase tracking-widest" style={{ color: accentColor }}>Active Subscription</p>
 						<p className="text-white font-black text-lg uppercase tracking-tight">
@@ -421,13 +422,5 @@ function ActiveSubscriptionBanner({
 				</p>
 			)}
 		</motion.div>
-	);
-}
-
-function Zap({ className, style }: { className?: string; style?: React.CSSProperties }) {
-	return (
-		<svg viewBox="0 0 24 24" fill="currentColor" className={className} style={style}>
-			<path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-		</svg>
 	);
 }

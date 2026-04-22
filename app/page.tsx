@@ -296,6 +296,7 @@ export default function Home() {
   const [subscriptionExpiresAt, setSubscriptionExpiresAt] = useState<number | null>(null);
   const [subscriptionTier, setSubscriptionTier] = useState<"vip" | "vvip" | null>(null);
   const [, setSubscriptionLoading] = useState(false);
+  const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -4386,6 +4387,7 @@ export default function Home() {
     if (params.get("payment") === "success") {
       // Remove query param and re-check after a short delay for webhook processing.
       window.history.replaceState({}, "", "/");
+      setShowPaymentSuccess(true);
       const timer = setTimeout(() => void checkSubscription(user.uid), 2000);
       return () => clearTimeout(timer);
     }
@@ -4526,6 +4528,80 @@ export default function Home() {
   if (!chatMode || !chatFilters) {
     return (
       <>
+        {showPaymentSuccess && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 9999,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(0,0,0,0.65)",
+              backdropFilter: "blur(8px)",
+            }}
+            onClick={() => setShowPaymentSuccess(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: subscriptionTier === "vvip"
+                  ? "linear-gradient(135deg,rgba(245,158,11,0.12),rgba(20,20,30,0.98))"
+                  : "linear-gradient(135deg,rgba(236,72,153,0.12),rgba(20,20,30,0.98))",
+                border: subscriptionTier === "vvip" ? "1px solid rgba(245,158,11,0.35)" : "1px solid rgba(236,72,153,0.35)",
+                borderRadius: "2rem",
+                padding: "2.5rem 2rem",
+                maxWidth: "22rem",
+                width: "90%",
+                textAlign: "center",
+                boxShadow: "0 30px 80px rgba(0,0,0,0.6)",
+              }}
+            >
+              {subscriptionTier && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={subscriptionTier === "vvip" ? "/asstes/vvip/vviplogo.png" : "/asstes/vip/viplogo.png"}
+                  alt={subscriptionTier === "vvip" ? "VVIP" : "VIP"}
+                  style={{ width: 72, height: 72, objectFit: "contain", margin: "0 auto 1rem" }}
+                />
+              )}
+              {!subscriptionTier && (
+                <div style={{ width: 48, height: 48, borderRadius: "50%", background: "rgba(255,255,255,0.08)", margin: "0 auto 1rem", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg viewBox="0 0 24 24" fill="currentColor" style={{ width: 24, height: 24, color: "#f59e0b" }}>
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                  </svg>
+                </div>
+              )}
+              <p style={{ fontSize: "0.6rem", fontWeight: 900, letterSpacing: "0.3em", textTransform: "uppercase", color: subscriptionTier === "vvip" ? "#f59e0b" : subscriptionTier === "vip" ? "#ec4899" : "#a78bfa", marginBottom: "0.5rem" }}>Payment Successful</p>
+              <h2 style={{ fontSize: "1.5rem", fontWeight: 900, color: "#fff", marginBottom: "0.75rem", letterSpacing: "-0.03em" }}>
+                {subscriptionTier ? `${subscriptionTier.toUpperCase()} Unlocked!` : "Features Unlocked!"}
+              </h2>
+              <p style={{ fontSize: "0.85rem", color: "rgba(255,255,255,0.45)", marginBottom: "1.5rem", lineHeight: 1.6 }}>
+                {subscriptionTier
+                  ? `Your ${subscriptionTier.toUpperCase()} filters and priority matching are now active. Enjoy!`
+                  : "Your subscription is now active. Enjoy your premium features!"}
+              </p>
+              <button
+                onClick={() => setShowPaymentSuccess(false)}
+                style={{
+                  width: "100%",
+                  padding: "0.75rem",
+                  borderRadius: "1rem",
+                  border: "none",
+                  background: subscriptionTier === "vvip" ? "linear-gradient(90deg,#f59e0b,#ea580c)" : "rgba(255,255,255,0.1)",
+                  color: subscriptionTier === "vvip" ? "#000" : "#fff",
+                  fontWeight: 900,
+                  fontSize: "0.8rem",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  cursor: "pointer",
+                }}
+              >
+                Start Chatting
+              </button>
+            </div>
+          </div>
+        )}
         <main>
           <TopNav
             isAuthenticated={isAuthenticated}
