@@ -1857,11 +1857,13 @@ export default function Home() {
         stopRealtimeQueueHeartbeat();
 
         const roomRef = doc(db, "rooms", roomId);
+        const participantProfilesBy = Object.fromEntries(participantProfiles.map((p) => [p.uid, p]));
         void setDoc(roomRef, {
           status: "active",
           mode,
           participants,
           participantProfiles,
+          participantProfilesBy,
           presenceBy: { [user.uid]: Date.now() },
           createdAt: serverTimestamp(),
           createdBy: "realtime-ws",
@@ -2879,7 +2881,8 @@ export default function Home() {
 
         const roomData = snapshot.data() as {
           participants?: string[];
-          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string; interests?: string[] }>
+          participantProfiles?: Array<{ uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string; interests?: string[] }>;
+          participantProfilesBy?: Record<string, { uid: string; gender: ProfileGender; age: number; countryCode?: string; nickname?: string; interests?: string[] }>;
           mediaStateBy?: Record<string, { audioEnabled?: boolean; videoEnabled?: boolean; updatedAtMs?: number }>;
           typingBy?: Record<string, boolean>;
           presenceBy?: Record<string, number>;
@@ -2903,7 +2906,10 @@ export default function Home() {
 
         updateRoomParticipants(Array.isArray(roomData.participants) ? roomData.participants : []);
 
-        const stranger = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
+        const strangerUid = roomData.participants?.find((participantUid) => participantUid !== user.uid);
+        const stranger = strangerUid
+          ? (roomData.participantProfilesBy?.[strangerUid] ?? roomData.participantProfiles?.find((p) => p.uid !== user.uid))
+          : undefined;
         if (stranger) {
           setStrangerProfile({
             gender: stranger.gender,
@@ -2912,8 +2918,6 @@ export default function Home() {
             interests: stranger.interests,
           });
         }
-
-        const strangerUid = roomData.participants?.find((participantUid) => participantUid !== user.uid);
         const strangerMediaState = strangerUid ? roomData.mediaStateBy?.[strangerUid] : undefined;
         if (strangerMediaState) {
           if (typeof strangerMediaState.audioEnabled === "boolean") {
@@ -2955,8 +2959,10 @@ export default function Home() {
 
         // Presence timeout
         {
-          const otherParticipant = roomData.participantProfiles?.find((p) => p.uid !== user.uid);
-          const otherUid = otherParticipant?.uid;
+          const otherUid = roomData.participants?.find((uid) => uid !== user.uid);
+          const otherParticipant = otherUid
+            ? (roomData.participantProfilesBy?.[otherUid] ?? roomData.participantProfiles?.find((p) => p.uid !== user.uid))
+            : undefined;
           const otherPresenceMs = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
           const otherTimedOut =
             typeof otherPresenceMs === "number" && Date.now() - otherPresenceMs > ROOM_PRESENCE_TIMEOUT_MS;
@@ -3431,36 +3437,9 @@ export default function Home() {
     };
 
     try {
-      await runTransaction(db, async (transaction) => {
-        const roomRef = doc(db, "rooms", roomId);
-        const roomSnapshot = await transaction.get(roomRef);
-        if (!roomSnapshot.exists()) {
-          return;
-        }
-
-        const roomData = roomSnapshot.data() as {
-          participantProfiles?: Array<Record<string, unknown>>;
-        };
-
-        const profiles = Array.isArray(roomData.participantProfiles)
-          ? roomData.participantProfiles
-          : [];
-
-        const existingIndex = profiles.findIndex((p) => p.uid === user.uid);
-        const nextProfiles = [...profiles];
-
-        if (existingIndex >= 0) {
-          nextProfiles[existingIndex] = {
-            ...nextProfiles[existingIndex],
-            ...ownProfile,
-          };
-        } else {
-          nextProfiles.push(ownProfile);
-        }
-
-        transaction.update(roomRef, {
-          participantProfiles: nextProfiles,
-        });
+      const roomRef = doc(db, "rooms", roomId);
+      await updateDoc(roomRef, {
+        [`participantProfilesBy.${user.uid}`]: ownProfile,
       });
     } catch {
       // Ignore profile upsert races while room is being initialized.
