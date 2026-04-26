@@ -12,6 +12,73 @@
   --accent-soft: #f472b6;
   --surface: #111118;
   --surface-2: #1a1a24;
+  --vh: 1dvh;
+  --keyboard-offset: 0px;
+}
+
+/* ─── Mobile Keyboard Optimization ─── */
+html {
+  /* Smooth transitions for keyboard offset changes */
+  transition: --keyboard-offset 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+  /* Prevent bounce scrolling on iOS */
+  -webkit-user-select: text;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+/* Optimize input fields for mobile */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+textarea {
+  /* Prevent zoom on iOS input focus */
+  font-size: 16px;
+  /* Better touch targets */
+  min-height: 44px;
+  /* Smooth transitions */
+  transition: border-color 0.3s ease-out, background-color 0.3s ease-out, box-shadow 0.3s ease-out;
+}
+
+/* Prevent layout shift on scroll */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+/* Optimize for keyboard appearance */
+@supports (padding: max(0px)) {
+  body {
+    /* Safe area support */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* Smooth animations for chat container */
+section[class*="fixed"] {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Optimize scrolling performance */
+.scroll-smooth {
+  scroll-behavior: smooth;
+}
+
+/* Prevent tap highlight on mobile */
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* ─── Animations ─── */
@@ -28,6 +95,18 @@
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(1.6); }
+}
+
+/* ── Send button animations ── */
+@keyframes send-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.4); }
+  50% { box-shadow: 0 0 0 8px rgba(236, 72, 153, 0.2); }
+  100% { box-shadow: 0 0 0 16px rgba(236, 72, 153, 0); }
+}
+
+@keyframes send-scale {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05); }
 }
 
 /* ── Searching / connecting loader ── */
@@ -116,6 +195,71 @@
 @media (prefers-reduced-motion: reduce) {
   .route-enter {
     animation: none;
+  }
+}
+
+/* ─── Mobile Chat Optimizations ─── */
+/* Prevent layout shift on mobile devices */
+@media (max-width: 768px) {
+  /* Smooth scroll behavior for messages */
+  div[class*="overflow-y-auto"] {
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+    contain: layout style;
+  }
+
+  /* Optimize message containers */
+  div[class*="flex-col gap-5"] {
+    will-change: scroll-position;
+  }
+
+  /* Better input handling on mobile */
+  input[type="text"] {
+    /* Prevent zoom on focus */
+    font-size: 16px;
+    /* Smooth focus transitions */
+    transition: all 0.2s ease-out;
+  }
+
+  /* Prevent button tap delay */
+  button {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* Smooth transitions for footer when keyboard appears */
+  footer {
+    will-change: padding-bottom;
+    transform: translate3d(0, 0, 0);
+  }
+
+  /* Optimize scrollbar visibility */
+  div[class*="overflow-y-auto"] {
+    scroll-behavior: auto;
+  }
+
+  /* GPU acceleration for smooth animations */
+  .animate-spin,
+  .animate-fade-in,
+  .animate-slide-in-left,
+  .animate-slide-in-right,
+  .animate-pop-in {
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+
+  /* Optimize header layout on small screens */
+  header {
+    contain: layout style paint;
+  }
+
+  /* Reduce motion for send button animations on small devices */
+  @media (prefers-reduced-motion: reduce) {
+    button[class*="bg-pink"],
+    button[class*="rounded"] {
+      animation: none !important;
+    }
   }
 }
 

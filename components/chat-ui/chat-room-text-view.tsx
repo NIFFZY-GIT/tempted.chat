@@ -187,12 +187,17 @@ export function ChatRoomTextView({
   onSelectImage,
   chatFiltersPanel,
 }: ChatRoomTextViewProps) {
+  const handleSendMessage = async () => {
+    await sendMessage();
+    messageInputRef.current?.focus({ preventScroll: true });
+  };
+
   return (
     <section
       ref={chatContainerRef}
-      className={`${isFullscreenActive ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.04] bg-[#08080c] shadow-[0_24px_80px_rgba(0,0,0,0.6)] overscroll-contain touch-manipulation`}
+      className={`${isFullscreenActive ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.04] bg-[#08080c] shadow-[0_24px_80px_rgba(0,0,0,0.6)] overscroll-contain touch-manipulation transition-all duration-300 ease-out`}
     >
-      <header className="flex items-center gap-2 border-b border-white/[0.04] bg-[#0d0d14]/40 px-3 py-2.5 backdrop-blur-2xl sm:px-5 sm:py-3.5">
+      <header className="flex items-center gap-1.5 sm:gap-2 border-b border-white/[0.04] bg-[#0d0d14]/40 px-2 sm:px-3 py-2 sm:py-2.5 backdrop-blur-2xl sm:px-5 sm:py-3.5 transition-all duration-300 ease-out will-change-auto overflow-x-auto">
         {!showBackConfirm ? (
           <button
             onClick={() => setShowBackConfirm(true)}
@@ -247,23 +252,23 @@ export function ChatRoomTextView({
         <div className="flex items-center gap-2">
           <button
             onClick={toggleFullscreen}
-            className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/[0.03] text-white/40 transition-all hover:bg-white/[0.06] hover:text-white active:scale-95"
+            className="flex h-9 sm:h-10 w-9 sm:w-10 items-center justify-center rounded-lg sm:rounded-2xl bg-white/[0.03] text-white/40 transition-all duration-200 hover:bg-white/[0.06] hover:text-white active:scale-95 flex-shrink-0"
             aria-label={isFullscreenActive ? "Exit fullscreen" : "Fullscreen"}
             title={isFullscreenActive ? "Exit fullscreen" : "Fullscreen"}
           >
             {isFullscreenActive ? (
-              <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+              <svg className="h-4 sm:h-4.5 w-4 sm:w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
             ) : (
-              <svg className="h-4.5 w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+              <svg className="h-4 sm:h-4.5 w-4 sm:w-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
             )}
           </button>
 
           <button
             type="button"
             onClick={() => setShowChatFilters(true)}
-            className="group relative flex h-10 items-center gap-2 rounded-2xl bg-white/[0.03] px-4 border border-white/[0.03] transition-all hover:bg-white/[0.06] hover:border-white/[0.08] active:scale-95"
+            className="group relative flex h-9 sm:h-10 items-center gap-1 sm:gap-2 rounded-lg sm:rounded-2xl bg-white/[0.03] px-2.5 sm:px-4 border border-white/[0.03] transition-all duration-200 hover:bg-white/[0.06] hover:border-white/[0.08] active:scale-95 flex-shrink-0"
           >
-            <svg className="h-4 w-4 text-white/40 group-hover:text-white/80 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
+            <svg className="h-3.5 sm:h-4 w-3.5 sm:w-4 text-white/40 group-hover:text-white/80 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6h18M7 12h10M10 18h4" /></svg>
             <span className="hidden sm:inline text-xs font-bold text-white/60 group-hover:text-white/90">Filters</span>
             {chatFilterActiveCount > 0 && (
               <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-lg bg-pink-500 text-[10px] font-black text-white shadow-lg shadow-pink-500/20">{chatFilterActiveCount}</span>
@@ -273,23 +278,23 @@ export function ChatRoomTextView({
           {showNextStrangerPrompt ? (
             <button
               onClick={onNextStranger}
-              className="animate-pop-in flex h-10 items-center justify-center rounded-2xl bg-emerald-500 px-5 text-xs font-black uppercase tracking-widest text-white shadow-[0_8px_20px_rgba(16,185,129,0.3)] transition-all hover:bg-emerald-400 hover:scale-[1.02] active:scale-95"
+              className="animate-pop-in flex h-9 sm:h-10 items-center justify-center rounded-lg sm:rounded-2xl bg-emerald-500 px-3 sm:px-5 text-[11px] sm:text-xs font-black uppercase tracking-widest text-white shadow-[0_8px_20px_rgba(16,185,129,0.3)] transition-all duration-200 hover:bg-emerald-400 hover:scale-[1.02] active:scale-95 flex-shrink-0"
             >
               Next
             </button>
           ) : !isConnecting ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               {!showLeaveConfirm ? (
                 <button
                   onClick={() => setShowLeaveConfirm(true)}
-                  className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/[0.03] text-rose-400 transition-all hover:bg-rose-500/10 hover:text-rose-300"
+                  className="flex h-9 sm:h-10 w-9 sm:w-10 items-center justify-center rounded-lg sm:rounded-2xl bg-white/[0.03] text-rose-400 transition-all duration-200 hover:bg-rose-500/10 hover:text-rose-300 active:scale-95 flex-shrink-0"
                 >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                  <svg className="h-4 sm:h-5 w-4 sm:w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
                 </button>
               ) : (
                 <div className="flex items-center gap-1 animate-pop-in">
-                  <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="h-10 rounded-2xl bg-rose-500 px-4 text-[11px] font-black uppercase tracking-wider text-white shadow-lg shadow-rose-500/20 transition-all hover:bg-rose-400">Leave</button>
-                  <button onClick={() => setShowLeaveConfirm(false)} className="h-10 w-10 flex items-center justify-center rounded-2xl bg-white/[0.05] text-white/60 hover:bg-white/[0.1] transition-all"><svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+                  <button onClick={() => { setShowLeaveConfirm(false); if (chatFilters) onLeaveChat(chatFilters); }} className="h-9 sm:h-10 rounded-lg sm:rounded-2xl bg-rose-500 px-2.5 sm:px-4 text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-white shadow-lg shadow-rose-500/20 transition-all duration-200 hover:bg-rose-400">Leave</button>
+                  <button onClick={() => setShowLeaveConfirm(false)} className="h-9 sm:h-10 w-9 sm:w-10 flex items-center justify-center rounded-lg sm:rounded-2xl bg-white/[0.05] text-white/60 hover:bg-white/[0.1] transition-all duration-200"><svg className="h-3.5 sm:h-4 w-3.5 sm:w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
                 </div>
               )}
             </div>
@@ -300,7 +305,8 @@ export function ChatRoomTextView({
       <div
         ref={messagesViewportRef}
         onScroll={handleMessagesScroll}
-        className="relative min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8 overscroll-contain will-change-scroll"
+        className="relative min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8 overscroll-contain will-change-scroll scroll-smooth"
+        style={{ WebkitOverflowScrolling: "touch", scrollBehavior: "auto" }}
       >
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
           {isConnecting && (
@@ -359,9 +365,9 @@ export function ChatRoomTextView({
             if (msg.deletedForEveryone) {
               return (
                 <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
-                  <div className={`flex items-center gap-1.5 rounded-2xl border px-4 py-2.5 ${msg.author === "you" ? "border-pink-500/10 bg-pink-500/[0.04]" : "border-blue-500/10 bg-blue-700/[0.04]"}`}>
-                    <svg className={`h-3.5 w-3.5 ${msg.author === "you" ? "text-pink-400/30" : "text-blue-400/30"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
-                    <span className={`text-[13px] italic ${msg.author === "you" ? "text-pink-300/40" : "text-blue-300/40"}`}>{msg.author === "you" ? "You deleted this message" : "This message was deleted"}</span>
+                  <div className={`flex items-center gap-1.5 rounded-2xl border px-4 py-2.5 ${msg.author === "you" ? "border-pink-600/15 bg-pink-600/[0.08]" : "border-blue-900/25 bg-blue-900/[0.14]"}`}>
+                    <svg className={`h-3.5 w-3.5 ${msg.author === "you" ? "text-pink-500/40" : "text-blue-600/50"}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6M9 9l6 6"/></svg>
+                    <span className={`text-[13px] italic ${msg.author === "you" ? "text-pink-400/50" : "text-blue-500/60"}`}>{msg.author === "you" ? "You deleted this message" : "This message was deleted"}</span>
                   </div>
                 </div>
               );
@@ -407,10 +413,10 @@ export function ChatRoomTextView({
             const isActionRailExpanded = expandedActionMsgId === msg.id;
             const replyTargetsYou = msg.replyToAuthor === "you";
             const replyAccentClass = replyTargetsYou
-              ? "border-pink-400/16 bg-pink-400/12 text-white/72"
-              : "border-sky-400/16 bg-sky-400/12 text-white/72";
-            const replyLabelClass = replyTargetsYou ? "text-pink-300/80" : "text-blue-300/80";
-            const replyHighlightRing = replyTargetsYou ? "ring-pink-400/50" : "ring-blue-400/50";
+              ? "border-pink-600/25 bg-pink-600/15 text-white/75"
+              : "border-blue-900/35 bg-blue-900/20 text-white/75";
+            const replyLabelClass = replyTargetsYou ? "text-pink-400/90" : "text-blue-500/90";
+            const replyHighlightRing = replyTargetsYou ? "ring-pink-600/50" : "ring-blue-900/50";
             const swipeIndicatorPositionClass = isYou ? "right-2.5" : "left-2.5";
             const actionRailPositionClass = isYou
               ? "right-full mr-2 top-1/2 -translate-y-1/2"
@@ -424,7 +430,7 @@ export function ChatRoomTextView({
 
             return (
               <div key={msg.id} className={`flex ${isYou ? "justify-end" : "justify-start"} ${isYou ? "animate-slide-in-right" : "animate-slide-in-left"}`}>
-                <div className="group/msg relative flex max-w-[86%] items-end sm:max-w-[74%]">
+                <div className="group/msg relative flex max-w-[86%] items-end sm:max-w-[74%]" style={{ WebkitTouchCallout: "none" }}>
                   <div className={`absolute z-10 flex flex-col gap-1 ${actionRailPositionClass}`}>
                     {showActionRail && (
                       <div className={`flex flex-col items-center gap-1 rounded-full border border-white/[0.06] bg-[#12121a]/92 px-1.5 py-2 shadow-[0_14px_32px_rgba(0,0,0,0.34)] backdrop-blur-md transition-all duration-200 ${isActionRailExpanded ? "opacity-100 scale-100" : "pointer-events-none opacity-0 scale-95 sm:pointer-events-auto sm:opacity-0 sm:scale-95 sm:group-hover/msg:opacity-100 sm:group-hover/msg:scale-100 sm:group-focus-within/msg:opacity-100 sm:group-focus-within/msg:scale-100"}`}>
@@ -493,10 +499,10 @@ export function ChatRoomTextView({
                     style={bubbleStyleWithDirection}
                     className={`relative overflow-hidden rounded-[1.5rem] border px-4.5 py-3.5 text-[15px] leading-[1.6] break-words shadow-[0_12px_40px_rgba(0,0,0,0.15)] transition-all [overflow-wrap:anywhere] touch-pan-y select-none ${
                     isYou
-                      ? "rounded-br-sm border-pink-400/10 bg-gradient-to-b from-pink-600/90 to-pink-700/95 text-white/95"
-                      : "rounded-bl-sm border-white/5 bg-gradient-to-b from-white/[0.08] to-white/[0.04] text-white/90"
+                      ? "rounded-br-sm border-pink-500/20 bg-gradient-to-b from-pink-700/95 to-pink-800/98 text-white/95"
+                      : "rounded-bl-sm border-blue-900/35 bg-gradient-to-b from-blue-900/95 to-blue-950/98 text-white/90"
                   } ${msg.isPending ? "opacity-40" : ""}`}>
-                    <div className={`pointer-events-none absolute inset-0 opacity-40 ${isYou ? "bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.15),transparent_60%)]" : "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.1),transparent_60%)]"}`} />
+                    <div className={`pointer-events-none absolute inset-0 opacity-40 ${isYou ? "bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.2),transparent_60%)]" : "bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.12),transparent_60%)]"}`} />
                     {!msg.isPending && (
                       <span
                         className={`pointer-events-none absolute top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white/80 backdrop-blur-md transition ${swipeIndicatorPositionClass}`}
@@ -618,8 +624,8 @@ export function ChatRoomTextView({
                             className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs transition active:scale-95 ${
                               didReact
                                 ? isYou
-                                  ? "border border-pink-500/30 bg-pink-500/[0.1] text-white/80"
-                                  : "border border-blue-500/30 bg-blue-500/[0.1] text-white/80"
+                                  ? "border border-pink-600/50 bg-pink-600/20 text-white/85"
+                                  : "border border-blue-900/65 bg-blue-900/35 text-white/85"
                                 : "border border-white/[0.06] bg-white/[0.04] text-white/50 hover:bg-white/[0.08]"
                             }`}
                           >
@@ -649,11 +655,11 @@ export function ChatRoomTextView({
           )}
 
           {showScrollToLatestBubble && (
-            <div className="pointer-events-none sticky bottom-3 z-10 flex justify-center">
+            <div className="pointer-events-none sticky bottom-3 z-10 flex justify-center transition-all duration-300 ease-out">
               <button
                 type="button"
                 onClick={scrollToLatestMessage}
-                className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-4 py-2 text-xs font-medium text-white/60 shadow-lg backdrop-blur-md transition hover:bg-white/[0.12] hover:text-white/80"
+                className="pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-white/[0.08] px-4 py-2 text-xs font-medium text-white/60 shadow-lg backdrop-blur-md transition-all duration-200 hover:bg-white/[0.12] hover:text-white/80"
                 aria-label="Scroll to latest message"
               >
                 {unreadReceivedCount > 0 ? (
@@ -674,14 +680,14 @@ export function ChatRoomTextView({
       </div>
 
       <footer
-        className="border-t border-white/[0.03] bg-[#0c0c14]/40 px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 md:px-6 md:pt-4 backdrop-blur-3xl flex-shrink-0"
+        className="border-t border-white/[0.03] bg-[#0c0c14]/60 px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 md:px-6 md:pt-4 backdrop-blur-3xl flex-shrink-0 transition-all duration-300 ease-out"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), calc(0.75rem + var(--keyboard-offset, 0px)))" }}
       >
         <div className="mx-auto w-full max-w-3xl space-y-3">
           {replyingTo && (
-            <div className={`animate-fade-in flex items-center gap-3 rounded-[1.25rem] border px-4 py-2.5 backdrop-blur-xl ${replyingTo.author === "you" ? "border-pink-500/10 bg-pink-500/[0.03]" : "border-blue-500/10 bg-blue-500/[0.03]"}`}>
-              <div className={`min-w-0 flex-1 border-l-[3px] pl-3.5 ${replyingTo.author === "you" ? "border-pink-500/30" : "border-blue-500/30"}`}>
-                <p className={`text-[10px] font-black uppercase tracking-widest ${replyingTo.author === "you" ? "text-pink-400" : "text-blue-400"}`}>{replyingTo.author === "you" ? "You" : "Stranger"}</p>
+            <div className={`animate-fade-in flex items-center gap-3 rounded-[1.25rem] border px-4 py-2.5 backdrop-blur-xl transition-all duration-300 ease-out ${replyingTo.author === "you" ? "border-pink-600/20 bg-pink-600/[0.08]" : "border-blue-900/35 bg-blue-900/[0.18]"}`}>
+              <div className={`min-w-0 flex-1 border-l-[3px] pl-3.5 ${replyingTo.author === "you" ? "border-pink-600/40" : "border-blue-900/55"}`}>
+                <p className={`text-[10px] font-black uppercase tracking-widest ${replyingTo.author === "you" ? "text-pink-500" : "text-blue-600"}`}>{replyingTo.author === "you" ? "You" : "Stranger"}</p>
                 <p className="truncate text-[13px] text-white/50 font-medium">{replyingTo.text || (replyingTo.image ? "Photo" : "Message")}</p>
               </div>
               <button
@@ -695,7 +701,7 @@ export function ChatRoomTextView({
           )}
 
           {imagePreview && (
-            <div className="animate-fade-in relative flex items-center gap-4 rounded-[1.5rem] border border-white/[0.04] bg-white/[0.02] p-4 shadow-2xl backdrop-blur-2xl">
+            <div className="animate-fade-in relative flex items-center gap-4 rounded-[1.5rem] border border-white/[0.04] bg-white/[0.02] p-4 shadow-2xl backdrop-blur-2xl transition-all duration-300 ease-out">
               <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-white/[0.06] shadow-inner">
                 {isGifFilename(selectedFileName) ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -749,12 +755,12 @@ export function ChatRoomTextView({
             <button
               disabled={isSendingMessage || !hasResolvedStrangerProfile}
               onClick={() => fileInputRef.current?.click()}
-              className="flex h-[3.25rem] w-[3.25rem] flex-shrink-0 items-center justify-center rounded-[1.25rem] bg-white/[0.03] border border-white/[0.02] text-white/20 transition-all hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-10"
+              className="flex h-[3.25rem] w-[3.25rem] flex-shrink-0 items-center justify-center rounded-[1.25rem] bg-white/[0.03] border border-white/[0.02] text-white/20 transition-all duration-200 hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-10"
             >
               <svg className="h-5.5 w-5.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14m7-7H5" /></svg>
             </button>
 
-            <div className="relative flex min-h-[3.25rem] flex-1 items-center rounded-[1.25rem] border border-white/[0.04] bg-white/[0.02] shadow-inner transition-all focus-within:border-pink-500/20 focus-within:bg-white/[0.03]">
+            <div className="relative flex min-h-[3.25rem] flex-1 items-center rounded-[1.25rem] border border-white/[0.04] bg-white/[0.02] shadow-inner transition-all duration-300 ease-out focus-within:border-pink-500/20 focus-within:bg-white/[0.03]" style={{ WebkitTouchCallout: "none" }}>
               <input
                 ref={messageInputRef}
                 type="text"
@@ -768,26 +774,27 @@ export function ChatRoomTextView({
                 }}
                 placeholder={isConnecting ? "Finding someone..." : !hasResolvedStrangerProfile ? "Waiting for someone..." : "Type a message..."}
                 disabled={isSendingMessage || !hasResolvedStrangerProfile}
-                className="h-full w-full bg-transparent px-5 py-3.5 text-[15px] font-medium text-white outline-none placeholder:text-white/10"
+                className="h-full w-full bg-transparent px-4 sm:px-5 py-3 sm:py-3.5 text-sm sm:text-[15px] font-medium text-white outline-none placeholder:text-white/10 resize-none overflow-hidden"
+                style={{ WebkitUserSelect: "text", fontSize: "16px" }}
               />
             </div>
 
             <button
-              onClick={sendMessage}
+              onClick={handleSendMessage}
               disabled={isSendingMessage || (!text.trim() && !imagePreview) || !hasResolvedStrangerProfile}
-              className="group relative flex h-[3.25rem] w-[3.25rem] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-pink-500 text-white shadow-[0_8px_20px_rgba(236,72,153,0.3)] transition-all hover:bg-pink-400 hover:scale-[1.02] active:scale-95 disabled:opacity-10 disabled:grayscale disabled:scale-100"
+              className={`group relative flex h-[3.25rem] w-[3.25rem] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-pink-500 text-white shadow-[0_8px_20px_rgba(236,72,153,0.3)] transition-all duration-200 hover:bg-pink-400 hover:scale-[1.02] active:scale-95 disabled:opacity-10 disabled:grayscale disabled:scale-100 ${isSendingMessage ? "animate-[send-pulse_1.5s_ease-in-out_infinite]" : ""}`}
             >
               <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               {isSendingMessage ? (
                 <span className="inline-block h-5 w-5 animate-spin rounded-full border-[2.5px] border-white/30 border-t-white" />
               ) : (
-                <svg className="relative z-10 h-5 w-5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+                <svg className="relative z-10 h-5 w-5 transition-all duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
               )}
             </button>
           </div>
 
           {sendError && (
-            <p className="animate-fade-in px-2 text-[11px] font-bold uppercase tracking-wider text-rose-400/80">{sendError}</p>
+            <p className="animate-fade-in px-2 text-[11px] font-bold uppercase tracking-wider text-rose-400/80 transition-all duration-300 ease-out">{sendError}</p>
           )}
         </div>
       </footer>

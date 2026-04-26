@@ -1262,17 +1262,38 @@ export function ChatRoomView({
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!vv) return;
+
+    let lastKeyboardOffset = 0;
+    let animationFrameId: number | null = null;
+
     const update = () => {
-      document.documentElement.style.setProperty("--vh", `${vv.height * 0.01}px`);
       const keyboardOffset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      document.documentElement.style.setProperty("--keyboard-offset", `${keyboardOffset}px`);
+      
+      // Only update if value actually changed to avoid unnecessary re-renders
+      if (keyboardOffset !== lastKeyboardOffset) {
+        lastKeyboardOffset = keyboardOffset;
+        document.documentElement.style.setProperty("--vh", `${vv.height * 0.01}px`);
+        document.documentElement.style.setProperty("--keyboard-offset", `${keyboardOffset}px`);
+      }
     };
+
+    const handleResize = () => {
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
+      animationFrameId = window.requestAnimationFrame(update);
+    };
+
     update();
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
+    vv.addEventListener("resize", handleResize);
+    vv.addEventListener("scroll", handleResize);
+
     return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
+      vv.removeEventListener("resize", handleResize);
+      vv.removeEventListener("scroll", handleResize);
+      if (animationFrameId !== null) {
+        cancelAnimationFrame(animationFrameId);
+      }
       document.documentElement.style.removeProperty("--keyboard-offset");
     };
   }, []);
@@ -1284,15 +1305,26 @@ export function ChatRoomView({
     }
 
     const ensureInputVisible = () => {
-      window.setTimeout(() => {
-        input.scrollIntoView({ block: "nearest", inline: "nearest" });
+      window.requestAnimationFrame(() => {
+        // Use scrollIntoView with smooth behavior but prevent layout shift
+        try {
+          input.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
+        } catch (e) {
+          // Fallback for older browsers
+          input.scrollIntoView();
+        }
+        // Also scroll messages to end
         messagesEndRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
-      }, 140);
+      });
     };
 
     input.addEventListener("focus", ensureInputVisible);
+    // Also handle resize events to scroll when keyboard appears
+    window.addEventListener("resize", ensureInputVisible);
+
     return () => {
       input.removeEventListener("focus", ensureInputVisible);
+      window.removeEventListener("resize", ensureInputVisible);
     };
   }, [chatMode]);
 
