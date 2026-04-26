@@ -10,6 +10,18 @@ export function ParticleBackground() {
     const container = containerRef.current;
     if (!container) return;
 
+    const prefersReducedMotion =
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        : false;
+    const isMobileViewport = window.innerWidth < 768;
+    const lowCoreDevice = (navigator.hardwareConcurrency || 8) <= 4;
+    const isLowPowerDevice = prefersReducedMotion || isMobileViewport || lowCoreDevice;
+    const particleCount = isLowPowerDevice ? 240 : 760;
+    const maxLines = isLowPowerDevice ? 40 : 140;
+    const lineSampleCount = isLowPowerDevice ? 56 : 120;
+    const lineUpdateInterval = isLowPowerDevice ? 4 : 2;
+
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(
       60,
@@ -19,18 +31,17 @@ export function ParticleBackground() {
     );
     camera.position.z = 3;
 
-    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: false, powerPreference: "high-performance" });
     renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, isLowPowerDevice ? 1 : 1.5));
     renderer.setClearColor(0x000000, 0);
     container.appendChild(renderer.domElement);
 
     // ── Particles ──
-    const PARTICLE_COUNT = 1200;
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    const colors = new Float32Array(PARTICLE_COUNT * 3);
-    const sizes = new Float32Array(PARTICLE_COUNT);
-    const speeds = new Float32Array(PARTICLE_COUNT);
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const sizes = new Float32Array(particleCount);
+    const speeds = new Float32Array(particleCount);
 
     const palette = [
       new THREE.Color(0xec4899), // pink
@@ -40,7 +51,7 @@ export function ParticleBackground() {
       new THREE.Color(0xfbbf24), // amber
     ];
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
+    for (let i = 0; i < particleCount; i++) {
       positions[i * 3] = (Math.random() - 0.5) * 10;
       positions[i * 3 + 1] = (Math.random() - 0.5) * 10;
       positions[i * 3 + 2] = (Math.random() - 0.5) * 8;
@@ -50,7 +61,7 @@ export function ParticleBackground() {
       colors[i * 3 + 1] = color.g;
       colors[i * 3 + 2] = color.b;
 
-      sizes[i] = Math.random() * 3 + 0.5;
+      sizes[i] = Math.random() * 2.5 + 0.4;
       speeds[i] = Math.random() * 0.3 + 0.1;
     }
 
@@ -113,9 +124,8 @@ export function ParticleBackground() {
     scene.add(particles);
 
     // ── Connection lines between nearby particles ──
-    const MAX_LINES = 200;
-    const linePositions = new Float32Array(MAX_LINES * 6);
-    const lineColors = new Float32Array(MAX_LINES * 6);
+    const linePositions = new Float32Array(maxLines * 6);
+    const lineColors = new Float32Array(maxLines * 6);
     const lineGeometry = new THREE.BufferGeometry();
     lineGeometry.setAttribute(
       "position",
@@ -138,11 +148,17 @@ export function ParticleBackground() {
 
     // ── Mouse interaction ──
     const mouse = { x: 0, y: 0 };
+    const supportsFinePointer =
+      typeof window !== "undefined" && window.matchMedia
+        ? window.matchMedia("(pointer: fine)").matches
+        : true;
     const handleMouseMove = (e: MouseEvent) => {
       mouse.x = (e.clientX / window.innerWidth) * 2 - 1;
       mouse.y = -(e.clientY / window.innerHeight) * 2 + 1;
     };
-    window.addEventListener("mousemove", handleMouseMove);
+    if (supportsFinePointer) {
+      window.addEventListener("mousemove", handleMouseMove);
+    }
 
     // ── Resize ──
     const handleResize = () => {
@@ -159,71 +175,70 @@ export function ParticleBackground() {
 
     // ── Animate ──
     let animationId: number;
+    let frameCount = 0;
     const startTime = performance.now();
 
     const animate = () => {
       animationId = requestAnimationFrame(animate);
       const elapsed = (performance.now() - startTime) / 1000;
       material.uniforms.uTime.value = elapsed;
+      frameCount += 1;
 
       // Slow rotation following mouse
-      particles.rotation.y +=
-        (mouse.x * 0.1 - particles.rotation.y) * 0.02;
-      particles.rotation.x +=
-        (mouse.y * 0.05 - particles.rotation.x) * 0.02;
+      particles.rotation.y += (mouse.x * 0.1 - particles.rotation.y) * 0.02;
+      particles.rotation.x += (mouse.y * 0.05 - particles.rotation.x) * 0.02;
 
       // Move particles slowly upward and loop
-      const posArray = geometry.attributes.position
-        .array as Float32Array;
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const posArray = geometry.attributes.position.array as Float32Array;
+      for (let i = 0; i < particleCount; i++) {
         posArray[i * 3 + 1] += speeds[i] * 0.003;
         if (posArray[i * 3 + 1] > 5) posArray[i * 3 + 1] = -5;
       }
       geometry.attributes.position.needsUpdate = true;
 
-      // Update connection lines
-      let lineIdx = 0;
-      const CONNECTION_DIST = 1.2;
-      for (
-        let i = 0;
-        i < Math.min(PARTICLE_COUNT, 150) && lineIdx < MAX_LINES;
-        i++
-      ) {
+      // Update connection lines less frequently to reduce CPU cost.
+      if (frameCount % lineUpdateInterval === 0) {
+        let lineIdx = 0;
+        const CONNECTION_DIST = 1.2;
         for (
-          let j = i + 1;
-          j < Math.min(PARTICLE_COUNT, 150) && lineIdx < MAX_LINES;
-          j++
+          let i = 0;
+          i < Math.min(particleCount, lineSampleCount) && lineIdx < maxLines;
+          i++
         ) {
-          const dx = posArray[i * 3] - posArray[j * 3];
-          const dy = posArray[i * 3 + 1] - posArray[j * 3 + 1];
-          const dz = posArray[i * 3 + 2] - posArray[j * 3 + 2];
-          const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          if (dist < CONNECTION_DIST) {
-            const lp = lineGeometry.attributes.position
-              .array as Float32Array;
-            const lc = lineGeometry.attributes.color
-              .array as Float32Array;
-            const base = lineIdx * 6;
-            lp[base] = posArray[i * 3];
-            lp[base + 1] = posArray[i * 3 + 1];
-            lp[base + 2] = posArray[i * 3 + 2];
-            lp[base + 3] = posArray[j * 3];
-            lp[base + 4] = posArray[j * 3 + 1];
-            lp[base + 5] = posArray[j * 3 + 2];
-            const alpha = 1 - dist / CONNECTION_DIST;
-            lc[base] = colors[i * 3] * alpha;
-            lc[base + 1] = colors[i * 3 + 1] * alpha;
-            lc[base + 2] = colors[i * 3 + 2] * alpha;
-            lc[base + 3] = colors[j * 3] * alpha;
-            lc[base + 4] = colors[j * 3 + 1] * alpha;
-            lc[base + 5] = colors[j * 3 + 2] * alpha;
-            lineIdx++;
+          for (
+            let j = i + 1;
+            j < Math.min(particleCount, lineSampleCount) && lineIdx < maxLines;
+            j++
+          ) {
+            const dx = posArray[i * 3] - posArray[j * 3];
+            const dy = posArray[i * 3 + 1] - posArray[j * 3 + 1];
+            const dz = posArray[i * 3 + 2] - posArray[j * 3 + 2];
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            if (dist < CONNECTION_DIST) {
+              const lp = lineGeometry.attributes.position.array as Float32Array;
+              const lc = lineGeometry.attributes.color.array as Float32Array;
+              const base = lineIdx * 6;
+              lp[base] = posArray[i * 3];
+              lp[base + 1] = posArray[i * 3 + 1];
+              lp[base + 2] = posArray[i * 3 + 2];
+              lp[base + 3] = posArray[j * 3];
+              lp[base + 4] = posArray[j * 3 + 1];
+              lp[base + 5] = posArray[j * 3 + 2];
+              const alpha = 1 - dist / CONNECTION_DIST;
+              lc[base] = colors[i * 3] * alpha;
+              lc[base + 1] = colors[i * 3 + 1] * alpha;
+              lc[base + 2] = colors[i * 3 + 2] * alpha;
+              lc[base + 3] = colors[j * 3] * alpha;
+              lc[base + 4] = colors[j * 3 + 1] * alpha;
+              lc[base + 5] = colors[j * 3 + 2] * alpha;
+              lineIdx++;
+            }
           }
         }
+        lineGeometry.setDrawRange(0, lineIdx * 2);
+        lineGeometry.attributes.position.needsUpdate = true;
+        lineGeometry.attributes.color.needsUpdate = true;
       }
-      lineGeometry.setDrawRange(0, lineIdx * 2);
-      lineGeometry.attributes.position.needsUpdate = true;
-      lineGeometry.attributes.color.needsUpdate = true;
 
       renderer.render(scene, camera);
     };
@@ -231,7 +246,9 @@ export function ParticleBackground() {
 
     return () => {
       cancelAnimationFrame(animationId);
-      window.removeEventListener("mousemove", handleMouseMove);
+      if (supportsFinePointer) {
+        window.removeEventListener("mousemove", handleMouseMove);
+      }
       window.removeEventListener("resize", handleResize);
       renderer.dispose();
       geometry.dispose();

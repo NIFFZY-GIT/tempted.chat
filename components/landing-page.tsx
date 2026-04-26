@@ -1,12 +1,17 @@
 "use client";
 
 import React, { useCallback } from "react";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { 
   Zap, Timer, Globe,
   ArrowRight, Lock, Ghost, Radio
 } from "lucide-react";
-import { ParticleBackground } from "./particle-background";
+
+const ParticleBackground = dynamic(
+  () => import("./particle-background").then((mod) => mod.ParticleBackground),
+  { ssr: false },
+);
 
 export function LandingPageSection() {
   const scrollToAuth = useCallback(() => {
