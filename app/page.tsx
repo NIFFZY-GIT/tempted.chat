@@ -196,6 +196,7 @@ type RealtimeQueueJoinPayload = {
     gender: UserProfile["gender"];
     age: UserProfile["age"];
     countryCode: UserProfile["countryCode"] | null;
+    subscriptionTier: "vip" | "vvip" | null;
     interests: string[];
   };
 };
@@ -3552,6 +3553,7 @@ export default function Home() {
         gender: effectiveProfile.gender,
         age: effectiveProfile.age,
         countryCode: filters.hideCountry ? null : (effectiveProfile.countryCode ?? null),
+        subscriptionTier: filters.hideSubscriptionStatus ? null : (isAdmin ? "vvip" : subscriptionTier),
         interests: interests ?? myInterests,
       },
     };
@@ -3588,6 +3590,7 @@ export default function Home() {
           gender: effectiveProfile.gender,
           age: effectiveProfile.age,
           countryCode: filters.hideCountry ? null : (effectiveProfile.countryCode ?? null),
+          subscriptionTier: filters.hideSubscriptionStatus ? null : (isAdmin ? "vvip" : subscriptionTier),
           interests: interests ?? myInterests,
         },
         createdAt: serverTimestamp(),

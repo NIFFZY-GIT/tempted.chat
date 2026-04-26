@@ -16,6 +16,8 @@ type ChatFiltersPanelProps = {
   setFilterStyle: React.Dispatch<React.SetStateAction<ChatStyleFilter>>;
   filterHideCountry: boolean;
   setFilterHideCountry: React.Dispatch<React.SetStateAction<boolean>>;
+  filterHideSubscriptionStatus: boolean;
+  setFilterHideSubscriptionStatus: React.Dispatch<React.SetStateAction<boolean>>;
   subscriptionTier: "vip" | "vvip" | null;
   filterAgeGroup: AgeGroupFilter;
   setFilterAgeGroup: React.Dispatch<React.SetStateAction<AgeGroupFilter>>;
@@ -42,6 +44,8 @@ export function ChatFiltersPanel({
   setFilterStyle,
   filterHideCountry,
   setFilterHideCountry,
+  filterHideSubscriptionStatus,
+  setFilterHideSubscriptionStatus,
   subscriptionTier,
   filterAgeGroup,
   setFilterAgeGroup,
@@ -169,6 +173,23 @@ export function ChatFiltersPanel({
                   <span className="flex items-center gap-3 text-[13px] font-medium text-white/80"><span className="text-[15px]">🙈</span>Hide my country</span>
                   <span className={`relative flex h-7 w-12 items-center rounded-full transition-colors duration-300 ${filterHideCountry ? "bg-white" : "bg-white/15"}`}>
                     <span className={`absolute h-5.5 w-5.5 rounded-full shadow-md transition-transform duration-300 ${filterHideCountry ? "translate-x-[22px] bg-black" : "translate-x-[3px] bg-white/60"}`} />
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!hasActiveSubscription) {
+                      onShowPaywall?.();
+                      return;
+                    }
+                    setFilterHideSubscriptionStatus((v: boolean) => !v);
+                  }}
+                  className="flex w-full items-center justify-between rounded-2xl border border-white/[0.16] bg-white/[0.08] px-5 py-3.5 transition-all duration-200 hover:bg-white/[0.12]"
+                >
+                  <span className="flex items-center gap-3 text-[13px] font-medium text-white/80"><span className="text-[15px]">🫥</span>Hide my VIP/VVIP status</span>
+                  <span className={`relative flex h-7 w-12 items-center rounded-full transition-colors duration-300 ${filterHideSubscriptionStatus ? "bg-white" : "bg-white/15"}`}>
+                    <span className={`absolute h-5.5 w-5.5 rounded-full shadow-md transition-transform duration-300 ${filterHideSubscriptionStatus ? "translate-x-[22px] bg-black" : "translate-x-[3px] bg-white/60"}`} />
                   </span>
                 </button>
               </div>

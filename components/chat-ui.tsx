@@ -51,6 +51,7 @@ export type ChatFilters = {
   style: ChatStyleFilter;
   country: CountryFilter;
   hideCountry?: boolean;
+  hideSubscriptionStatus?: boolean;
 };
 
 export type FullscreenCapableElement = HTMLElement & {
@@ -423,6 +424,7 @@ function ModeAndFiltersViewLegacy({
   const [style, setStyle] = useState<ChatStyleFilter>("Any style");
   const [country, setCountry] = useState<CountryFilter>("Any");
   const [hideCountry, setHideCountry] = useState(false);
+  const [hideSubscriptionStatus, setHideSubscriptionStatus] = useState(false);
   const [countryMenuOpen, setCountryMenuOpen] = useState(false);
   const [hoveredMode, setHoveredMode] = useState<ChatMode | null>(null);
   const countryMenuRef = useRef<HTMLDivElement | null>(null);
@@ -471,7 +473,7 @@ function ModeAndFiltersViewLegacy({
   };
 
   const handleStart = () => {
-    onStart(selectedMode, { gender, ageGroup, style, country, hideCountry }, undefined, collectInterests());
+    onStart(selectedMode, { gender, ageGroup, style, country, hideCountry, hideSubscriptionStatus }, undefined, collectInterests());
   };
 
   const handleApplyLegacyFilters = () => {
@@ -480,7 +482,7 @@ function ModeAndFiltersViewLegacy({
   };
 
   const handleQuickStart = () => {
-    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry }, undefined, collectInterests());
+    onStart(selectedMode, { gender: "Any", ageGroup: "Any age", style: "Any style", country: "Any", hideCountry, hideSubscriptionStatus }, undefined, collectInterests());
   };
 
   const activeFiltersCount = [
@@ -489,6 +491,7 @@ function ModeAndFiltersViewLegacy({
     style !== "Any style",
     country !== "Any",
     hideCountry,
+    hideSubscriptionStatus,
   ].filter(Boolean).length;
 
   const modeConfig: Array<{
@@ -785,6 +788,8 @@ function ModeAndFiltersViewLegacy({
         setFilterStyle={setStyle}
         filterHideCountry={hideCountry}
         setFilterHideCountry={setHideCountry}
+        filterHideSubscriptionStatus={hideSubscriptionStatus}
+        setFilterHideSubscriptionStatus={setHideSubscriptionStatus}
         subscriptionTier={subscriptionTier}
         filterAgeGroup={ageGroup}
         setFilterAgeGroup={setAgeGroup}
@@ -933,6 +938,7 @@ export function ChatRoomView({
   const [filterStyle, setFilterStyle] = useState<ChatStyleFilter>(chatFilters?.style ?? "Any style");
   const [filterCountry, setFilterCountry] = useState<CountryFilter>(chatFilters?.country ?? "Any");
   const [filterHideCountry, setFilterHideCountry] = useState(chatFilters?.hideCountry ?? false);
+  const [filterHideSubscriptionStatus, setFilterHideSubscriptionStatus] = useState(chatFilters?.hideSubscriptionStatus ?? false);
   const [filterCountryMenuOpen, setFilterCountryMenuOpen] = useState(false);
   const filterCountryMenuRef = useRef<HTMLDivElement | null>(null);
   const filterSelectedCountryCode = filterCountry !== "Any" ? filterCountry : undefined;
@@ -951,6 +957,7 @@ export function ChatRoomView({
     chatFilters?.style !== "Any style" && chatFilters?.style,
     chatFilters?.country !== "Any" && chatFilters?.country,
     chatFilters?.hideCountry,
+    chatFilters?.hideSubscriptionStatus,
   ].filter(Boolean).length;
   const isFullscreenActive = isFullscreen || isFallbackFullscreen;
 
@@ -965,7 +972,14 @@ export function ChatRoomView({
 
   const handleApplyFilters = () => {
     setShowChatFilters(false);
-    onLeaveChat({ gender: filterGender, ageGroup: filterAgeGroup, style: filterStyle, country: filterCountry, hideCountry: filterHideCountry });
+    onLeaveChat({
+      gender: filterGender,
+      ageGroup: filterAgeGroup,
+      style: filterStyle,
+      country: filterCountry,
+      hideCountry: filterHideCountry,
+      hideSubscriptionStatus: filterHideSubscriptionStatus,
+    });
   };
 
   const renderChatFilterPanel = () => (
@@ -980,6 +994,8 @@ export function ChatRoomView({
       setFilterStyle={setFilterStyle}
       filterHideCountry={filterHideCountry}
       setFilterHideCountry={setFilterHideCountry}
+      filterHideSubscriptionStatus={filterHideSubscriptionStatus}
+      setFilterHideSubscriptionStatus={setFilterHideSubscriptionStatus}
       subscriptionTier={subscriptionTier}
       filterAgeGroup={filterAgeGroup}
       setFilterAgeGroup={setFilterAgeGroup}
