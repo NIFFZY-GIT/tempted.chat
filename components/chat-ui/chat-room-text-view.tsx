@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Image from "next/image";
 import { TierLogo } from "@/components/tier-logo";
 import type { ChatFilters, ProfileGender } from "@/components/chat-ui";
@@ -187,8 +188,48 @@ export function ChatRoomTextView({
   onSelectImage,
   chatFiltersPanel,
 }: ChatRoomTextViewProps) {
+  const [showImageSourcePicker, setShowImageSourcePicker] = React.useState(false);
+  const cameraInputRef = React.useRef<HTMLInputElement | null>(null);
+  const imageSourceSheetRef = React.useRef<HTMLDivElement | null>(null);
+
   const preventSendButtonFocus = (event: React.PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
+  };
+
+  React.useEffect(() => {
+    if (!showImageSourcePicker) {
+      return;
+    }
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setShowImageSourcePicker(false);
+      }
+    };
+
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [showImageSourcePicker]);
+
+  const openImageSourcePicker = () => {
+    setShowImageSourcePicker(true);
+  };
+
+  const openGalleryPicker = () => {
+    setShowImageSourcePicker(false);
+    fileInputRef.current?.click();
+  };
+
+  const openCameraPicker = () => {
+    setShowImageSourcePicker(false);
+    cameraInputRef.current?.click();
+  };
+
+  const handleSelectImage: React.ChangeEventHandler<HTMLInputElement> = (event) => {
+    setShowImageSourcePicker(false);
+    onSelectImage(event);
   };
 
   return (
@@ -753,7 +794,7 @@ export function ChatRoomTextView({
           <div className="flex items-end gap-2.5">
             <button
               disabled={isSendingMessage || !hasResolvedStrangerProfile}
-              onClick={() => fileInputRef.current?.click()}
+              onClick={openImageSourcePicker}
               aria-label="Add image or GIF"
               title="Add image or GIF"
               className="flex h-[3.25rem] w-[3.25rem] flex-shrink-0 items-center justify-center rounded-[1.25rem] bg-white/[0.03] border border-white/[0.02] text-white/20 transition-all duration-200 hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-10"
@@ -801,7 +842,79 @@ export function ChatRoomTextView({
         </div>
       </footer>
 
-      <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.gif" onChange={onSelectImage} />
+      <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.gif" onChange={handleSelectImage} />
+      <input ref={cameraInputRef} type="file" className="hidden" accept="image/*" capture="environment" onChange={handleSelectImage} />
+
+      {showImageSourcePicker && (
+        <div
+          className="absolute inset-0 z-40 flex items-end justify-center bg-black/55 p-3 backdrop-blur-[2px] sm:items-center sm:p-6"
+          onClick={() => setShowImageSourcePicker(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose image source"
+        >
+          <div
+            ref={imageSourceSheetRef}
+            className="animate-pop-in w-full max-w-md rounded-[1.75rem] border border-white/[0.06] bg-[#101018]/96 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur-2xl sm:rounded-[2rem] sm:p-4"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-white/10 sm:hidden" />
+
+            <div className="mb-3 flex items-start justify-between gap-3 px-1 sm:mb-4">
+              <div>
+                <h3 className="text-base font-black tracking-tight text-white">Add a photo</h3>
+                <p className="mt-1 text-sm text-white/45">Choose from your gallery or open the camera.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowImageSourcePicker(false)}
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl bg-white/[0.04] text-white/40 transition-all duration-200 hover:bg-white/[0.08] hover:text-white/70"
+                aria-label="Close image source picker"
+              >
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={openGalleryPicker}
+                className="group flex min-h-[4.75rem] items-center gap-3 rounded-[1.35rem] border border-white/[0.05] bg-white/[0.03] px-4 py-3 text-left transition-all duration-200 hover:bg-white/[0.06] hover:border-white/[0.09] active:scale-[0.99]"
+              >
+                <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-white/[0.06] text-white/80 transition-colors group-hover:bg-white/[0.1] group-hover:text-white">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 7a2 2 0 0 1 2-2h3l1.2 1.5H18a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><circle cx="12" cy="13" r="3" /></svg>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-black text-white">Choose image</span>
+                  <span className="mt-0.5 block text-xs text-white/40">Photos, screenshots, and GIFs</span>
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={openCameraPicker}
+                className="group flex min-h-[4.75rem] items-center gap-3 rounded-[1.35rem] border border-pink-500/15 bg-pink-500/10 px-4 py-3 text-left transition-all duration-200 hover:bg-pink-500/16 hover:border-pink-500/25 active:scale-[0.99]"
+              >
+                <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-pink-500/15 text-pink-100 transition-colors group-hover:bg-pink-500/25">
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M4 8a2 2 0 0 1 2-2h2l1.25-1.5h5.5L16 6h2a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /><circle cx="12" cy="12" r="3" /></svg>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-black text-white">Take photo</span>
+                  <span className="mt-0.5 block text-xs text-pink-100/70">Open the camera and send right away</span>
+                </span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowImageSourcePicker(false)}
+              className="mt-2 flex w-full items-center justify-center rounded-[1.2rem] px-4 py-3 text-sm font-bold text-white/45 transition-all duration-200 hover:bg-white/[0.04] hover:text-white/70 sm:mt-3"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {chatFiltersPanel}
     </section>

@@ -3760,6 +3760,7 @@ export default function Home() {
     setImagePreview(URL.createObjectURL(file));
     setSelectedFileName(file.name);
     setSelectedImageFile(file);
+    event.target.value = "";
   };
 
   const clearAttachment = () => {
