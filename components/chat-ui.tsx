@@ -908,6 +908,8 @@ export function ChatRoomView({
   const [isFallbackFullscreen, setIsFallbackFullscreen] = useState(false);
   const [showScrollToLatestBubble, setShowScrollToLatestBubble] = useState(false);
   const [unreadReceivedCount, setUnreadReceivedCount] = useState(0);
+  const showScrollToLatestBubbleRef = useRef(false);
+  const unreadReceivedCountRef = useRef(0);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [showBackConfirm, setShowBackConfirm] = useState(false);
   const [showVideoChatOverlay, setShowVideoChatOverlay] = useState(false);
@@ -1107,6 +1109,14 @@ export function ChatRoomView({
     }
   }, [messages]);
 
+  useEffect(() => {
+    showScrollToLatestBubbleRef.current = showScrollToLatestBubble;
+  }, [showScrollToLatestBubble]);
+
+  useEffect(() => {
+    unreadReceivedCountRef.current = unreadReceivedCount;
+  }, [unreadReceivedCount]);
+
   const handleMessagesScroll = () => {
     const viewport = messagesViewportRef.current;
     if (!viewport) {
@@ -1114,9 +1124,14 @@ export function ChatRoomView({
     }
 
     const nearBottom = isNearBottom(viewport);
+    const nextShowScrollToLatestBubble = !nearBottom;
     shouldAutoScrollRef.current = nearBottom;
-    setShowScrollToLatestBubble(!nearBottom);
-    if (nearBottom) {
+    if (showScrollToLatestBubbleRef.current !== nextShowScrollToLatestBubble) {
+      showScrollToLatestBubbleRef.current = nextShowScrollToLatestBubble;
+      setShowScrollToLatestBubble(nextShowScrollToLatestBubble);
+    }
+    if (nearBottom && unreadReceivedCountRef.current !== 0) {
+      unreadReceivedCountRef.current = 0;
       setUnreadReceivedCount(0);
     }
   };

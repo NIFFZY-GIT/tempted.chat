@@ -187,17 +187,16 @@ export function ChatRoomTextView({
   onSelectImage,
   chatFiltersPanel,
 }: ChatRoomTextViewProps) {
-  const handleSendMessage = async () => {
-    await sendMessage();
-    messageInputRef.current?.focus({ preventScroll: true });
+  const preventSendButtonFocus = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
   };
 
   return (
     <section
       ref={chatContainerRef}
-      className={`${isFullscreenActive ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.04] bg-[#08080c] shadow-[0_24px_80px_rgba(0,0,0,0.6)] overscroll-contain touch-manipulation transition-all duration-300 ease-out`}
+      className={`${isFullscreenActive ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none bg-[#08080c] shadow-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl bg-[#08080c] shadow-[0_24px_80px_rgba(0,0,0,0.6)] transition-all duration-300 ease-out sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.04] overscroll-contain touch-manipulation`}
     >
-      <header className="flex items-center gap-1.5 sm:gap-2 border-b border-white/[0.04] bg-[#0d0d14]/40 px-2 sm:px-3 py-2 sm:py-2.5 backdrop-blur-2xl sm:px-5 sm:py-3.5 transition-all duration-300 ease-out will-change-auto overflow-x-auto">
+      <header className={`${isFullscreenActive ? "bg-[#0d0d14]" : "bg-[#0d0d14]/40 backdrop-blur-2xl transition-all duration-300 ease-out"} flex items-center gap-1.5 border-b border-white/[0.04] px-2 py-2 overflow-x-auto sm:gap-2 sm:px-3 sm:py-2.5 sm:px-5 sm:py-3.5 will-change-auto`}>
         {!showBackConfirm ? (
           <button
             onClick={() => setShowBackConfirm(true)}
@@ -305,8 +304,8 @@ export function ChatRoomTextView({
       <div
         ref={messagesViewportRef}
         onScroll={handleMessagesScroll}
-        className="relative min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8 overscroll-contain will-change-scroll scroll-smooth"
-        style={{ WebkitOverflowScrolling: "touch", scrollBehavior: "auto" }}
+        className={`${isFullscreenActive ? "px-3 py-4 sm:px-4 md:px-8" : "px-4 py-6 md:px-8"} relative min-h-0 flex-1 overflow-y-auto overscroll-contain`}
+        style={{ WebkitOverflowScrolling: "touch", scrollBehavior: "auto", contain: "layout paint style" }}
       >
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
           {isConnecting && (
@@ -680,7 +679,7 @@ export function ChatRoomTextView({
       </div>
 
       <footer
-        className="border-t border-white/[0.03] bg-[#0c0c14]/60 px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 md:px-6 md:pt-4 backdrop-blur-3xl flex-shrink-0 transition-all duration-300 ease-out"
+        className={`${isFullscreenActive ? "bg-[#0c0c14]" : "bg-[#0c0c14]/60 backdrop-blur-3xl transition-all duration-300 ease-out"} border-t border-white/[0.03] px-4 pb-[max(env(safe-area-inset-bottom),0.75rem)] pt-3 md:px-6 md:pt-4 flex-shrink-0`}
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), calc(0.75rem + var(--keyboard-offset, 0px)))" }}
       >
         <div className="mx-auto w-full max-w-3xl space-y-3">
@@ -780,7 +779,8 @@ export function ChatRoomTextView({
             </div>
 
             <button
-              onClick={handleSendMessage}
+              onPointerDown={preventSendButtonFocus}
+              onClick={sendMessage}
               disabled={isSendingMessage || (!text.trim() && !imagePreview) || !hasResolvedStrangerProfile}
               className={`group relative flex h-[3.25rem] w-[3.25rem] flex-shrink-0 items-center justify-center overflow-hidden rounded-[1.25rem] bg-pink-500 text-white shadow-[0_8px_20px_rgba(236,72,153,0.3)] transition-all duration-200 hover:bg-pink-400 hover:scale-[1.02] active:scale-95 disabled:opacity-10 disabled:grayscale disabled:scale-100 ${isSendingMessage ? "animate-[send-pulse_1.5s_ease-in-out_infinite]" : ""}`}
             >

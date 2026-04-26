@@ -116,9 +116,8 @@ export function ChatRoomVideoView({
     void isSendingMessage;
         void onShowPaywall;
 
-    const handleSendMessage = async () => {
-        await sendMessage();
-        messageInputRef.current?.focus({ preventScroll: true });
+    const preventSendButtonFocus = (event: React.PointerEvent<HTMLButtonElement>) => {
+        event.preventDefault();
     };
 
     useEffect(() => {
@@ -259,11 +258,11 @@ export function ChatRoomVideoView({
                         <div className="p-4 bg-black/40 border-t border-white/10 flex gap-3 items-center">
                             <input 
                                 ref={messageInputRef} value={text} onChange={(e) => setText(e.target.value)}
-                                onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+                                onKeyDown={(e) => e.key === "Enter" && sendMessage()}
                                 placeholder="Message..." 
                                 className="flex-1 bg-white/5 border border-white/5 rounded-2xl px-6 py-4 text-sm outline-none focus:border-pink-500/50" 
                             />
-                            <button onClick={handleSendMessage} className="h-14 w-14 rounded-2xl bg-pink-600 flex items-center justify-center shadow-lg active:scale-90 transition-all">
+                            <button onPointerDown={preventSendButtonFocus} onClick={sendMessage} className="h-14 w-14 rounded-2xl bg-pink-600 flex items-center justify-center shadow-lg active:scale-90 transition-all">
                                 <Send size={20} />
                             </button>
                         </div>
