@@ -754,6 +754,8 @@ export function ChatRoomTextView({
             <button
               disabled={isSendingMessage || !hasResolvedStrangerProfile}
               onClick={() => fileInputRef.current?.click()}
+              aria-label="Add image or GIF"
+              title="Add image or GIF"
               className="flex h-[3.25rem] w-[3.25rem] flex-shrink-0 items-center justify-center rounded-[1.25rem] bg-white/[0.03] border border-white/[0.02] text-white/20 transition-all duration-200 hover:bg-white/[0.08] hover:text-white active:scale-95 disabled:opacity-10"
             >
               <svg className="h-5.5 w-5.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14m7-7H5" /></svg>
@@ -799,7 +801,7 @@ export function ChatRoomTextView({
         </div>
       </footer>
 
-      <input ref={fileInputRef} type="file" className="hidden" accept="image/*" onChange={onSelectImage} />
+      <input ref={fileInputRef} type="file" className="hidden" accept="image/*,.gif" onChange={onSelectImage} />
 
       {chatFiltersPanel}
     </section>
