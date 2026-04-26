@@ -230,7 +230,6 @@ a {
   /* Smooth transitions for footer when keyboard appears */
   footer {
     will-change: padding-bottom;
-    transform: translate3d(0, 0, 0);
   }
 
   /* Optimize scrollbar visibility */

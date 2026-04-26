@@ -235,7 +235,7 @@ export function ChatRoomTextView({
   return (
     <section
       ref={chatContainerRef}
-      className={`${isFullscreenActive ? "fixed inset-0 z-50 mt-0 h-dvh rounded-none bg-[#08080c] shadow-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl bg-[#08080c] shadow-[0_24px_80px_rgba(0,0,0,0.6)] transition-all duration-300 ease-out sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.04] overscroll-contain touch-manipulation`}
+      className={`${isFullscreenActive ? "fixed inset-0 z-50 mt-0 h-[calc(var(--vh,1dvh)*100)] rounded-none bg-[#08080c] shadow-none" : "mt-0 h-[calc(var(--vh,1dvh)*100-5.5rem)] rounded-2xl bg-[#08080c] shadow-[0_24px_80px_rgba(0,0,0,0.6)] transition-all duration-300 ease-out sm:h-[calc(var(--vh,1dvh)*100-6rem)] md:rounded-3xl"} relative flex w-full max-w-none flex-col overflow-hidden border border-white/[0.04] overscroll-contain touch-manipulation`}
     >
       <header className={`${isFullscreenActive ? "bg-[#0d0d14]" : "bg-[#0d0d14]/40 backdrop-blur-2xl transition-all duration-300 ease-out"} flex items-center gap-1.5 border-b border-white/[0.04] px-2 py-2 overflow-x-auto sm:gap-2 sm:px-3 sm:py-2.5 sm:px-5 sm:py-3.5 will-change-auto`}>
         {!showBackConfirm ? (
@@ -806,6 +806,13 @@ export function ChatRoomTextView({
               <input
                 ref={messageInputRef}
                 type="text"
+                name="chat-message"
+                autoComplete="off"
+                autoCorrect="on"
+                autoCapitalize="sentences"
+                inputMode="text"
+                enterKeyHint="send"
+                spellCheck={false}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {

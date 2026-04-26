@@ -1283,11 +1283,12 @@ export function ChatRoomView({
 
     const update = () => {
       const keyboardOffset = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
-      
-      // Only update if value actually changed to avoid unnecessary re-renders
+      // Always keep viewport height current, even when keyboard offset is unchanged.
+      document.documentElement.style.setProperty("--vh", `${vv.height * 0.01}px`);
+
+      // Only update keyboard offset when value actually changed.
       if (keyboardOffset !== lastKeyboardOffset) {
         lastKeyboardOffset = keyboardOffset;
-        document.documentElement.style.setProperty("--vh", `${vv.height * 0.01}px`);
         document.documentElement.style.setProperty("--keyboard-offset", `${keyboardOffset}px`);
       }
     };
