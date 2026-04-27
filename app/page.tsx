@@ -4479,7 +4479,18 @@ export default function Home() {
             onGoToAdmin={() => router.push("/admin")}
           />
           <section className="auth-shell">
-            <article className="auth-panel auth-loading">Checking account session...</article>
+            <article className="auth-panel auth-loading" aria-live="polite" aria-busy="true">
+              <span className="sr-only">Checking account session...</span>
+              <span className="auth-loading-visual" aria-hidden="true">
+                <span className="auth-loading-spinner" />
+                <span className="auth-loading-ring" />
+              </span>
+              <span className="auth-loading-dots" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
+            </article>
           </section>
         </main>
       </>
