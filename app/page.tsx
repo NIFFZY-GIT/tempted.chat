@@ -4528,11 +4528,6 @@ export default function Home() {
                   <span />
                 </span>
               </span>
-              <span className="auth-loading-dots" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </span>
             </article>
           </section>
         </main>
