@@ -78,6 +78,7 @@ const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!;
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 3000;
 const ROOM_PRESENCE_TIMEOUT_MS = 12000;
+const ROOM_ACTIVITY_GRACE_MS = 18000;
 const NO_SHOW_TIMEOUT_MS = 30_000;
 const MATCH_RETRY_INTERVAL_MS = 800;
 const MATCH_HEARTBEAT_INTERVAL_MS = 1500;
@@ -338,6 +339,7 @@ export default function Home() {
   const realtimeReconnectAttemptRef = useRef(0);
   const [strangerSkipped, setStrangerSkipped] = useState(false);
   const [waitingForNext, setWaitingForNext] = useState(false);
+  const lastStrangerActivityAtRef = useRef(0);
 
     // Camera/mic permission is checked by the preview useEffect below
     // (which starts the actual stream). No separate probe needed — the
@@ -2687,6 +2689,22 @@ export default function Home() {
           return;
         }
 
+        const recentMessagesSnapshot = await getDocs(
+          query(
+            collection(db, "rooms", roomId, "messages"),
+            orderBy("createdAt", "desc"),
+            limit(6),
+          ),
+        );
+        const hasRecentMessageFromStranger = recentMessagesSnapshot.docs.some((messageDoc) => {
+          const data = messageDoc.data() as { senderId?: string };
+          return Boolean(data.senderId && data.senderId !== user.uid);
+        });
+
+        if (hasRecentMessageFromStranger) {
+          return;
+        }
+
         console.warn("No-show: stranger never joined room", { roomId, otherUid });
 
         try {
@@ -2860,6 +2878,7 @@ export default function Home() {
       roomUnsubRef.current = null;
       updateRoomParticipants([]);
       setStrangerIsTyping(false);
+      lastStrangerActivityAtRef.current = 0;
       selfTypingRef.current = false;
       return;
     }
@@ -2962,12 +2981,17 @@ export default function Home() {
         // Presence timeout
         {
           const otherUid = roomData.participants?.find((uid) => uid !== user.uid);
-          const otherParticipant = otherUid
-            ? (roomData.participantProfilesBy?.[otherUid] ?? roomData.participantProfiles?.find((p) => p.uid !== user.uid))
-            : undefined;
           const otherPresenceMs = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
+          if (typeof otherPresenceMs === "number") {
+            lastStrangerActivityAtRef.current = Math.max(lastStrangerActivityAtRef.current, otherPresenceMs);
+          }
+
+          const lastKnownActivityMs = Math.max(
+            typeof otherPresenceMs === "number" ? otherPresenceMs : 0,
+            lastStrangerActivityAtRef.current,
+          );
           const otherTimedOut =
-            typeof otherPresenceMs === "number" && Date.now() - otherPresenceMs > ROOM_PRESENCE_TIMEOUT_MS;
+            lastKnownActivityMs > 0 && Date.now() - lastKnownActivityMs > ROOM_PRESENCE_TIMEOUT_MS + ROOM_ACTIVITY_GRACE_MS;
 
           if (
             otherUid &&
@@ -3017,6 +3041,9 @@ export default function Home() {
         const isOtherUserTyping = Object.entries(roomData.typingBy ?? {}).some(
           ([uid, typing]) => uid !== user.uid && Boolean(typing),
         );
+        if (isOtherUserTyping) {
+          lastStrangerActivityAtRef.current = Date.now();
+        }
         setStrangerIsTyping(isOtherUserTyping);
       },
       (error: FirestoreError) => {
@@ -3217,6 +3244,16 @@ export default function Home() {
               };
             }),
           );
+
+          const latestStrangerMessageAt = nextMessages.reduce((latest, message) => {
+            if (message.author !== "stranger" || typeof message.createdAtMs !== "number") {
+              return latest;
+            }
+            return Math.max(latest, message.createdAtMs);
+          }, 0);
+          if (latestStrangerMessageAt > 0) {
+            lastStrangerActivityAtRef.current = Math.max(lastStrangerActivityAtRef.current, latestStrangerMessageAt);
+          }
 
           const validMessageIds = new Set(nextMessages.map((message) => message.id));
           for (const messageId of Array.from(decryptedTextCacheRef.current.keys())) {
@@ -4482,8 +4519,14 @@ export default function Home() {
             <article className="auth-panel auth-loading" aria-live="polite" aria-busy="true">
               <span className="sr-only">Checking account session...</span>
               <span className="auth-loading-visual" aria-hidden="true">
-                <span className="auth-loading-spinner" />
                 <span className="auth-loading-ring" />
+                <span className="auth-loading-spinner" />
+                <span className="auth-loading-core" />
+                <span className="auth-loading-orbit">
+                  <span />
+                  <span />
+                  <span />
+                </span>
               </span>
               <span className="auth-loading-dots" aria-hidden="true">
                 <span />
