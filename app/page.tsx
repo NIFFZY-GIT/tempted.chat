@@ -77,8 +77,8 @@ const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!;
 
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
 const ROOM_PRESENCE_HEARTBEAT_MS = 3000;
-const ROOM_PRESENCE_TIMEOUT_MS = 12000;
-const ROOM_ACTIVITY_GRACE_MS = 18000;
+const ROOM_PRESENCE_TIMEOUT_MS = 45_000;
+const ROOM_ACTIVITY_GRACE_MS = 120_000;
 const NO_SHOW_TIMEOUT_MS = 30_000;
 const MATCH_RETRY_INTERVAL_MS = 800;
 const MATCH_HEARTBEAT_INTERVAL_MS = 1500;
@@ -340,6 +340,8 @@ export default function Home() {
   const [strangerSkipped, setStrangerSkipped] = useState(false);
   const [waitingForNext, setWaitingForNext] = useState(false);
   const lastStrangerActivityAtRef = useRef(0);
+  const lastObservedStrangerPresenceRef = useRef<number | null>(null);
+  const presenceTimeoutCheckInFlightRef = useRef(false);
 
     // Camera/mic permission is checked by the preview useEffect below
     // (which starts the actual stream). No separate probe needed — the
@@ -2696,12 +2698,12 @@ export default function Home() {
             limit(6),
           ),
         );
-        const hasRecentMessageFromStranger = recentMessagesSnapshot.docs.some((messageDoc) => {
+        const hasRecentRoomMessage = recentMessagesSnapshot.docs.some((messageDoc) => {
           const data = messageDoc.data() as { senderId?: string };
-          return Boolean(data.senderId && data.senderId !== user.uid);
+          return typeof data.senderId === "string" && data.senderId.length > 0;
         });
 
-        if (hasRecentMessageFromStranger) {
+        if (hasRecentRoomMessage) {
           return;
         }
 
@@ -2879,12 +2881,16 @@ export default function Home() {
       updateRoomParticipants([]);
       setStrangerIsTyping(false);
       lastStrangerActivityAtRef.current = 0;
+      lastObservedStrangerPresenceRef.current = null;
+      presenceTimeoutCheckInFlightRef.current = false;
       selfTypingRef.current = false;
       return;
     }
 
     const roomRef = doc(db, "rooms", activeRoomId);
     disconnectHandledRoomRef.current = null;
+  lastObservedStrangerPresenceRef.current = null;
+  presenceTimeoutCheckInFlightRef.current = false;
 
     roomUnsubRef.current?.();
     roomUnsubRef.current = onSnapshot(
@@ -2980,16 +2986,22 @@ export default function Home() {
 
         // Presence timeout
         {
+          const roomMode = roomData.mode === "video" ? "video" : "text";
+          if (roomMode !== "video") {
+            return;
+          }
+
           const otherUid = roomData.participants?.find((uid) => uid !== user.uid);
           const otherPresenceMs = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
           if (typeof otherPresenceMs === "number") {
-            lastStrangerActivityAtRef.current = Math.max(lastStrangerActivityAtRef.current, otherPresenceMs);
+            if (lastObservedStrangerPresenceRef.current !== otherPresenceMs) {
+              lastObservedStrangerPresenceRef.current = otherPresenceMs;
+              // Use local time whenever a new heartbeat value is observed to avoid client clock skew issues.
+              lastStrangerActivityAtRef.current = Date.now();
+            }
           }
 
-          const lastKnownActivityMs = Math.max(
-            typeof otherPresenceMs === "number" ? otherPresenceMs : 0,
-            lastStrangerActivityAtRef.current,
-          );
+          const lastKnownActivityMs = lastStrangerActivityAtRef.current;
           const otherTimedOut =
             lastKnownActivityMs > 0 && Date.now() - lastKnownActivityMs > ROOM_PRESENCE_TIMEOUT_MS + ROOM_ACTIVITY_GRACE_MS;
 
@@ -2999,41 +3011,84 @@ export default function Home() {
             roomData.status !== "ended" &&
             disconnectHandledRoomRef.current !== activeRoomId
           ) {
-            disconnectHandledRoomRef.current = activeRoomId;
-            setShowNextStrangerPrompt(true);
-            setConnectingStatus(STRANGER_LEFT_PROMPT);
-            setIsConnecting(false);
-            setStrangerIsTyping(false);
-            setMessages((current) => {
-              const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
-              if (alreadyNotified) {
-                return current;
+            if (presenceTimeoutCheckInFlightRef.current) {
+              return;
+            }
+
+            const roomId = activeRoomId;
+            presenceTimeoutCheckInFlightRef.current = true;
+
+            void (async () => {
+              try {
+                const recentMessagesSnapshot = await getDocs(
+                  query(
+                    collection(db, "rooms", roomId, "messages"),
+                    orderBy("createdAt", "desc"),
+                    limit(8),
+                  ),
+                );
+
+                const recentActivityThresholdMs = Date.now() - (ROOM_PRESENCE_TIMEOUT_MS + ROOM_ACTIVITY_GRACE_MS);
+                const hasRecentStrangerMessage = recentMessagesSnapshot.docs.some((messageDoc) => {
+                  const data = messageDoc.data() as {
+                    senderId?: string;
+                    createdAt?: { toDate?: () => Date };
+                  };
+                  if (!data.senderId || data.senderId === user.uid) {
+                    return false;
+                  }
+
+                  const createdAtMs = data.createdAt?.toDate?.().getTime() ?? 0;
+                  return createdAtMs >= recentActivityThresholdMs;
+                });
+
+                if (hasRecentStrangerMessage) {
+                  lastStrangerActivityAtRef.current = Date.now();
+                  return;
+                }
+
+                if (disconnectHandledRoomRef.current === roomId || activeRoomIdRef.current !== roomId) {
+                  return;
+                }
+
+                disconnectHandledRoomRef.current = roomId;
+                setShowNextStrangerPrompt(true);
+                setConnectingStatus(STRANGER_LEFT_PROMPT);
+                setIsConnecting(false);
+                setStrangerIsTyping(false);
+                setMessages((current) => {
+                  const alreadyNotified = current.some((message) => message.text === STRANGER_LEFT_PROMPT);
+                  if (alreadyNotified) {
+                    return current;
+                  }
+
+                  const now = new Date();
+                  return [
+                    ...current,
+                    {
+                      id: `system-${Date.now()}`,
+                      author: "stranger",
+                      text: STRANGER_LEFT_PROMPT,
+                      sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
+                    },
+                  ];
+                });
+                setActiveRoomId(null);
+
+                void deleteAllRoomData(roomId, roomData.participants ?? [user.uid]);
+
+                void updateDoc(roomRef, {
+                  status: "ended",
+                  endedBy: user.uid,
+                  endedAt: serverTimestamp(),
+                  endedReason: "presence-timeout",
+                }).catch(() => {
+                  // Ignore timeout end race conditions.
+                });
+              } finally {
+                presenceTimeoutCheckInFlightRef.current = false;
               }
-
-              const now = new Date();
-              return [
-                ...current,
-                {
-                  id: `system-${Date.now()}`,
-                  author: "stranger",
-                  text: STRANGER_LEFT_PROMPT,
-                  sentAt: `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`,
-                },
-              ];
-            });
-            setActiveRoomId(null);
-
-            void deleteAllRoomData(activeRoomId, roomData.participants ?? [user.uid]);
-
-            void updateDoc(roomRef, {
-              status: "ended",
-              endedBy: user.uid,
-              endedAt: serverTimestamp(),
-              endedReason: "presence-timeout",
-            }).catch(() => {
-              // Ignore timeout end race conditions.
-            });
-
+            })();
             return;
           }
         }
