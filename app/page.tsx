@@ -80,8 +80,6 @@ const ROOM_PRESENCE_HEARTBEAT_MS = 3000;
 const ROOM_PRESENCE_TIMEOUT_MS = 45_000;
 const ROOM_ACTIVITY_GRACE_MS = 120_000;
 const NO_SHOW_TIMEOUT_MS = 30_000;
-const MATCH_RETRY_INTERVAL_MS = 800;
-const MATCH_HEARTBEAT_INTERVAL_MS = 1500;
 const E2EE_WAIT_BEFORE_QUEUE_MS = 400;
 const REALTIME_QUEUE_PING_MS = 1500;
 const REALTIME_WS_URL = process.env.NEXT_PUBLIC_REALTIME_WS_URL || "ws://localhost:8787";
@@ -509,11 +507,6 @@ export default function Home() {
       realtimeSocketRef.current.send(JSON.stringify({ event: "queue_leave", payload: { mode: queuedMode } }));
     }
 
-    if (user) {
-      void deleteDoc(doc(db, "waitingUsers", user.uid)).catch(() => {
-        // Ignore if already removed.
-      });
-    }
   }, [user]);
 
   const clearDemoTimers = () => {
@@ -2843,11 +2836,6 @@ export default function Home() {
         // Best-effort cleanup.
       }
 
-      try {
-        void deleteDoc(doc(db, "waitingUsers", user.uid));
-      } catch {
-        // Best-effort cleanup.
-      }
     };
 
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -2869,9 +2857,6 @@ export default function Home() {
     stopRealtimeQueueHeartbeat();
 
     cleanupWaitIntervals();
-    void deleteDoc(doc(db, "waitingUsers", user.uid)).catch(() => {
-      // Ignore if queue entry already removed.
-    });
   }, [activeRoomId, sendRealtimeEvent, stopRealtimeQueueHeartbeat, user]);
 
   useEffect(() => {
@@ -3671,116 +3656,8 @@ export default function Home() {
       return;
     }
 
-    const waitingRef = doc(db, "waitingUsers", user.uid);
-    try {
-      await setDoc(waitingRef, {
-        uid: user.uid,
-        status: "searching",
-        mode: effectiveMode,
-        filters,
-        profile: {
-          gender: effectiveProfile.gender,
-          age: effectiveProfile.age,
-          countryCode: filters.hideCountry ? null : (effectiveProfile.countryCode ?? null),
-          subscriptionTier: filters.hideSubscriptionStatus ? null : (isAdmin ? "vvip" : subscriptionTier),
-          interests: interests ?? myInterests,
-        },
-        createdAt: serverTimestamp(),
-        lastSeenAt: Date.now(),
-      });
-
-      console.log("[matchmaking] queue entry written for", user.uid, "mode:", effectiveMode, "filters:", filters);
-
-      // Listen for when the server (or another client's trigger) matches us
-      waitingUnsubRef.current?.();
-      waitingUnsubRef.current = onSnapshot(waitingRef, (snapshot) => {
-        if (!snapshot.exists()) {
-          return;
-        }
-        const data = snapshot.data() as { status?: string; roomId?: string };
-        if (data.status === "matched" && data.roomId && !activeRoomIdRef.current && !isDemoModeRef.current) {
-          console.log("[matchmaking] matched by server, room:", data.roomId);
-          stopDemoMode();
-          setConnectingStatus("Stranger found. Connecting...");
-          activeRoomIdRef.current = data.roomId;
-          setActiveRoomId(data.roomId);
-        }
-      });
-    } catch (error) {
-      console.error("Failed to enter matchmaking queue", {
-        uid: user.uid,
-        error: formatFirebaseError(error),
-      });
-      setConnectingStatus("Could not reach matchmaking right now. Retrying...");
-    }
-
-    if (effectiveMode === "video" && demoFallbackEnabled) {
-      demoFallbackTimeoutRef.current = window.setTimeout(() => {
-        if (demoSearchSessionRef.current !== searchSessionId || activeRoomIdRef.current) {
-          return;
-        }
-        void startDemoModeIfNeeded(searchSessionId);
-      }, DEMO_FALLBACK_TRIGGER_MS);
-    }
-
-    // Periodically call the server-side retryMatch as a fallback in case
-    // the initial Firestore trigger didn't find a match (e.g. this user
-    // was the first one in the queue).
-    const functions = getFunctions(firebaseApp, "us-central1");
-    const retryMatchFn = httpsCallable(functions, "retryMatch");
-    retryMatchFailureCountRef.current = 0;
-
-    const invokeRetryMatch = () => {
-      void retryMatchFn().then((result) => {
-        retryMatchFailureCountRef.current = 0;
-        const data = result.data as { matched?: boolean } | null;
-        if (data?.matched) {
-          console.log("[matchmaking] server retryMatch succeeded");
-        }
-      }).catch((error) => {
-        retryMatchFailureCountRef.current += 1;
-        console.warn("[matchmaking] retryMatch call failed", {
-          attempts: retryMatchFailureCountRef.current,
-          error: formatFirebaseError(error),
-        });
-      });
-    };
-
-    // Immediate first attempt so users don't wait for the first interval tick.
-    invokeRetryMatch();
-
-    retryMatchIntervalRef.current = window.setInterval(() => {
-      if (activeRoomIdRef.current) {
-        return;
-      }
-      invokeRetryMatch();
-    }, MATCH_RETRY_INTERVAL_MS);
-
-    heartbeatIntervalRef.current = window.setInterval(() => {
-      void (async () => {
-        try {
-          await updateDoc(waitingRef, { lastSeenAt: Date.now() });
-        } catch (error) {
-          const firebaseCode =
-            typeof error === "object" && error !== null && "code" in error
-              ? String(error.code)
-              : "unknown";
-
-          if (firebaseCode === "not-found") {
-            if (heartbeatIntervalRef.current) {
-              window.clearInterval(heartbeatIntervalRef.current);
-              heartbeatIntervalRef.current = null;
-            }
-            return;
-          }
-
-          console.error("Waiting heartbeat update failed", {
-            uid: user.uid,
-            error: formatFirebaseError(error),
-          });
-        }
-      })();
-    }, MATCH_HEARTBEAT_INTERVAL_MS);
+    setConnectingStatus("Connection unavailable. Please check your connection and try again.");
+    setIsConnecting(false);
   };
 
   const stopSearching = async () => {
@@ -3799,11 +3676,6 @@ export default function Home() {
 
     stopRealtimeQueueHeartbeat();
 
-    try {
-      await deleteDoc(doc(db, "waitingUsers", user.uid));
-    } catch {
-      // Ignore if already removed.
-    }
   };
 
   const handleDemoNext = async () => {
