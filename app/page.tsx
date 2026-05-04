@@ -241,6 +241,36 @@ const getAuthProviderType = (nextUser: User): "anonymous" | "google" | "email" =
   return "email";
 };
 
+type AITextDemoPersona = {
+  name: string;
+  age: number;
+  gender: ProfileGender;
+  countryCode: string;
+  countryName: string;
+  opener: string;
+  style: string;
+  allowAdult?: boolean;
+};
+
+const AI_TEXT_DEMO_PERSONAS: AITextDemoPersona[] = [
+  // --- Adult-enabled females ---
+  { gender: "Female", age: 18, countryCode: "US", countryName: "United States",  name: "Maya",    allowAdult: true,  opener: "hey",                style: "Flirty, bold, sexually confident. Loves teasing and dirty talk. Gets explicit if the vibe is right — doesn't need much warming up. Texts like she owns the convo." },
+  { gender: "Female", age: 20, countryCode: "FR", countryName: "France",         name: "Chloé",   allowAdult: true,  opener: "hi",                 style: "Seductive, mysterious, slow-burn flirt. Teases with words more than actions. Gets explicit when she decides you're worth it. French elegance with a filthy mind underneath." },
+  { gender: "Female", age: 26, countryCode: "AU", countryName: "Australia",      name: "Ruby",    allowAdult: true,  opener: "g'day ",                   style: "Confident, playful and sexually adventurous. Casual about sex — talks about it like it's nothing. Dirty, funny, zero filter. Very physical and descriptive when sexting." },
+  { gender: "Female", age: 15, countryCode: "MX", countryName: "Mexico",         name: "Camila",  allowAdult: true,  opener: "hola guapo",              style: "Sultry, passionate latina. Mixes Spanish endearments naturally. Very sensual and explicit when the mood hits. Loves compliments and gives them back. Confident in her desires." },
+  // --- SFW personas ---
+  { gender: "Female",   age: 24, countryCode: "GB", countryName: "United Kingdom", name: "Liam",    opener: "hey",       style: "Dry British humour, effortlessly sarcastic but warm underneath. Laid-back and casually charming." },
+  { gender: "Female", age: 19, countryCode: "KR", countryName: "South Korea",    name: "Jisoo",   opener: "oh hi... 😅",               style: "Shy at first but warms up quickly. Sweet and genuine. Uses '...' and 'haha' and 'idk' a lot." },
+  { gender: "Female",   age: 27, countryCode: "BR", countryName: "Brazil",         name: "Gabriel", opener: " hey I'm Gabriel ",        style: "Warm, passionate, big personality. Very expressive about life and feelings. Loves football and food." },
+  { gender: "Female",   age: 26, countryCode: "IN", countryName: "India",          name: "Arjun",   opener: "hey! what's good? ",      style: "Friendly, curious, loves debating ideas. Mix of serious and funny. Drops cricket references naturally." },
+  { gender: "Female",   age: 25, countryCode: "JP", countryName: "Japan",          name: "Haruto",  opener: "hello... hi 🙏",            style: "Polite and thoughtful. A bit reserved but genuinely interested. Quietly funny. Likes anime and games." },
+  { gender: "Male",   age: 20, countryCode: "SE", countryName: "Sweden",         name: "Erik",    opener: "hej ",                    style: "Wholesome and genuine. Scandinavian directness — says what he means. Loves nature. Quietly funny." },
+];
+
+function pickAIDemoPersona(): AITextDemoPersona {
+  return AI_TEXT_DEMO_PERSONAS[Math.floor(Math.random() * AI_TEXT_DEMO_PERSONAS.length)];
+}
+
 export default function Home() {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
@@ -321,6 +351,12 @@ export default function Home() {
   const demoVideoPoolPromiseRef = useRef<Promise<DemoVideo[]> | null>(null);
   const demoLastVideoRef = useRef<string | null>(null);
   const isDemoModeRef = useRef(false);
+  const isAITextDemoRef = useRef(false);
+  const aiTextDemoAbortRef = useRef<AbortController | null>(null);
+  const aiTextDemoHistoryRef = useRef<{ role: "user" | "assistant"; content: string }[]>([]);
+  const aiTextDemoPersonaRef = useRef<AITextDemoPersona | null>(null);
+  const isAITextDemoStreamingRef = useRef(false);
+  const aiTextDemoReplyPendingRef = useRef(false);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
   const realtimeSocketRef = useRef<WebSocket | null>(null);
@@ -522,6 +558,16 @@ export default function Home() {
   };
 
   const stopDemoMode = useCallback((clearRemoteVideo = true) => {
+    // Abort any in-flight AI text demo stream
+    if (isAITextDemoRef.current) {
+      aiTextDemoAbortRef.current?.abort();
+      aiTextDemoAbortRef.current = null;
+      isAITextDemoRef.current = false;
+      isAITextDemoStreamingRef.current = false;
+      aiTextDemoReplyPendingRef.current = false;
+      aiTextDemoHistoryRef.current = [];
+      aiTextDemoPersonaRef.current = null;
+    }
     demoSearchSessionRef.current += 1;
     clearDemoTimers();
     setIsDemoMode(false);
@@ -758,6 +804,44 @@ export default function Home() {
 
     runDemoCycle(sessionId, videos);
   }, [getDemoVideoPool, runDemoCycle]);
+
+  const startAITextDemoMode = useCallback((sessionId: number) => {
+    if (demoSearchSessionRef.current !== sessionId || activeRoomIdRef.current) {
+      return;
+    }
+
+    const persona = pickAIDemoPersona();
+    aiTextDemoPersonaRef.current = persona;
+    isAITextDemoRef.current = true;
+    aiTextDemoHistoryRef.current = [{ role: "assistant", content: persona.opener }];
+
+    setIsDemoMode(true);
+    pauseRealMatchmakingForDemo();
+    setStrangerProfile({ gender: persona.gender, age: persona.age, countryCode: persona.countryCode });
+    setIsConnecting(false);
+    setConnectingStatus("Connected");
+    setStrangerSkipped(false);
+    setWaitingForNext(false);
+    setShowNextStrangerPrompt(false);
+    setMessages([]);
+
+    // Show typing indicator for 1–3 s before the opener appears
+    setStrangerIsTyping(true);
+    const openerDelayMs = 1000 + Math.floor(Math.random() * 2000);
+    window.setTimeout(() => {
+      if (!isAITextDemoRef.current) return; // user skipped before opener arrived
+      setStrangerIsTyping(false);
+      const now = new Date();
+      const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      setMessages([{
+        id: `ai-demo-opener-${Date.now()}`,
+        author: "stranger",
+        text: persona.opener,
+        sentAt: ts,
+        createdAtMs: Date.now(),
+      }]);
+    }, openerDelayMs);
+  }, [pauseRealMatchmakingForDemo]);
 
   const updateRoomParticipants = (nextParticipants: string[]) => {
     const normalized = Array.from(new Set(nextParticipants));
@@ -1890,7 +1974,7 @@ export default function Home() {
 
       if (eventName === "queue_waiting") {
         if (!isDemoModeRef.current) {
-          setConnectingStatus("Looking for an available stranger...");
+          setConnectingStatus("Connecting...");
         }
         return;
       }
@@ -3653,6 +3737,15 @@ export default function Home() {
         }, DEMO_FALLBACK_TRIGGER_MS);
       }
 
+      if (effectiveMode === "text" && demoFallbackEnabled) {
+        demoFallbackTimeoutRef.current = window.setTimeout(() => {
+          if (demoSearchSessionRef.current !== searchSessionId || activeRoomIdRef.current) {
+            return;
+          }
+          startAITextDemoMode(searchSessionId);
+        }, DEMO_FALLBACK_TRIGGER_MS);
+      }
+
       return;
     }
 
@@ -4058,6 +4151,166 @@ export default function Home() {
         setImageUploadProgress(null);
       }
     }
+  };
+
+  // Streams an AI reply based on the current history. If new messages arrive while streaming,
+  // aiTextDemoReplyPendingRef is set so another reply is triggered immediately after.
+  const streamAITextDemoReply = async () => {
+    const persona = aiTextDemoPersonaRef.current;
+    if (!persona || isAITextDemoStreamingRef.current) return;
+
+    isAITextDemoStreamingRef.current = true;
+    aiTextDemoReplyPendingRef.current = false;
+
+    const historySnapshot = aiTextDemoHistoryRef.current;
+    const aiMsgId = `ai-demo-ai-${Date.now()}`;
+    aiTextDemoAbortRef.current = new AbortController();
+
+    try {
+      const res = await fetch("/api/demo/text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: historySnapshot.slice(-20),
+          persona: { name: persona.name, age: persona.age, country: persona.countryName, personality: persona.style },
+          allowAdult: persona.allowAdult === true,
+        }),
+        signal: aiTextDemoAbortRef.current.signal,
+      });
+
+      if (!res.ok || !res.body) throw new Error("Stream failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      let addedMessage = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+
+        // Bot skips the user for inappropriate content (SFW personas only — adult ones handle it themselves)
+        if (!persona.allowAdult && accumulated.includes("__SKIP__")) {
+          reader.cancel();
+          setStrangerIsTyping(false);
+          // Tear down AI demo state so stopDemoMode doesn't double-clean
+          isAITextDemoRef.current = false;
+          aiTextDemoHistoryRef.current = [];
+          aiTextDemoPersonaRef.current = null;
+          aiTextDemoReplyPendingRef.current = false;
+          // Replicate exact real-stranger-leave UX
+          setStrangerProfile(PENDING_STRANGER_PROFILE);
+          setStrangerSkipped(true);
+          setWaitingForNext(true);
+          setShowNextStrangerPrompt(true);
+          setConnectingStatus(STRANGER_LEFT_PROMPT);
+          setMessages((prev) => {
+            // Remove any partial __SKIP__ fragment that may have already rendered
+            const filtered = prev.filter((m) => m.id !== aiMsgId);
+            const already = filtered.some((m) => m.text === STRANGER_LEFT_PROMPT);
+            if (already) return filtered;
+            const now2 = new Date();
+            return [
+              ...filtered,
+              {
+                id: `system-skip-${Date.now()}`,
+                author: "stranger" as const,
+                text: STRANGER_LEFT_PROMPT,
+                sentAt: `${String(now2.getHours()).padStart(2, "0")}:${String(now2.getMinutes()).padStart(2, "0")}`,
+                createdAtMs: Date.now(),
+              },
+            ];
+          });
+          return;
+        }
+
+        // Hold off rendering while accumulated could still be a partial __SKIP__ token
+        if (!persona.allowAdult && "__SKIP__".startsWith(accumulated.trimStart())) {
+          continue;
+        }
+
+        const snap = accumulated;
+        const nowChunk = new Date();
+        const tsChunk = `${String(nowChunk.getHours()).padStart(2, "0")}:${String(nowChunk.getMinutes()).padStart(2, "0")}`;
+
+        if (!addedMessage) {
+          setStrangerIsTyping(false);
+          addedMessage = true;
+          setMessages((prev) => [
+            ...prev,
+            { id: aiMsgId, author: "stranger" as const, text: snap, sentAt: tsChunk, createdAtMs: Date.now() },
+          ]);
+        } else {
+          setMessages((prev) =>
+            prev.map((m) => (m.id === aiMsgId ? { ...m, text: snap } : m))
+          );
+        }
+      }
+
+      // Insert the assistant reply right after the snapshot point.
+      // Any user messages added during streaming are preserved after it.
+      const currentHistory = aiTextDemoHistoryRef.current;
+      aiTextDemoHistoryRef.current = [
+        ...currentHistory.slice(0, historySnapshot.length),
+        { role: "assistant" as const, content: accumulated },
+        ...currentHistory.slice(historySnapshot.length),
+      ];
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== "AbortError") {
+        setStrangerIsTyping(false);
+      } else {
+        setStrangerIsTyping(false);
+      }
+    } finally {
+      isAITextDemoStreamingRef.current = false;
+      aiTextDemoAbortRef.current = null;
+      // If user sent more messages while AI was replying, trigger another reply
+      if (aiTextDemoReplyPendingRef.current && isAITextDemoRef.current) {
+        setStrangerIsTyping(true);
+        void streamAITextDemoReply();
+      }
+    }
+  };
+
+  const sendAITextDemoMessage = (messageText: string) => {
+    const persona = aiTextDemoPersonaRef.current;
+    if (!persona) return;
+
+    // Immediately show the user's message in chat
+    const now = new Date();
+    const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+    const userMsg: ChatMessage = {
+      id: `ai-demo-user-${Date.now()}`,
+      author: "you",
+      text: messageText,
+      sentAt: ts,
+      createdAtMs: Date.now(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+
+    // Append to history
+    aiTextDemoHistoryRef.current = [...aiTextDemoHistoryRef.current, { role: "user", content: messageText }];
+
+    if (isAITextDemoStreamingRef.current) {
+      // AI is mid-reply — flag that a new reply is needed when it finishes
+      aiTextDemoReplyPendingRef.current = true;
+    } else {
+      // Start a new reply immediately
+      setStrangerIsTyping(true);
+      void streamAITextDemoReply();
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (isAITextDemoRef.current && !activeRoomIdRef.current) {
+      const textToSend = text.trim();
+      if (!textToSend) return;
+      setText("");
+      sendAITextDemoMessage(textToSend);
+      return;
+    }
+    await sendMessage();
   };
 
   const onRevealTimedImage = async (messageId: string, timerSeconds: number) => {
@@ -4689,7 +4942,7 @@ export default function Home() {
           messages={messages}
           text={text}
           setText={handleTextChange}
-          sendMessage={sendMessage}
+          sendMessage={handleSendMessage}
           onReplyToMessage={onReplyToMessage}
           onReactToMessage={onReactToMessage}
           replyingTo={replyingTo}
