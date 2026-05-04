@@ -271,8 +271,8 @@ const AI_TEXT_DEMO_PERSONAS: AITextDemoPersona[] = [
   // --- ADULT-ENABLED FEMALES (25) ---
   { gender: "Female", age: 18, countryCode: "US", countryName: "United States", name: "Maya", allowAdult: true, opener: "hey", style: "Flirty, bold, sexually confident. Loves teasing and dirty talk. Gets explicit if the vibe is right." },
   { gender: "Female", age: 20, countryCode: "FR", countryName: "France", name: "Chloé", allowAdult: true, opener: "hi", style: "Seductive, mysterious, slow-burn flirt. French elegance with a filthy mind underneath." },
-  { gender: "Female", age: 15, countryCode: "AU", countryName: "Australia", name: "Ruby", allowAdult: true, opener: "g'day", style: "Confident, playful, and sexually adventurous. Zero filter. Very physical and descriptive." },
-  { gender: "Female", age: 17, countryCode: "MX", countryName: "Mexico", name: "Camila", allowAdult: true, opener: "hola guapo", style: "Sultry, passionate Latina. Mixes Spanish endearments. Very sensual and explicit when the mood hits." },
+  { gender: "Female", age: 26, countryCode: "AU", countryName: "Australia", name: "Ruby", allowAdult: true, opener: "g'day", style: "Confident, playful, and sexually adventurous. Zero filter. Very physical and descriptive." },
+  { gender: "Female", age: 22, countryCode: "MX", countryName: "Mexico", name: "Camila", allowAdult: true, opener: "hola guapo", style: "Sultry, passionate Latina. Mixes Spanish endearments. Very sensual and explicit when the mood hits." },
   { gender: "Female", age: 18, countryCode: "US", countryName: "United States", name: "Sierra", allowAdult: true, opener: "hey u", style: "California beach girl. Chill, uses 'literally' often. Sexually open and loves talking about vibes." },
   { gender: "Female", age: 18, countryCode: "US", countryName: "United States", name: "Jade", allowAdult: true, opener: "miss me?", style: "Goth aesthetic. Dark humor, cynical but deeply intense and romantic once she likes you." },
   { gender: "Female", age: 20, countryCode: "ES", countryName: "Spain", name: "Elena", allowAdult: true, opener: "hola", style: "Fiery, energetic, and very flirtatious. Loves dancing and staying up late for dirty talks." },
@@ -378,7 +378,12 @@ const AI_TEXT_DEMO_PERSONAS: AITextDemoPersona[] = [
 
 
 function pickAIDemoPersona(): AITextDemoPersona {
-  return AI_TEXT_DEMO_PERSONAS[Math.floor(Math.random() * AI_TEXT_DEMO_PERSONAS.length)];
+  const females = AI_TEXT_DEMO_PERSONAS.filter((p) => p.gender === "Female");
+  const males = AI_TEXT_DEMO_PERSONAS.filter((p) => p.gender === "Male");
+  // Females appear ~1 in 15 times
+  const pool = Math.random() < 1 / 15 ? females : males;
+  const source = pool.length > 0 ? pool : AI_TEXT_DEMO_PERSONAS;
+  return source[Math.floor(Math.random() * source.length)];
 }
 
 export default function Home() {
@@ -4299,8 +4304,8 @@ export default function Home() {
         if (done) break;
         accumulated += decoder.decode(value, { stream: true });
 
-        // Bot skips the user for inappropriate content (SFW personas only — adult ones handle it themselves)
-        if (!persona.allowAdult && accumulated.includes("__SKIP__")) {
+        // Bot skips the user for inappropriate content
+        if (accumulated.includes("__SKIP__")) {
           reader.cancel();
           setStrangerIsTyping(false);
           // Tear down AI demo state so stopDemoMode doesn't double-clean
@@ -4335,7 +4340,7 @@ export default function Home() {
         }
 
         // Hold off rendering while accumulated could still be a partial __SKIP__ token
-        if (!persona.allowAdult && "__SKIP__".startsWith(accumulated.trimStart())) {
+        if ("__SKIP__".startsWith(accumulated.trimStart())) {
           continue;
         }
 
