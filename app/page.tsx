@@ -203,6 +203,13 @@ type RealtimeQueueJoinPayload = {
 const getChatSessionStorageKey = (uid: string): string => `chat_session_${uid}`;
 const getChatModeStorageKey = (uid: string): string => `chat_mode_${uid}`;
 const getRoomE2EEKeyStorageKey = (roomId: string, uid: string): string => `room_e2ee_${roomId}_${uid}`;
+const getAIDemoSessionKey = (uid: string): string => `ai_demo_session_${uid}`;
+
+type PersistedAIDemoSession = {
+  persona: AITextDemoPersona;
+  history: { role: "user" | "assistant"; content: string }[];
+  messages: ChatMessage[];
+};
 
 const normalizeCountryCode = (countryCode?: string): string | null => {
   if (!countryCode) {
@@ -657,6 +664,8 @@ export default function Home() {
   const aiTextDemoPersonaRef = useRef<AITextDemoPersona | null>(null);
   const isAITextDemoStreamingRef = useRef(false);
   const aiTextDemoReplyPendingRef = useRef(false);
+  const aiTextDemoTypingDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const currentUserUidRef = useRef<string | null>(null);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
   const realtimeSocketRef = useRef<WebSocket | null>(null);
@@ -862,11 +871,19 @@ export default function Home() {
     if (isAITextDemoRef.current) {
       aiTextDemoAbortRef.current?.abort();
       aiTextDemoAbortRef.current = null;
+      if (aiTextDemoTypingDelayRef.current !== null) {
+        clearTimeout(aiTextDemoTypingDelayRef.current);
+        aiTextDemoTypingDelayRef.current = null;
+      }
       isAITextDemoRef.current = false;
       isAITextDemoStreamingRef.current = false;
       aiTextDemoReplyPendingRef.current = false;
       aiTextDemoHistoryRef.current = [];
       aiTextDemoPersonaRef.current = null;
+      // Clear persisted demo session so a refresh doesn't restore this ended chat
+      if (currentUserUidRef.current) {
+        window.localStorage.removeItem(getAIDemoSessionKey(currentUserUidRef.current));
+      }
     }
     demoSearchSessionRef.current += 1;
     clearDemoTimers();
@@ -1210,6 +1227,21 @@ export default function Home() {
   useEffect(() => {
     isDemoModeRef.current = isDemoMode;
   }, [isDemoMode]);
+
+  useEffect(() => {
+    currentUserUidRef.current = user?.uid ?? null;
+  }, [user]);
+
+  // Persist AI demo session to localStorage whenever messages change during a demo
+  useEffect(() => {
+    if (!user || !isDemoMode || !isAITextDemoRef.current) return;
+    const persona = aiTextDemoPersonaRef.current;
+    const history = aiTextDemoHistoryRef.current;
+    if (!persona || messages.length === 0) return;
+    const payload: PersistedAIDemoSession = { persona, history, messages };
+    window.localStorage.setItem(getAIDemoSessionKey(user.uid), JSON.stringify(payload));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isDemoMode, user]);
 
   useEffect(() => {
     const remoteVideoElement = remoteVideoRef.current;
@@ -3168,6 +3200,38 @@ export default function Home() {
       setChatMode(savedMode);
       setChatFilters(null);
     }
+
+    // Restore a previously active AI demo session (survives page refresh)
+    const aiDemoRaw = window.localStorage.getItem(getAIDemoSessionKey(user.uid));
+    if (aiDemoRaw) {
+      try {
+        const aiDemo = JSON.parse(aiDemoRaw) as Partial<PersistedAIDemoSession>;
+        if (
+          aiDemo.persona &&
+          Array.isArray(aiDemo.history) &&
+          Array.isArray(aiDemo.messages) &&
+          aiDemo.messages.length > 0
+        ) {
+          aiTextDemoPersonaRef.current = aiDemo.persona;
+          aiTextDemoHistoryRef.current = aiDemo.history;
+          isAITextDemoRef.current = true;
+          setChatMode("text");
+          setIsDemoMode(true);
+          setStrangerProfile({ gender: aiDemo.persona.gender, age: aiDemo.persona.age, countryCode: aiDemo.persona.countryCode });
+          setIsConnecting(false);
+          setConnectingStatus("Connected");
+          setStrangerSkipped(false);
+          setWaitingForNext(false);
+          setShowNextStrangerPrompt(false);
+          setMessages(aiDemo.messages);
+          setSessionRestoreComplete(true);
+          return;
+        }
+      } catch {
+        window.localStorage.removeItem(getAIDemoSessionKey(user.uid));
+      }
+    }
+
     setSessionRestoreComplete(true);
   }, [user]);
 
@@ -4566,8 +4630,13 @@ export default function Home() {
       aiTextDemoAbortRef.current = null;
       // If user sent more messages while AI was replying, trigger another reply
       if (aiTextDemoReplyPendingRef.current && isAITextDemoRef.current) {
-        setStrangerIsTyping(true);
-        void streamAITextDemoReply();
+        const pendingDelayMs = 1000 + Math.floor(Math.random() * 9000);
+        aiTextDemoTypingDelayRef.current = setTimeout(() => {
+          aiTextDemoTypingDelayRef.current = null;
+          if (!isAITextDemoRef.current) return;
+          setStrangerIsTyping(true);
+          void streamAITextDemoReply();
+        }, pendingDelayMs);
       }
     }
   };
@@ -4595,9 +4664,14 @@ export default function Home() {
       // AI is mid-reply — flag that a new reply is needed when it finishes
       aiTextDemoReplyPendingRef.current = true;
     } else {
-      // Start a new reply immediately
-      setStrangerIsTyping(true);
-      void streamAITextDemoReply();
+      // Delay before showing typing indicator (1–10 s) to mimic a real person reading
+      const replyDelayMs = 1000 + Math.floor(Math.random() * 9000);
+      aiTextDemoTypingDelayRef.current = setTimeout(() => {
+        aiTextDemoTypingDelayRef.current = null;
+        if (!isAITextDemoRef.current) return;
+        setStrangerIsTyping(true);
+        void streamAITextDemoReply();
+      }, replyDelayMs);
     }
   };
 
@@ -4609,6 +4683,21 @@ export default function Home() {
       sendAITextDemoMessage(textToSend);
       return;
     }
+
+    // Video demo mode — show message locally only (no real room)
+    if (isDemoModeRef.current && !activeRoomIdRef.current) {
+      const textToSend = text.trim();
+      if (!textToSend) return;
+      setText("");
+      const now = new Date();
+      const ts = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+      setMessages((prev) => [
+        ...prev,
+        { id: `demo-user-${Date.now()}`, author: "you" as const, text: textToSend, sentAt: ts, createdAtMs: Date.now() },
+      ]);
+      return;
+    }
+
     await sendMessage();
   };
 

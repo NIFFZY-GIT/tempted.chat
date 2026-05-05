@@ -54,10 +54,6 @@ export async function POST(req: NextRequest) {
   const readable = new ReadableStream({
     async start(controller) {
       try {
-        // Simulate reading + thinking before typing starts (1–5 s)
-        const thinkMs = 1000 + Math.floor(Math.random() * 4000);
-        await new Promise((resolve) => setTimeout(resolve, thinkMs));
-
         for await (const chunk of stream) {
           const text = chunk.choices[0]?.delta?.content ?? "";
           if (text) {
