@@ -666,6 +666,7 @@ export default function Home() {
   const aiTextDemoReplyPendingRef = useRef(false);
   const aiTextDemoTypingDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentUserUidRef = useRef<string | null>(null);
+  const aiDemoRestoredRef = useRef(false);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
   const realtimeSocketRef = useRef<WebSocket | null>(null);
@@ -1024,7 +1025,7 @@ export default function Home() {
     // Match the real stranger-leave flow exactly.
     setIsConnecting(false);
     setStrangerIsTyping(false);
-    setStrangerProfile(PENDING_STRANGER_PROFILE);
+    // Keep the last stranger profile so the message input stays enabled during the gap
     setStrangerSkipped(true);
     setWaitingForNext(true);
     setShowNextStrangerPrompt(true);
@@ -1226,6 +1227,22 @@ export default function Home() {
 
   useEffect(() => {
     isDemoModeRef.current = isDemoMode;
+  }, [isDemoMode]);
+
+  // After a page refresh restores an AI demo session, trigger a bot reply with a 1–10 s delay
+  useEffect(() => {
+    if (!isDemoMode || !isAITextDemoRef.current || !aiDemoRestoredRef.current) return;
+    aiDemoRestoredRef.current = false;
+    const delayMs = 1000 + Math.floor(Math.random() * 9000);
+    aiTextDemoTypingDelayRef.current = setTimeout(() => {
+      aiTextDemoTypingDelayRef.current = null;
+      if (!isAITextDemoRef.current) return;
+      setStrangerIsTyping(true);
+      // eslint-disable-next-line @typescript-eslint/no-use-before-define
+      void streamAITextDemoReply();
+    }, delayMs);
+  // streamAITextDemoReply uses only refs so it's safe to omit from deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDemoMode]);
 
   useEffect(() => {
@@ -3215,6 +3232,7 @@ export default function Home() {
           aiTextDemoPersonaRef.current = aiDemo.persona;
           aiTextDemoHistoryRef.current = aiDemo.history;
           isAITextDemoRef.current = true;
+          aiDemoRestoredRef.current = true;
           setChatMode("text");
           setIsDemoMode(true);
           setStrangerProfile({ gender: aiDemo.persona.gender, age: aiDemo.persona.age, countryCode: aiDemo.persona.countryCode });
