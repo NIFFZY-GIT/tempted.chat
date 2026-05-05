@@ -667,6 +667,10 @@ export default function Home() {
   const aiTextDemoTypingDelayRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentUserUidRef = useRef<string | null>(null);
   const aiDemoRestoredRef = useRef(false);
+  const aiTypingStartMsRef = useRef<number>(0);
+  const aiTypingMinDurationMsRef = useRef<number>(0);
+  const hasRemoteVideoRef = useRef(false);
+  const waitingForNextRef = useRef(false);
   const selfTypingRef = useRef(false);
   const activeRoomIdRef = useRef<string | null>(null);
   const realtimeSocketRef = useRef<WebSocket | null>(null);
@@ -1229,6 +1233,14 @@ export default function Home() {
     isDemoModeRef.current = isDemoMode;
   }, [isDemoMode]);
 
+  useEffect(() => {
+    hasRemoteVideoRef.current = hasRemoteVideo;
+  }, [hasRemoteVideo]);
+
+  useEffect(() => {
+    waitingForNextRef.current = waitingForNext;
+  }, [waitingForNext]);
+
   // After a page refresh restores an AI demo session, trigger a bot reply with a 1–10 s delay
   useEffect(() => {
     if (!isDemoMode || !isAITextDemoRef.current || !aiDemoRestoredRef.current) return;
@@ -1237,6 +1249,8 @@ export default function Home() {
     aiTextDemoTypingDelayRef.current = setTimeout(() => {
       aiTextDemoTypingDelayRef.current = null;
       if (!isAITextDemoRef.current) return;
+      aiTypingStartMsRef.current = Date.now();
+      aiTypingMinDurationMsRef.current = 3000 + Math.floor(Math.random() * 7000);
       setStrangerIsTyping(true);
       // eslint-disable-next-line @typescript-eslint/no-use-before-define
       void streamAITextDemoReply();
@@ -4564,7 +4578,6 @@ export default function Home() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let accumulated = "";
-      let addedMessage = false;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -4610,23 +4623,26 @@ export default function Home() {
         if ("__SKIP__".startsWith(accumulated.trimStart())) {
           continue;
         }
+      }
 
-        const snap = accumulated;
-        const nowChunk = new Date();
-        const tsChunk = `${String(nowChunk.getHours()).padStart(2, "0")}:${String(nowChunk.getMinutes()).padStart(2, "0")}`;
+      // Enforce minimum typing indicator duration (3–10 s) before revealing the message
+      const elapsed = Date.now() - aiTypingStartMsRef.current;
+      const remaining = aiTypingMinDurationMsRef.current - elapsed;
+      if (remaining > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+      }
 
-        if (!addedMessage) {
-          setStrangerIsTyping(false);
-          addedMessage = true;
-          setMessages((prev) => [
-            ...prev,
-            { id: aiMsgId, author: "stranger" as const, text: snap, sentAt: tsChunk, createdAtMs: Date.now() },
-          ]);
-        } else {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === aiMsgId ? { ...m, text: snap } : m))
-          );
-        }
+      if (!isAITextDemoRef.current) return;
+
+      // Reveal the accumulated message after the typing indicator has shown long enough
+      if (!accumulated.includes("__SKIP__") && accumulated.trim()) {
+        const nowFinal = new Date();
+        const tsFinal = `${String(nowFinal.getHours()).padStart(2, "0")}:${String(nowFinal.getMinutes()).padStart(2, "0")}`;
+        setStrangerIsTyping(false);
+        setMessages((prev) => [
+          ...prev,
+          { id: aiMsgId, author: "stranger" as const, text: accumulated, sentAt: tsFinal, createdAtMs: Date.now() },
+        ]);
       }
 
       // Insert the assistant reply right after the snapshot point.
@@ -4652,6 +4668,8 @@ export default function Home() {
         aiTextDemoTypingDelayRef.current = setTimeout(() => {
           aiTextDemoTypingDelayRef.current = null;
           if (!isAITextDemoRef.current) return;
+          aiTypingStartMsRef.current = Date.now();
+          aiTypingMinDurationMsRef.current = 3000 + Math.floor(Math.random() * 7000);
           setStrangerIsTyping(true);
           void streamAITextDemoReply();
         }, pendingDelayMs);
@@ -4687,6 +4705,8 @@ export default function Home() {
       aiTextDemoTypingDelayRef.current = setTimeout(() => {
         aiTextDemoTypingDelayRef.current = null;
         if (!isAITextDemoRef.current) return;
+        aiTypingStartMsRef.current = Date.now();
+        aiTypingMinDurationMsRef.current = 3000 + Math.floor(Math.random() * 7000);
         setStrangerIsTyping(true);
         void streamAITextDemoReply();
       }, replyDelayMs);
@@ -4703,7 +4723,8 @@ export default function Home() {
     }
 
     // Video demo mode — show message locally only (no real room)
-    if (isDemoModeRef.current && !activeRoomIdRef.current) {
+    // Allow only when video is actively playing OR in the between-videos gap
+    if (isDemoModeRef.current && !activeRoomIdRef.current && (hasRemoteVideoRef.current || waitingForNextRef.current)) {
       const textToSend = text.trim();
       if (!textToSend) return;
       setText("");
