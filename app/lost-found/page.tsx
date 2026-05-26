@@ -194,12 +194,20 @@ export default function LostFoundPage() {
 		}
 	};
 
+	const handleLogout = async () => {
+		try {
+			await signOut(auth);
+		} catch (err) {
+			console.error("Logout failed:", err);
+		}
+	};
+
 	return (
 		<div className="min-h-screen text-white selection:bg-pink-500/30">
 			<TopNav
 				isAuthenticated={!!user}
 				onLogin={() => router.push("/")}
-				onLogout={() => signOut(auth)}
+				onLogout={handleLogout}
 				isWorking={loadingAuth}
 				isAdmin={isAdmin}
 				onGoToAdmin={() => router.push("/admin")}

@@ -98,14 +98,22 @@ export default function PlansPage() {
 		}
 	};
 
+	const handleLogout = async () => {
+		try {
+			await signOut(auth);
+		} catch (err) {
+			console.error("Logout failed:", err);
+		}
+	};
+
 	return (
 		<div className="relative min-h-screen w-full text-white overflow-x-hidden selection:bg-pink-500/30">
 			{/* --- Navbar --- */}
 			<TopNav 
 				isAuthenticated={!!user} 
 				onLogin={() => router.push("/")} 
-				onLogout={() => signOut(auth)} 
-				isWorking={authLoading} 
+				onLogout={handleLogout} 
+				isWorking={authLoading}
 				isAdmin={isAdmin}
 				onGoToAdmin={() => router.push("/admin")}
 			/>

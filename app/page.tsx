@@ -1959,17 +1959,26 @@ export default function Home() {
       return;
     }
 
-    const unsubscribe = onSnapshot(doc(db, "users", user.uid), async (snapshot) => {
-      const data = snapshot.data() as { isBlocked?: boolean } | undefined;
-      if (!data?.isBlocked) {
-        return;
-      }
+    const unsubscribe = onSnapshot(
+      doc(db, "users", user.uid),
+      async (snapshot) => {
+        const data = snapshot.data() as { isBlocked?: boolean } | undefined;
+        if (!data?.isBlocked) {
+          return;
+        }
 
-      setAuthNotice("This account has been blocked. Contact support.");
-      await signOut(auth).catch(() => {
-        // Ignore sign-out failures while enforcing blocked accounts.
-      });
-    });
+        setAuthNotice("This account has been blocked. Contact support.");
+        await signOut(auth).catch(() => {
+          // Ignore sign-out failures while enforcing blocked accounts.
+        });
+      },
+      (error) => {
+        // Silently ignore permission errors - user doc may not exist yet
+        if (error.code !== "permission-denied") {
+          console.error("Error listening to user doc:", error);
+        }
+      }
+    );
 
     return () => unsubscribe();
   }, [user]);
@@ -2481,15 +2490,23 @@ export default function Home() {
 
   useEffect(() => {
     const configRef = doc(db, "appConfig", "matchmaking");
-    const unsubscribe = onSnapshot(configRef, (snapshot) => {
-      if (!snapshot.exists()) {
-        setDemoFallbackEnabled(true);
-        return;
-      }
+    const unsubscribe = onSnapshot(
+      configRef,
+      (snapshot) => {
+        if (!snapshot.exists()) {
+          setDemoFallbackEnabled(true);
+          return;
+        }
 
-      const data = snapshot.data() as { demoFallbackEnabled?: unknown };
-      setDemoFallbackEnabled(typeof data.demoFallbackEnabled === "boolean" ? data.demoFallbackEnabled : true);
-    });
+        const data = snapshot.data() as { demoFallbackEnabled?: unknown };
+        setDemoFallbackEnabled(typeof data.demoFallbackEnabled === "boolean" ? data.demoFallbackEnabled : true);
+      },
+      (error) => {
+        console.error("Error listening to app config:", error);
+        // Default to fallback enabled on error
+        setDemoFallbackEnabled(true);
+      }
+    );
 
     return () => unsubscribe();
   }, []);

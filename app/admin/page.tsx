@@ -350,13 +350,20 @@ export default function AdminDashboardPage() {
       return;
     }
 
-    const unsubscribe = onSnapshot(collection(db, "subscriptions"), (snapshot) => {
-      const nextSubscriptions: Record<string, UserSubscriptionEntry> = {};
-      snapshot.docs.forEach((entry) => {
-        nextSubscriptions[entry.id] = entry.data() as UserSubscriptionEntry;
-      });
-      setUserSubscriptions(nextSubscriptions);
-    });
+    const unsubscribe = onSnapshot(
+      collection(db, "subscriptions"),
+      (snapshot) => {
+        const nextSubscriptions: Record<string, UserSubscriptionEntry> = {};
+        snapshot.docs.forEach((entry) => {
+          nextSubscriptions[entry.id] = entry.data() as UserSubscriptionEntry;
+        });
+        setUserSubscriptions(nextSubscriptions);
+      },
+      (error) => {
+        console.error("Failed to load subscriptions:", error);
+        setUserSubscriptions({});
+      }
+    );
 
     return () => unsubscribe();
   }, [activeTab, isAdmin, user]);
@@ -370,12 +377,17 @@ export default function AdminDashboardPage() {
 
     setRoomsLoading(true);
     const roomsQuery = query(collection(db, "rooms"), orderBy("updatedAt", "desc"));
-    const unsubscribe = onSnapshot(roomsQuery, (snapshot) => {
-      setRooms(snapshot.docs.map((entry) => ({ id: entry.id, ...(entry.data() as Omit<RoomEntry, "id">) })));
-      setRoomsLoading(false);
-    }, () => {
-      setRoomsLoading(false);
-    });
+    const unsubscribe = onSnapshot(
+      roomsQuery,
+      (snapshot) => {
+        setRooms(snapshot.docs.map((entry) => ({ id: entry.id, ...(entry.data() as Omit<RoomEntry, "id">) })));
+        setRoomsLoading(false);
+      },
+      (error) => {
+        console.error("Failed to load rooms:", error);
+        setRoomsLoading(false);
+      }
+    );
 
     return () => unsubscribe();
   }, [activeTab, isAdmin, user]);

@@ -104,9 +104,17 @@ export default function FeedbackPage() {
 
 	if (loading) return <div className="flex h-screen items-center justify-center bg-[#07070d]"><Loader2 className="h-8 w-8 animate-spin text-white/20" /></div>;
 
+	const handleLogout = async () => {
+		try {
+			await signOut(auth);
+		} catch (err) {
+			console.error("Logout failed:", err);
+		}
+	};
+
 	return (
 		<div className="min-h-screen bg-[#050508] text-white">
-			<TopNav isAuthenticated={!!user} onLogin={() => router.push("/")} onLogout={() => signOut(auth)} isWorking={false} isAdmin={isAdmin} onGoToAdmin={() => router.push("/admin")} />
+			<TopNav isAuthenticated={!!user} onLogin={() => router.push("/")} onLogout={handleLogout} isWorking={false} isAdmin={isAdmin} onGoToAdmin={() => router.push("/admin")} />
 			<ParticleBackground />
 
 			<main className="mx-auto max-w-3xl px-6 pb-24 pt-32">
