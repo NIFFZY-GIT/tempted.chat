@@ -39,8 +39,43 @@ const redis = REDIS_URL
       maxRetriesPerRequest: 2,
       enableReadyCheck: true,
       lazyConnect: false,
+      // Back off instead of hammering a down instance every few milliseconds.
+      retryStrategy: (times) => Math.min(times * 500, 10_000),
     })
   : null;
+
+if (redis) {
+  // Without a listener ioredis logs every connection failure as an unhandled
+  // error event, which floods the log during an outage.
+  let lastRedisErrorLogAt = 0;
+  redis.on("error", (err) => {
+    const nowMs = Date.now();
+    if (nowMs - lastRedisErrorLogAt < 30_000) return;
+    lastRedisErrorLogAt = nowMs;
+    console.warn(`[redis] unavailable, falling back to in-memory queues: ${err.message}`);
+  });
+
+  redis.on("ready", () => {
+    console.log("[redis] connected");
+  });
+}
+
+/**
+ * Redis is an optional accelerator for multi-instance deployments — the in-memory
+ * queues are always maintained alongside it. Any Redis failure must therefore
+ * degrade to in-memory instead of propagating: an unhandled rejection here used to
+ * abort `queue_join` before the user was ever added to the in-memory queue, taking
+ * matchmaking down completely whenever Redis blipped.
+ */
+const withRedis = async (operation, fallbackValue) => {
+  if (!redis) return fallbackValue;
+
+  try {
+    return await operation();
+  } catch {
+    return fallbackValue;
+  }
+};
 
 const server = http.createServer((req, res) => {
   if (req.url === "/healthz") {
@@ -178,8 +213,7 @@ const pruneInMemory = () => {
   });
 };
 
-const enqueueRedis = async (entry) => {
-  if (!redis) return;
+const enqueueRedis = async (entry) => withRedis(async () => {
   const key = queueKey(entry.mode);
   await redis.multi()
     .hset(queueMemberKey(entry.uid), {
@@ -191,10 +225,9 @@ const enqueueRedis = async (entry) => {
     .expire(queueMemberKey(entry.uid), Math.ceil(WAITING_TTL_MS / 1000))
     .zadd(key, entry.lastSeenAt, entry.uid)
     .exec();
-};
+}, undefined);
 
-const dequeueRedis = async (uid, modeHint) => {
-  if (!redis) return;
+const dequeueRedis = async (uid, modeHint) => withRedis(async () => {
   const member = await redis.hgetall(queueMemberKey(uid));
   const mode = modeHint || member.mode;
   const multi = redis.multi().del(queueMemberKey(uid));
@@ -202,7 +235,7 @@ const dequeueRedis = async (uid, modeHint) => {
     multi.zrem(queueKey(mode), uid);
   }
   await multi.exec();
-};
+}, undefined);
 
 const pickCandidateInMemory = (entry) => {
   pruneInMemory();
@@ -242,8 +275,7 @@ const pickCandidatesInMemory = (entry, maxCount) => {
   return candidates.slice(0, maxCount);
 };
 
-const pickCandidateRedis = async (entry) => {
-  if (!redis) return null;
+const pickCandidateRedis = async (entry) => withRedis(async () => {
   const key = queueKey(entry.mode);
   const cutoff = now() - WAITING_TTL_MS;
   await redis.zremrangebyscore(key, 0, cutoff);
@@ -257,10 +289,9 @@ const pickCandidateRedis = async (entry) => {
     return candidate;
   }
   return null;
-};
+}, null);
 
-const pickCandidatesRedis = async (entry, maxCount) => {
-  if (!redis) return [];
+const pickCandidatesRedis = async (entry, maxCount) => withRedis(async () => {
   const key = queueKey(entry.mode);
   const cutoff = now() - WAITING_TTL_MS;
   await redis.zremrangebyscore(key, 0, cutoff);
@@ -280,6 +311,35 @@ const pickCandidatesRedis = async (entry, maxCount) => {
   }
 
   return candidates;
+}, []);
+
+/**
+ * Active 1:1 pairings, keyed by uid -> { roomId, peerUid }.
+ *
+ * Without this the server has no way to tell a partner that someone's socket
+ * dropped, so a tab close / network loss left the other side sitting in a dead
+ * room until a client-side presence timeout eventually noticed.
+ */
+const activePairByUid = new Map();
+
+const registerPair = (roomId, uidA, uidB) => {
+  clearPair(uidA);
+  clearPair(uidB);
+  activePairByUid.set(uidA, { roomId, peerUid: uidB });
+  activePairByUid.set(uidB, { roomId, peerUid: uidA });
+};
+
+const clearPair = (uid) => {
+  const pair = activePairByUid.get(uid);
+  if (!pair) return null;
+
+  activePairByUid.delete(uid);
+  const peerPair = activePairByUid.get(pair.peerUid);
+  if (peerPair && peerPair.peerUid === uid) {
+    activePairByUid.delete(pair.peerUid);
+  }
+
+  return pair;
 };
 
 const detachSocket = async (ws) => {
@@ -301,6 +361,14 @@ const detachSocket = async (ws) => {
           removeFromGroupRoom(uid, roomId);
           break; // A uid can only be in one open room at a time.
         }
+      }
+
+      // Tell the 1:1 partner immediately instead of making them wait for a
+      // presence timeout. Only fires once the user's last socket is gone, so
+      // a second tab or a quick reconnect does not end the chat.
+      const pair = clearPair(uid);
+      if (pair) {
+        broadcastToUid(pair.peerUid, "peer_left", { roomId: pair.roomId, fromUid: uid });
       }
     }
   }
@@ -560,6 +628,8 @@ const attemptMatch = async (entry) => {
     participantProfiles: room.participantProfiles,
   };
 
+  registerPair(room.roomId, entry.uid, candidate.uid);
+
   broadcastToUid(entry.uid, "match_found", payloadForA);
   broadcastToUid(candidate.uid, "match_found", payloadForB);
   return true;
@@ -661,6 +731,9 @@ wss.on("connection", (ws) => {
         return;
       }
 
+      // Re-queueing means the previous 1:1 chat is over.
+      clearPair(state.uid);
+
       const entry = normalizeEntry(state.uid, payload);
       dequeueInMemory(state.uid, state.queueMode || null);
       await dequeueRedis(state.uid, state.queueMode || null);
@@ -708,6 +781,8 @@ wss.on("connection", (ws) => {
         send(ws, "error", { code: "invalid-peer-left" });
         return;
       }
+      // Explicit leave: drop the pairing so a later disconnect cannot re-notify.
+      clearPair(state.uid);
       broadcastToUid(toUid, "peer_left", { roomId, fromUid: state.uid });
       return;
     }

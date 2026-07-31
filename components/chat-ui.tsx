@@ -7,8 +7,17 @@ import { TierLogo } from "@/components/tier-logo";
 import { ChatFiltersPanel } from "./chat-ui/chat-filters-panel";
 import { ChatRoomTextView } from "./chat-ui/chat-room-text-view";
 import { ChatRoomVideoView } from "./chat-ui/chat-room-video-view";
+import { CallOverlay, type CallConnectionState } from "./chat-ui/call-overlay";
+import type { CallEventSummary, CallSession } from "./chat-ui/call-types";
 export { AuthView } from "@/components/chat-ui/auth-view";
 export { ModeAndFiltersView } from "./chat-ui/mode-and-filters-view";
+export type {
+  CallEndReason,
+  CallEventSummary,
+  CallOutcome,
+  CallSession,
+  CallStatus,
+} from "./chat-ui/call-types";
 
 export type ChatMessage = {
   id: string;
@@ -35,6 +44,8 @@ export type ChatMessage = {
   reactions?: Record<string, string[]>; // emoji -> list of senderIds
   deletedForEveryone?: boolean;
   createdAtMs?: number;
+  /** Set on locally-generated call log entries (rendered as a centered pill). */
+  callEvent?: CallEventSummary;
   sentAt: string;
 };
 
@@ -269,11 +280,13 @@ export const generateRandomStrangerProfile = (filters?: ChatFilters): UserProfil
   };
 };
 
-export function GenderIcon({ gender }: { gender?: ProfileGender | null }) {
+export function GenderIcon({ gender, className }: { gender?: ProfileGender | null; className?: string }) {
   const resolvedGender: ProfileGender = gender === "Male" || gender === "Female" || gender === "Other" ? gender : "Other";
+  const iconClassName = className ?? "h-4 w-4";
+
   if (resolvedGender === "Male") {
     return (
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <svg className={iconClassName} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
         <circle cx="9" cy="15" r="5" />
         <path d="M12.5 11.5 19 5m-5 0h5v5" />
       </svg>
@@ -282,7 +295,7 @@ export function GenderIcon({ gender }: { gender?: ProfileGender | null }) {
 
   if (resolvedGender === "Female") {
     return (
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+      <svg className={iconClassName} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
         <circle cx="12" cy="8" r="5" />
         <path d="M12 13v8m-3.5-3h7" />
       </svg>
@@ -290,7 +303,7 @@ export function GenderIcon({ gender }: { gender?: ProfileGender | null }) {
   }
 
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+    <svg className={iconClassName} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
       <circle cx="10" cy="10" r="4" />
       <path d="m13 7 5-5m-3.5 0H18v3.5M10 14v7m-2.5-3h5" />
     </svg>
@@ -855,6 +868,14 @@ export function ChatRoomView({
   subscriptionTier = null,
   hasActiveSubscription = false,
   onShowPaywall,
+  callSession = null,
+  callError = null,
+  callConnectionState = "connecting",
+  onStartCall,
+  onAcceptCall,
+  onDeclineCall,
+  onCancelCall,
+  onHangUpCall,
 }: {
   strangerProfile: UserProfile;
   chatMode: ChatMode;
@@ -901,6 +922,14 @@ export function ChatRoomView({
   subscriptionTier?: "vip" | "vvip" | null;
   hasActiveSubscription?: boolean;
   onShowPaywall?: () => void;
+  callSession?: CallSession | null;
+  callError?: string | null;
+  callConnectionState?: CallConnectionState;
+  onStartCall?: () => void;
+  onAcceptCall?: () => void;
+  onDeclineCall?: () => void;
+  onCancelCall?: () => void;
+  onHangUpCall?: () => void;
 }) {
   void isDemoMode;
   const chatContainerRef = useRef<HTMLElement | null>(null);
@@ -933,6 +962,8 @@ export function ChatRoomView({
     triggered: false,
   });
   const [showChatFilters, setShowChatFilters] = useState(false);
+  const [isCallExpanded, setIsCallExpanded] = useState(false);
+  const autoExpandedCallIdRef = useRef<string | null>(null);
   const [filterGender, setFilterGender] = useState<GenderFilter>(chatFilters?.gender ?? "Any");
   const [filterAgeGroup, setFilterAgeGroup] = useState<AgeGroupFilter>(chatFilters?.ageGroup ?? "Any age");
   const [filterStyle, setFilterStyle] = useState<ChatStyleFilter>(chatFilters?.style ?? "Any style");
@@ -1246,7 +1277,24 @@ export function ChatRoomView({
     resetSwipeState();
   };
 
+  /*
+   * `nowMs` drives the image countdown labels, and every tick re-renders the whole
+   * message list. Only run the clock while something on screen is actually counting
+   * down instead of once a second for the entire conversation.
+   */
+  const hasLiveCountdown = messages.some(
+    (message) =>
+      !message.imageDeleted &&
+      (typeof message.imageExpiresAtMs === "number" || typeof message.imageRevealAtMs === "number"),
+  );
+
   useEffect(() => {
+    if (!hasLiveCountdown) {
+      return;
+    }
+
+    // Resync straight away — the clock was parked while nothing was counting down.
+    setNowMs(Date.now());
     const timerId = window.setInterval(() => {
       setNowMs(Date.now());
     }, 1000);
@@ -1254,7 +1302,7 @@ export function ChatRoomView({
     return () => {
       window.clearInterval(timerId);
     };
-  }, []);
+  }, [hasLiveCountdown]);
 
   useEffect(() => {
     if (!expandedActionMsgId) {
@@ -1366,8 +1414,59 @@ export function ChatRoomView({
     }
   }, [isConnecting, isSendingMessage]);
 
+  /* Collapse the expanded call stage whenever the call goes away. */
+  const callId = callSession?.id ?? null;
+  const callStatus = callSession?.status ?? null;
+
+  useEffect(() => {
+    if (!callId || callStatus === "ended") {
+      autoExpandedCallIdRef.current = null;
+      setIsCallExpanded(false);
+      return;
+    }
+
+    // Open full-screen once when the call connects; the user can dock it to keep texting.
+    if (callStatus === "active" && autoExpandedCallIdRef.current !== callId) {
+      autoExpandedCallIdRef.current = callId;
+      setIsCallExpanded(true);
+    }
+  }, [callId, callStatus]);
+
   /* Split visual branches into dedicated components while keeping shared state/orchestration here. */
   const chatFiltersPanel = renderChatFilterPanel();
+
+  const isCallLive = Boolean(callSession && callSession.status !== "ended");
+  const canStartCall =
+    hasResolvedStrangerProfile && !isConnecting && !showNextStrangerPrompt && Boolean(onStartCall);
+
+  const callOverlay =
+    callSession && callSession.status !== "ended" ? (
+      <CallOverlay
+        call={callSession}
+        currentUserId={currentUserId}
+        strangerProfile={strangerProfile}
+        CountryFlagIcon={CountryFlagIcon}
+        GenderIcon={GenderIcon}
+        localVideoRef={localVideoRef}
+        remoteVideoRef={remoteVideoRef}
+        localAudioEnabled={localAudioEnabled}
+        localVideoEnabled={localVideoEnabled}
+        remoteAudioEnabled={remoteAudioEnabled}
+        remoteVideoEnabled={hasRemoteVideo}
+        connectionState={callConnectionState}
+        expanded={isCallExpanded}
+        setExpanded={setIsCallExpanded}
+        isFullscreenActive={isFullscreenActive}
+        callError={callError}
+        onAccept={() => onAcceptCall?.()}
+        onDecline={() => onDeclineCall?.()}
+        onCancel={() => onCancelCall?.()}
+        onHangUp={() => onHangUpCall?.()}
+        onToggleMic={toggleLocalAudio}
+        onToggleCamera={toggleLocalVideo}
+        onSwitchCamera={switchCamera}
+      />
+    ) : null;
 
   if (chatMode === "video") {
     return (
@@ -1491,6 +1590,10 @@ export function ChatRoomView({
       sendError={sendError}
       onSelectImage={onSelectImage}
       chatFiltersPanel={chatFiltersPanel}
+      callOverlay={callOverlay}
+      onStartCall={onStartCall}
+      canStartCall={canStartCall}
+      isCallBusy={isCallLive}
     />
   );
 }

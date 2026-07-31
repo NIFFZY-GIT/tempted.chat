@@ -26,6 +26,16 @@ import {
   type ChatMessage,
   type UserProfile,
 } from "@/components/chat-ui";
+import {
+  CALL_RING_TIMEOUT_GRACE_MS,
+  CALL_RING_TIMEOUT_MS,
+  normalizeCallSession,
+  shouldApplyCallUpdate,
+  summarizeCallSession,
+  type CallEndReason,
+  type CallSession,
+} from "@/components/chat-ui/call-types";
+import type { CallConnectionState } from "@/components/chat-ui/call-overlay";
 import { LandingPageSection } from "@/components/landing-page";
 import { TopNav } from "@/components/navbar";
 import {
@@ -76,7 +86,9 @@ declare global {
 const RECAPTCHA_SITE_KEY = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY!;
 
 const STRANGER_LEFT_PROMPT = "Stranger left. Connect to the next stranger?";
-const ROOM_PRESENCE_HEARTBEAT_MS = 3000;
+// Presence only needs to beat often enough that several are missed before the
+// 45s timeout; at 3s it was writing to Firestore 20x/minute per user for nothing.
+const ROOM_PRESENCE_HEARTBEAT_MS = 10_000;
 const ROOM_PRESENCE_TIMEOUT_MS = 45_000;
 const ROOM_ACTIVITY_GRACE_MS = 120_000;
 const NO_SHOW_TIMEOUT_MS = 30_000;
@@ -634,10 +646,19 @@ export default function Home() {
   const [subscriptionTier, setSubscriptionTier] = useState<"vip" | "vvip" | null>(null);
   const [, setSubscriptionLoading] = useState(false);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
+  const [callSession, setCallSession] = useState<CallSession | null>(null);
+  const [callError, setCallError] = useState<string | null>(null);
+  const [callConnectionState, setCallConnectionState] = useState<CallConnectionState>("connecting");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emailInputRef = useRef<HTMLInputElement>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const callSessionRef = useRef<CallSession | null>(null);
+  const loggedCallIdsRef = useRef<Set<string>>(new Set());
+  const callRingTimeoutRef = useRef<number | null>(null);
+  const demoCallTimeoutRef = useRef<number | null>(null);
+  // Lets the WebRTC effect end a call without depending on the handler's identity.
+  const endCallRef = useRef<((reason: CallEndReason, errorMessage?: string) => void) | null>(null);
   const roomUnsubRef = useRef<(() => void) | null>(null);
   const roomMessagesUnsubRef = useRef<(() => void) | null>(null);
   const waitingUnsubRef = useRef<(() => void) | null>(null);
@@ -702,6 +723,8 @@ export default function Home() {
   const roomPublicJwkRef = useRef<JsonWebKey | null>(null);
   const roomCipherKeyRef = useRef<CryptoKey | null>(null);
   const localMediaStreamRef = useRef<MediaStream | null>(null);
+  const localMediaStreamPromiseRef = useRef<Promise<MediaStream> | null>(null);
+  const localMediaGenerationRef = useRef(0);
   const remoteMediaStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const videoSenderRef = useRef<RTCRtpSender | null>(null);
@@ -1175,6 +1198,82 @@ export default function Home() {
     });
   };
 
+  /* ─────────── Call session plumbing (text-mode voice / video calls) ─────────── */
+
+  const formatClockLabel = (date: Date): string =>
+    `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+
+  /** Adds the one-line call summary pill to the transcript (local only, once per call). */
+  const appendCallLogMessage = useCallback((call: CallSession) => {
+    const uid = currentUserUidRef.current;
+    if (!uid || loggedCallIdsRef.current.has(call.id)) {
+      return;
+    }
+
+    loggedCallIdsRef.current.add(call.id);
+    const summary = summarizeCallSession(call, uid);
+    const loggedAt = new Date(call.endedAtMs ?? Date.now());
+
+    setMessages((current) => [
+      ...current,
+      {
+        id: `call-${call.id}`,
+        author: call.from === uid ? "you" : "stranger",
+        callEvent: summary,
+        createdAtMs: loggedAt.getTime(),
+        sentAt: formatClockLabel(loggedAt),
+      },
+    ]);
+  }, []);
+
+  /**
+   * Single entry point for every call-state change, whether it came from the local
+   * user, the websocket fast path, or the room document. Stale updates are dropped.
+   */
+  const applyCallSessionUpdate = useCallback((next: CallSession) => {
+    if (!shouldApplyCallUpdate(callSessionRef.current, next)) {
+      return;
+    }
+
+    callSessionRef.current = next;
+
+    if (next.status === "ended") {
+      setCallSession(null);
+      setCallConnectionState("connecting");
+      setCallError(null);
+      appendCallLogMessage(next);
+      return;
+    }
+
+    if (next.status === "ringing") {
+      setCallError(null);
+    }
+
+    if (next.status === "active") {
+      setCallConnectionState("connecting");
+    }
+
+    setCallSession(next);
+  }, [appendCallLogMessage]);
+
+  /** Drops all call state without writing anything — used when the room itself goes away. */
+  const resetCallState = useCallback(() => {
+    if (callRingTimeoutRef.current) {
+      window.clearTimeout(callRingTimeoutRef.current);
+      callRingTimeoutRef.current = null;
+    }
+
+    if (demoCallTimeoutRef.current) {
+      window.clearTimeout(demoCallTimeoutRef.current);
+      demoCallTimeoutRef.current = null;
+    }
+
+    callSessionRef.current = null;
+    setCallSession(null);
+    setCallError(null);
+    setCallConnectionState("connecting");
+  }, []);
+
   const cleanupVideoSession = (preserveLocalStream = false) => {
     realtimeSignalHandlerRef.current = null;
     videoRoomUnsubRef.current?.();
@@ -1193,6 +1292,10 @@ export default function Home() {
     if (peerConnectionRef.current) {
       peerConnectionRef.current.onicecandidate = null;
       peerConnectionRef.current.ontrack = null;
+      // Detach state handlers before closing so our own teardown is not reported
+      // back as a dropped connection.
+      peerConnectionRef.current.onconnectionstatechange = null;
+      peerConnectionRef.current.oniceconnectionstatechange = null;
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
@@ -1201,6 +1304,11 @@ export default function Home() {
     audioSenderRef.current = null;
 
     if (!preserveLocalStream) {
+      // Invalidate any getUserMedia still in flight so it releases its stream
+      // instead of repopulating the ref after this teardown.
+      localMediaGenerationRef.current += 1;
+      localMediaStreamPromiseRef.current = null;
+
       if (localMediaStreamRef.current) {
         localMediaStreamRef.current.getTracks().forEach((track) => track.stop());
         localMediaStreamRef.current = null;
@@ -1538,6 +1646,44 @@ export default function Home() {
     }
 
     throw lastError ?? new Error("Camera startup failed");
+  };
+
+  /**
+   * Single-flight camera/mic acquisition.
+   *
+   * The preview effect and the WebRTC setup can both want the local stream at
+   * nearly the same moment (a match arriving while the preview is still starting).
+   * Two concurrent getUserMedia calls make mobile browsers fail outright or hand
+   * back a second stream that then leaks, so callers share one in-flight request
+   * and the resulting stream is owned by localMediaStreamRef.
+   */
+  const acquireLocalMediaStream = async (facingMode: "user" | "environment"): Promise<MediaStream> => {
+    if (localMediaStreamRef.current) {
+      return localMediaStreamRef.current;
+    }
+
+    if (!localMediaStreamPromiseRef.current) {
+      const generation = localMediaGenerationRef.current;
+
+      localMediaStreamPromiseRef.current = getPreferredLocalMediaStream(facingMode)
+        .then((stream) => {
+          // A teardown that happened while getUserMedia was still resolving must
+          // win, otherwise the ref is repopulated with a stream nobody stops and
+          // the camera indicator stays lit.
+          if (localMediaGenerationRef.current !== generation) {
+            stream.getTracks().forEach((track) => track.stop());
+            return stream;
+          }
+
+          localMediaStreamRef.current = stream;
+          return stream;
+        })
+        .finally(() => {
+          localMediaStreamPromiseRef.current = null;
+        });
+    }
+
+    return localMediaStreamPromiseRef.current;
   };
 
   const deleteStorageFolderRecursively = async (folderRef: StorageReference): Promise<void> => {
@@ -2379,11 +2525,28 @@ export default function Home() {
         return;
       }
 
+      // Low-latency call control. The room document remains the source of truth;
+      // this path only removes the Firestore round-trip from ring/accept/hang-up.
+      if (eventName === "chat") {
+        const roomId = typeof payload?.roomId === "string" ? payload.roomId : null;
+        const data = payload?.data as Record<string, unknown> | undefined;
+        if (!roomId || activeRoomIdRef.current !== roomId || data?.type !== "call") {
+          return;
+        }
+
+        const incomingCall = normalizeCallSession(data.call);
+        if (incomingCall) {
+          applyCallSessionUpdate(incomingCall);
+        }
+        return;
+      }
+
       if (eventName === "peer_left") {
         const roomId = typeof payload?.roomId === "string" ? payload.roomId : null;
         if (!roomId || activeRoomIdRef.current !== roomId) return;
         if (disconnectHandledRoomRef.current === roomId) return;
         disconnectHandledRoomRef.current = roomId;
+        resetCallState();
 
         setShowNextStrangerPrompt(true);
         setConnectingStatus(STRANGER_LEFT_PROMPT);
@@ -2472,6 +2635,12 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sendRealtimeEvent, startRealtimeQueueHeartbeat, stopDemoMode, stopRealtimeQueueHeartbeat, user]);
 
+  /* Every room transition starts with a clean call slate. */
+  useEffect(() => {
+    resetCallState();
+    loggedCallIdsRef.current.clear();
+  }, [activeRoomId, resetCallState]);
+
   useEffect(() => {
     if (activeRoomId) {
       stopDemoMode();
@@ -2519,6 +2688,8 @@ export default function Home() {
     if (chatMode !== "video") {
       // Stop preview when leaving video mode, but only if no peer connection is active.
       if (!peerConnectionRef.current && localMediaStreamRef.current) {
+        localMediaGenerationRef.current += 1;
+        localMediaStreamPromiseRef.current = null;
         localMediaStreamRef.current.getTracks().forEach((track) => track.stop());
         localMediaStreamRef.current = null;
         if (localVideoRef.current) {
@@ -2558,12 +2729,12 @@ export default function Home() {
           return;
         }
         // Try to get the stream (will prompt if needed)
-        const localStream = await getPreferredLocalMediaStream(cameraFacingMode);
+        const localStream = await acquireLocalMediaStream(cameraFacingMode);
         if (cancelled) {
-          localStream.getTracks().forEach((track) => track.stop());
+          // The stream is owned by localMediaStreamRef now — tearing it down here
+          // would yank the camera out from under a WebRTC setup that shares it.
           return;
         }
-        localMediaStreamRef.current = localStream;
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = localStream;
           localVideoRef.current.muted = true;
@@ -2590,8 +2761,32 @@ export default function Home() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chatMode, chatFilters, isConnecting, activeRoomId, cameraFacingMode]);
 
+  /*
+   * A peer connection is needed either for video mode, or for an accepted in-chat
+   * call. The key changes only when a distinct media session starts or stops, so the
+   * WebRTC effect below is not re-run by unrelated call-state churn.
+   */
+  const activeCallSession = callSession?.status === "active" ? callSession : null;
+  const webrtcSessionKey = chatMode === "video" ? "video-mode" : activeCallSession?.id ?? null;
+
+  /** Points the remote player at the live stream (it carries both video and audio). */
+  const attachRemoteStreamToPlayers = useCallback((stream: MediaStream) => {
+    const videoElement = remoteVideoRef.current;
+    if (!videoElement) {
+      return;
+    }
+
+    if (videoElement.srcObject !== stream) {
+      videoElement.srcObject = stream;
+    }
+
+    void videoElement.play().catch(() => {
+      // Ignore autoplay restrictions.
+    });
+  }, []);
+
   useEffect(() => {
-    if (chatMode !== "video" || !activeRoomId || !user) {
+    if (!webrtcSessionKey || !activeRoomId || !user) {
       // Only destroy local stream when actually leaving video mode or unmounting.
       cleanupVideoSession(chatMode === "video");
       return;
@@ -2602,6 +2797,19 @@ export default function Home() {
       return;
     }
 
+    // A media session driven by an accepted in-chat call rather than video mode.
+    const isCallSession = chatMode !== "video";
+    const webrtcSessionId = webrtcSessionKey;
+    const signalFieldPrefix = isCallSession ? `callWebrtc.${webrtcSessionId}` : "webrtc";
+
+    const reportMediaError = (message: string) => {
+      if (isCallSession) {
+        setCallError(message);
+        return;
+      }
+      setVideoError(message);
+    };
+
     let cancelled = false;
     const roomRef = doc(db, "rooms", activeRoomId);
     const candidatesCollectionRef = collection(db, "rooms", activeRoomId, "webrtcCandidates");
@@ -2610,17 +2818,13 @@ export default function Home() {
 
     const setupVideo = async () => {
       try {
-        // Reuse preview stream if already started, otherwise request a new one.
-        const localStream = localMediaStreamRef.current ?? await getPreferredLocalMediaStream(cameraFacingMode);
+        // Reuses the preview stream, or joins its in-flight request.
+        const localStream = await acquireLocalMediaStream(cameraFacingMode);
 
         if (cancelled) {
-          if (!localMediaStreamRef.current) {
-            localStream.getTracks().forEach((track) => track.stop());
-          }
           return;
         }
 
-        localMediaStreamRef.current = localStream;
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = localStream;
           localVideoRef.current.muted = true;
@@ -2667,9 +2871,7 @@ export default function Home() {
 
         const remoteStream = new MediaStream();
         remoteMediaStreamRef.current = remoteStream;
-        if (remoteVideoRef.current) {
-          remoteVideoRef.current.srcObject = remoteStream;
-        }
+        attachRemoteStreamToPlayers(remoteStream);
 
         localStream.getTracks().forEach((track) => {
           const sender = peerConnection.addTrack(track, localStream);
@@ -2711,12 +2913,7 @@ export default function Home() {
 
           setHasRemoteVideo(remoteStream.getVideoTracks().length > 0);
           setHasRemoteAudio(remoteStream.getAudioTracks().length > 0);
-          if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
-            void remoteVideoRef.current.play().catch(() => {
-              // Ignore autoplay restrictions.
-            });
-          }
+          attachRemoteStreamToPlayers(remoteStream);
         };
 
         peerConnection.onicecandidate = (event) => {
@@ -2728,6 +2925,22 @@ export default function Home() {
             emitRealtimeSignal(activeRoomId, otherUid, "ice", event.candidate.toJSON());
           }
 
+          const writeFallbackCandidate = (onError?: () => void) => {
+            void updateDoc(roomRef, {
+              [`${signalFieldPrefix}.fallbackCandidatesBy.${user.uid}`]: arrayUnion(event.candidate?.toJSON()),
+              webrtcUpdatedAt: serverTimestamp(),
+            }).catch(() => {
+              onError?.();
+            });
+          };
+
+          if (isCallSession) {
+            // Calls are scoped to a single call id, so the shared candidate
+            // subcollection is skipped to avoid replaying a previous call's ICE.
+            writeFallbackCandidate();
+            return;
+          }
+
           void addDoc(candidatesCollectionRef, {
             fromUid: user.uid,
             toUid: otherUid,
@@ -2735,21 +2948,17 @@ export default function Home() {
             createdAt: serverTimestamp(),
           }).catch(() => {
             // Fallback candidate signaling on room doc for restrictive rules.
-            void updateDoc(roomRef, {
-              [`webrtc.fallbackCandidatesBy.${user.uid}`]: arrayUnion(event.candidate?.toJSON()),
-              webrtcUpdatedAt: serverTimestamp(),
-            }).catch(() => {
+            writeFallbackCandidate(() => {
               setVideoError("Video signaling failed while exchanging network candidates.");
             });
           });
 
-          // Also write fallback candidates for reliability when one channel lags.
-          void updateDoc(roomRef, {
-            [`webrtc.fallbackCandidatesBy.${user.uid}`]: arrayUnion(event.candidate?.toJSON()),
-            webrtcUpdatedAt: serverTimestamp(),
-          }).catch(() => {
-            // Ignore fallback write races.
-          });
+          // The room-doc array is a third copy of every candidate. It is only worth
+          // the extra write when the websocket relay is not carrying them already —
+          // otherwise it just doubles Firestore traffic during connection setup.
+          if (!isRealtimeRoom || !realtimeConnectedRef.current) {
+            writeFallbackCandidate();
+          }
         };
 
         const handlePeerLeftImmediately = () => {
@@ -2793,42 +3002,63 @@ export default function Home() {
           });
         };
 
+        /**
+         * A media failure inside an in-chat call must only end the call — the text
+         * conversation stays alive. In video mode it still means the stranger is gone.
+         */
+        const handleMediaConnectionLost = () => {
+          if (!isCallSession) {
+            handlePeerLeftImmediately();
+            return;
+          }
+
+          setCallConnectionState("reconnecting");
+          endCallRef.current?.("failed", "Call disconnected.");
+        };
+
         peerConnection.onconnectionstatechange = () => {
           if (peerConnection.connectionState === "connected") {
             setVideoError(null);
+            if (isCallSession) {
+              setCallConnectionState("connected");
+              setCallError(null);
+            }
             return;
           }
 
           if (peerConnection.connectionState === "disconnected") {
             setVideoError("Stranger disconnected.");
-            handlePeerLeftImmediately();
+            handleMediaConnectionLost();
             return;
           }
 
           if (peerConnection.connectionState === "failed") {
             setVideoError("Stranger disconnected.");
-            handlePeerLeftImmediately();
+            handleMediaConnectionLost();
             return;
           }
 
           if (peerConnection.connectionState === "closed") {
             setVideoError("Stranger disconnected.");
-            handlePeerLeftImmediately();
+            handleMediaConnectionLost();
           }
         };
 
         peerConnection.oniceconnectionstatechange = () => {
           if (peerConnection.iceConnectionState === "connected" || peerConnection.iceConnectionState === "completed") {
+            if (isCallSession) {
+              setCallConnectionState("connected");
+            }
             return;
           }
 
           if (peerConnection.iceConnectionState === "disconnected") {
-            handlePeerLeftImmediately();
+            handleMediaConnectionLost();
             return;
           }
 
           if (peerConnection.iceConnectionState === "failed" || peerConnection.iceConnectionState === "closed") {
-            handlePeerLeftImmediately();
+            handleMediaConnectionLost();
           }
         };
 
@@ -2872,14 +3102,14 @@ export default function Home() {
                 }
 
                 await updateDoc(roomRef, {
-                  [`webrtc.answerBy.${user.uid}`]: {
+                  [`${signalFieldPrefix}.answerBy.${user.uid}`]: {
                     type: createdAnswer.type,
                     sdp: createdAnswer.sdp,
                   },
                   webrtcUpdatedAt: serverTimestamp(),
                 });
               } catch {
-                setVideoError("Could not establish video answer.");
+                reportMediaError("Could not establish the connection.");
               }
             })();
             return;
@@ -2892,7 +3122,7 @@ export default function Home() {
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(remoteAnswer));
                 await flushPendingRemoteCandidates(peerConnection);
               } catch {
-                setVideoError("Could not finalize video connection.");
+                reportMediaError("Could not finalize the connection.");
               }
             })();
           }
@@ -2914,7 +3144,7 @@ export default function Home() {
         }
 
         videoCandidatesUnsubRef.current?.();
-        videoCandidatesUnsubRef.current = onSnapshot(
+        videoCandidatesUnsubRef.current = isCallSession ? null : onSnapshot(
           query(candidatesCollectionRef, where("toUid", "==", user.uid), limit(200)),
           (snapshot) => {
             snapshot.docChanges().forEach((change) => {
@@ -2945,7 +3175,7 @@ export default function Home() {
             });
           },
           () => {
-            setVideoError("Video signaling read failed for network candidates.");
+            reportMediaError("Signaling read failed for network candidates.");
           },
         );
 
@@ -2957,17 +3187,26 @@ export default function Home() {
               return;
             }
 
-            const roomData = snapshot.data() as {
-              webrtc?: {
-                offerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
-                answerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
-                fallbackCandidatesBy?: Record<string, RTCIceCandidateInit[]>;
-              };
+            type SignalBucket = {
+              offerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
+              answerBy?: Record<string, { type: RTCSdpType; sdp: string }>;
+              fallbackCandidatesBy?: Record<string, RTCIceCandidateInit[]>;
             };
 
-            const remoteOffer = roomData.webrtc?.offerBy?.[otherUid];
-            const remoteAnswer = roomData.webrtc?.answerBy?.[otherUid];
-            const fallbackCandidates = roomData.webrtc?.fallbackCandidatesBy?.[otherUid] ?? [];
+            const roomData = snapshot.data() as {
+              webrtc?: SignalBucket;
+              callWebrtc?: Record<string, SignalBucket>;
+            };
+
+            // Call signaling is namespaced per call id so a second call in the same
+            // room never picks up the previous call's offer/answer/candidates.
+            const signalBucket: SignalBucket | undefined = isCallSession
+              ? roomData.callWebrtc?.[webrtcSessionId]
+              : roomData.webrtc;
+
+            const remoteOffer = signalBucket?.offerBy?.[otherUid];
+            const remoteAnswer = signalBucket?.answerBy?.[otherUid];
+            const fallbackCandidates = signalBucket?.fallbackCandidatesBy?.[otherUid] ?? [];
 
             fallbackCandidates.forEach((candidateInit) => {
               const signature = JSON.stringify(candidateInit);
@@ -3005,14 +3244,14 @@ export default function Home() {
                     });
                   }
                   await updateDoc(roomRef, {
-                    [`webrtc.answerBy.${user.uid}`]: {
+                    [`${signalFieldPrefix}.answerBy.${user.uid}`]: {
                       type: createdAnswer.type,
                       sdp: createdAnswer.sdp,
                     },
                     webrtcUpdatedAt: serverTimestamp(),
                   });
                 } catch {
-                  setVideoError("Could not establish video answer.");
+                  reportMediaError("Could not establish the connection.");
                 }
               })();
             }
@@ -3023,13 +3262,13 @@ export default function Home() {
                   await peerConnection.setRemoteDescription(new RTCSessionDescription(remoteAnswer));
                   await flushPendingRemoteCandidates(peerConnection);
                 } catch {
-                  setVideoError("Could not finalize video connection.");
+                  reportMediaError("Could not finalize the connection.");
                 }
               })();
             }
           },
           () => {
-            setVideoError("Video signaling read failed for offer/answer sync.");
+            reportMediaError("Signaling read failed for offer/answer sync.");
           },
         );
 
@@ -3051,17 +3290,23 @@ export default function Home() {
 
           try {
             await updateDoc(roomRef, {
-              [`webrtc.offerBy.${user.uid}`]: {
+              [`${signalFieldPrefix}.offerBy.${user.uid}`]: {
                 type: createdOffer.type,
                 sdp: createdOffer.sdp,
               },
               webrtcUpdatedAt: serverTimestamp(),
             });
           } catch {
-            setVideoError("Video signaling failed while sending offer.");
+            reportMediaError("Signaling failed while starting the connection.");
           }
         }
       } catch {
+        if (isCallSession) {
+          setCallError("Camera and microphone access is required for a video call.");
+          endCallRef.current?.("failed");
+          return;
+        }
+
         setVideoError("Camera or microphone permission is required for video mode.");
       }
     };
@@ -3076,7 +3321,7 @@ export default function Home() {
     };
   // WebRTC setup intentionally avoids rebinding on every helper callback identity change while a room is active.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeRoomId, chatMode, publishLocalMediaState, roomParticipants, user]);
+  }, [activeRoomId, chatMode, publishLocalMediaState, roomParticipants, user, webrtcSessionKey]);
 
   useEffect(() => {
     if (!activeRoomId || !user) {
@@ -3399,7 +3644,14 @@ export default function Home() {
           status?: string;
           endedBy?: string;
           mode?: string;
+          call?: unknown;
         };
+
+        // Durable call state — converges both peers even when the websocket is down.
+        const incomingCall = normalizeCallSession(roomData.call);
+        if (incomingCall) {
+          applyCallSessionUpdate(incomingCall);
+        }
 
         // E2EE negotiation
         void ensureRoomE2EEKey(activeRoomId, user.uid, {
@@ -3420,15 +3672,36 @@ export default function Home() {
           ? (roomData.participantProfilesBy?.[strangerUid] ?? roomData.participantProfiles?.find((p) => p.uid !== user.uid))
           : undefined;
         if (stranger) {
-          setStrangerProfile({
-            gender: stranger.gender,
-            age: stranger.age,
-            countryCode: stranger.countryCode,
-            interests: stranger.interests,
+          // Room snapshots fire on every presence/typing write. Returning the
+          // previous object when nothing changed keeps those writes from
+          // re-rendering the whole chat (and re-triggering the auto-scroll).
+          setStrangerProfile((current) => {
+            const sameInterests =
+              (current.interests?.length ?? 0) === (stranger.interests?.length ?? 0) &&
+              (current.interests ?? []).every((interest, index) => interest === stranger.interests?.[index]);
+
+            if (
+              current.gender === stranger.gender &&
+              current.age === stranger.age &&
+              current.countryCode === stranger.countryCode &&
+              sameInterests
+            ) {
+              return current;
+            }
+
+            return {
+              gender: stranger.gender,
+              age: stranger.age,
+              countryCode: stranger.countryCode,
+              interests: stranger.interests,
+            };
           });
         }
+        // Only mirror the peer's mic/camera switches while a media session is actually
+        // running, otherwise stale room data would light up call indicators in text mode.
+        const hasLiveMediaSession = roomData.mode === "video" || callSessionRef.current?.status === "active";
         const strangerMediaState = strangerUid ? roomData.mediaStateBy?.[strangerUid] : undefined;
-        if (strangerMediaState) {
+        if (strangerMediaState && hasLiveMediaSession) {
           if (typeof strangerMediaState.audioEnabled === "boolean") {
             setHasRemoteAudio(strangerMediaState.audioEnabled);
           }
@@ -3466,13 +3739,10 @@ export default function Home() {
           }
         }
 
-        // Presence timeout
+        // Presence timeout. Text rooms need this as much as video ones: when a
+        // peer's socket dies without a clean leave there is no peer connection to
+        // notice it, so without this the chat would stay open forever.
         {
-          const roomMode = roomData.mode === "video" ? "video" : "text";
-          if (roomMode !== "video") {
-            return;
-          }
-
           const otherUid = roomData.participants?.find((uid) => uid !== user.uid);
           const otherPresenceMs = otherUid ? roomData.presenceBy?.[otherUid] : undefined;
           if (typeof otherPresenceMs === "number") {
@@ -3818,7 +4088,13 @@ export default function Home() {
             const survivingPending = prev.filter(
               (m) => m.isPending && m.clientMessageId && !realClientIds.has(m.clientMessageId),
             );
-            return [...nextMessages, ...survivingPending];
+            // Call log pills live only on this client, so re-merge them chronologically
+            // instead of letting the Firestore snapshot wipe them out.
+            const callLogEntries = prev.filter((m) => m.callEvent);
+            const merged = [...nextMessages, ...callLogEntries].sort(
+              (a, b) => (a.createdAtMs ?? 0) - (b.createdAtMs ?? 0),
+            );
+            return [...merged, ...survivingPending];
           });
           setIsConnecting(false);
           setConnectingStatus("Connected");
@@ -3842,8 +4118,17 @@ export default function Home() {
     };
   }, [activeRoomId, e2eeReadyVersion, user]);
 
+  /**
+   * True while at least one revealed image is still counting down. Images only
+   * get an expiry once the recipient opens them, so outside those few seconds
+   * there is nothing to sweep and the cleanup query can stay idle.
+   */
+  const hasExpiringImage = messages.some(
+    (message) => !message.imageDeleted && typeof message.imageExpiresAtMs === "number",
+  );
+
   useEffect(() => {
-    if (!activeRoomId) {
+    if (!activeRoomId || !hasExpiringImage) {
       if (imageCleanupIntervalRef.current) {
         window.clearInterval(imageCleanupIntervalRef.current);
         imageCleanupIntervalRef.current = null;
@@ -3912,7 +4197,7 @@ export default function Home() {
         imageCleanupIntervalRef.current = null;
       }
     };
-  }, [activeRoomId]);
+  }, [activeRoomId, hasExpiringImage]);
 
   const cleanupWaitIntervals = () => {
     if (retryMatchIntervalRef.current) {
@@ -4030,9 +4315,195 @@ export default function Home() {
     void upsertOwnRoomProfile(activeRoomId);
   }, [activeRoomId, profile, upsertOwnRoomProfile, user]);
 
+  /* ─────────────────────── Call actions ─────────────────────── */
+
+  const getPeerUid = useCallback((): string | null => {
+    const uid = user?.uid;
+    if (!uid) {
+      return null;
+    }
+
+    return roomParticipants.find((participantUid) => participantUid !== uid)
+      ?? realtimePeerUidRef.current
+      ?? null;
+  }, [roomParticipants, user]);
+
+  /**
+   * Publishes a call transition. The websocket hop is the fast path; the room
+   * document write is what guarantees both peers converge.
+   */
+  const publishCallSession = useCallback(async (roomId: string, next: CallSession) => {
+    const peerUid = getPeerUid();
+    if (peerUid) {
+      sendRealtimeEvent("chat", { roomId, toUid: peerUid, data: { type: "call", call: next } });
+    }
+
+    try {
+      await updateDoc(doc(db, "rooms", roomId), {
+        call: next,
+        callUpdatedAt: serverTimestamp(),
+      });
+    } catch {
+      setCallError("Call signaling failed. Check your connection.");
+    }
+  }, [getPeerUid, sendRealtimeEvent]);
+
+  const startCall = useCallback(() => {
+    const uid = user?.uid;
+    if (!uid || isConnecting || showNextStrangerPrompt) {
+      return;
+    }
+
+    if (callSessionRef.current && callSessionRef.current.status !== "ended") {
+      return;
+    }
+
+    const peerUid = getPeerUid();
+    const now = Date.now();
+    const nextCall: CallSession = {
+      id: `${uid}-${now}-${Math.random().toString(36).slice(2, 8)}`,
+      from: uid,
+      to: peerUid ?? "",
+      status: "ringing",
+      startedAtMs: now,
+    };
+
+    applyCallSessionUpdate(nextCall);
+
+    // The AI text demo has no real peer — let it ring, then decline like a
+    // stranger who isn't interested in a call.
+    if (isDemoModeRef.current || !activeRoomId) {
+      demoCallTimeoutRef.current = window.setTimeout(() => {
+        demoCallTimeoutRef.current = null;
+        const current = callSessionRef.current;
+        if (!current || current.id !== nextCall.id || current.status !== "ringing") {
+          return;
+        }
+
+        applyCallSessionUpdate({
+          ...current,
+          status: "ended",
+          endedAtMs: Date.now(),
+          endedBy: current.to,
+          endReason: "declined",
+        });
+      }, 6000 + Math.floor(Math.random() * 5000));
+      return;
+    }
+
+    void publishCallSession(activeRoomId, nextCall);
+  }, [activeRoomId, applyCallSessionUpdate, getPeerUid, isConnecting, publishCallSession, showNextStrangerPrompt, user]);
+
+  const acceptCall = useCallback(() => {
+    const uid = user?.uid;
+    const current = callSessionRef.current;
+    if (!uid || !current || current.status !== "ringing" || current.from === uid) {
+      return;
+    }
+
+    const nextCall: CallSession = {
+      ...current,
+      status: "active",
+      acceptedAtMs: Date.now(),
+    };
+
+    applyCallSessionUpdate(nextCall);
+
+    if (activeRoomId) {
+      void publishCallSession(activeRoomId, nextCall);
+    }
+  }, [activeRoomId, applyCallSessionUpdate, publishCallSession, user]);
+
+  const endCall = useCallback((reason: CallEndReason, errorMessage?: string) => {
+    const uid = user?.uid;
+    const current = callSessionRef.current;
+    if (!uid || !current || current.status === "ended") {
+      return;
+    }
+
+    if (callRingTimeoutRef.current) {
+      window.clearTimeout(callRingTimeoutRef.current);
+      callRingTimeoutRef.current = null;
+    }
+
+    if (demoCallTimeoutRef.current) {
+      window.clearTimeout(demoCallTimeoutRef.current);
+      demoCallTimeoutRef.current = null;
+    }
+
+    const nextCall: CallSession = {
+      ...current,
+      status: "ended",
+      endedAtMs: Date.now(),
+      endedBy: uid,
+      endReason: reason,
+    };
+
+    applyCallSessionUpdate(nextCall);
+
+    if (errorMessage) {
+      setCallError(errorMessage);
+      window.setTimeout(() => setCallError(null), 4000);
+    }
+
+    if (!activeRoomId) {
+      return;
+    }
+
+    void publishCallSession(activeRoomId, nextCall);
+
+    // Drop the per-call signaling bucket so the room document stays small.
+    void updateDoc(doc(db, "rooms", activeRoomId), {
+      [`callWebrtc.${current.id}`]: deleteField(),
+    }).catch(() => {
+      // Ignore cleanup races — the room is deleted on leave anyway.
+    });
+  }, [activeRoomId, applyCallSessionUpdate, publishCallSession, user]);
+
+  useEffect(() => {
+    endCallRef.current = endCall;
+  }, [endCall]);
+
+  /* Unanswered calls stop ringing on their own. */
+  useEffect(() => {
+    if (!callSession || callSession.status !== "ringing") {
+      if (callRingTimeoutRef.current) {
+        window.clearTimeout(callRingTimeoutRef.current);
+        callRingTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    const isOutgoing = callSession.from === user?.uid;
+    // The caller owns the timeout; the callee only self-heals after a grace period
+    // in case the caller's "missed" write never lands.
+    const deadlineMs = callSession.startedAtMs
+      + CALL_RING_TIMEOUT_MS
+      + (isOutgoing ? 0 : CALL_RING_TIMEOUT_GRACE_MS);
+
+    callRingTimeoutRef.current = window.setTimeout(() => {
+      callRingTimeoutRef.current = null;
+      const current = callSessionRef.current;
+      if (current?.id === callSession.id && current.status === "ringing") {
+        endCall("missed");
+      }
+    }, Math.max(0, deadlineMs - Date.now()));
+
+    return () => {
+      if (callRingTimeoutRef.current) {
+        window.clearTimeout(callRingTimeoutRef.current);
+        callRingTimeoutRef.current = null;
+      }
+    };
+  }, [callSession, endCall, user]);
+
   const markRoomEnded = async () => {
     if (!activeRoomId || !user) {
       return;
+    }
+
+    if (callSessionRef.current && callSessionRef.current.status !== "ended") {
+      endCall("hangup");
     }
 
     setShowNextStrangerPrompt(false);
@@ -5418,6 +5889,14 @@ export default function Home() {
           subscriptionTier={effectiveSubscriptionTier}
           hasActiveSubscription={hasActiveSubscription}
           onShowPaywall={() => router.push("/plans")}
+          callSession={callSession}
+          callError={callError}
+          callConnectionState={callConnectionState}
+          onStartCall={startCall}
+          onAcceptCall={acceptCall}
+          onDeclineCall={() => endCall("declined")}
+          onCancelCall={() => endCall("cancelled")}
+          onHangUpCall={() => endCall("hangup")}
           onLeaveChat={(filters) => {
             void (async () => {
               setChatFilters(filters);

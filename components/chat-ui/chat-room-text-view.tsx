@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import Image from "next/image";
+import { Video } from "lucide-react";
 import { TierLogo } from "@/components/tier-logo";
 import type { ChatFilters, ProfileGender } from "@/components/chat-ui";
+import { describeCallEvent, type CallEventSummary } from "./call-types";
 
 type CountryFlagIconProps = { countryCode?: string | null; className?: string };
 type GenderIconProps = { gender?: ProfileGender | null; className?: string };
@@ -13,6 +15,7 @@ type ChatMessage = {
   author: "you" | "stranger";
   text?: string;
   sentAt: string;
+  callEvent?: CallEventSummary;
   deletedForEveryone?: boolean;
   imageDeleted?: boolean;
   image?: string | null;
@@ -115,6 +118,10 @@ type ChatRoomTextViewProps = {
   sendError: string | null;
   onSelectImage: React.ChangeEventHandler<HTMLInputElement>;
   chatFiltersPanel: React.ReactNode;
+  callOverlay?: React.ReactNode;
+  onStartCall?: () => void;
+  canStartCall?: boolean;
+  isCallBusy?: boolean;
 };
 
 export function ChatRoomTextView({
@@ -187,6 +194,10 @@ export function ChatRoomTextView({
   sendError,
   onSelectImage,
   chatFiltersPanel,
+  callOverlay,
+  onStartCall,
+  canStartCall = false,
+  isCallBusy = false,
 }: ChatRoomTextViewProps) {
   const [showImageSourcePicker, setShowImageSourcePicker] = React.useState(false);
   const cameraInputRef = React.useRef<HTMLInputElement | null>(null);
@@ -290,6 +301,20 @@ export function ChatRoomTextView({
         </div>
 
         <div className="flex items-center gap-2">
+          {onStartCall && (
+            <button
+              type="button"
+              onClick={() => onStartCall()}
+              disabled={!canStartCall || isCallBusy}
+              aria-label="Start video call"
+              title={canStartCall ? "Start video call" : "Available once you're connected"}
+              className="group flex h-9 sm:h-10 flex-shrink-0 items-center gap-1.5 rounded-lg sm:rounded-2xl bg-violet-500/12 px-2.5 sm:px-3.5 text-violet-300 border border-violet-500/20 transition-all duration-200 hover:bg-violet-500/20 hover:text-violet-200 active:scale-95 disabled:cursor-not-allowed disabled:border-white/[0.03] disabled:bg-white/[0.03] disabled:text-white/15"
+            >
+              <Video className="h-4 sm:h-4.5 w-4 sm:w-4.5" />
+              <span className="hidden sm:inline text-xs font-bold">Call</span>
+            </button>
+          )}
+
           <button
             onClick={toggleFullscreen}
             className="flex h-9 sm:h-10 w-9 sm:w-10 items-center justify-center rounded-lg sm:rounded-2xl bg-white/[0.03] text-white/40 transition-all duration-200 hover:bg-white/[0.06] hover:text-white active:scale-95 flex-shrink-0"
@@ -402,6 +427,30 @@ export function ChatRoomTextView({
           )}
 
           {messages.map((msg) => {
+            if (msg.callEvent) {
+              const callEvent = msg.callEvent;
+              const isMissedCall = callEvent.outcome === "missed" || callEvent.outcome === "declined" || callEvent.outcome === "failed";
+              return (
+                <div key={msg.id} className="animate-fade-in flex justify-center">
+                  <div
+                    className={`flex items-center gap-2 rounded-full border px-4 py-2 backdrop-blur-md ${
+                      isMissedCall
+                        ? "border-rose-500/15 bg-rose-500/[0.06]"
+                        : "border-emerald-500/15 bg-emerald-500/[0.05]"
+                    }`}
+                  >
+                    <span className={isMissedCall ? "text-rose-400/80" : "text-emerald-400/80"}>
+                      <Video className="h-3.5 w-3.5" />
+                    </span>
+                    <span className={`text-[12px] font-bold tracking-tight ${isMissedCall ? "text-rose-300/70" : "text-emerald-300/70"}`}>
+                      {describeCallEvent(callEvent)}
+                    </span>
+                    <span className="text-[10px] font-medium text-white/25">{msg.sentAt}</span>
+                  </div>
+                </div>
+              );
+            }
+
             if (msg.deletedForEveryone) {
               return (
                 <div key={msg.id} className={`flex ${msg.author === "you" ? "justify-end" : "justify-start"}`}>
@@ -924,6 +973,7 @@ export function ChatRoomTextView({
       )}
 
       {chatFiltersPanel}
+      {callOverlay}
     </section>
   );
 }

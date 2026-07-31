@@ -6,6 +6,7 @@ Modern random stranger chat platform built with Next.js + Firebase, with a separ
 
 - Auth: email/password, Google, and anonymous sign-in via Firebase Auth.
 - Chat: random 1:1 text/video matching (plus group-ready support in realtime server).
+- Calling: inside a text chat either side can ring the other for a voice or video call; the partner accepts or declines, and the conversation keeps running underneath.
 - Security: end-to-end encrypted (E2EE) text and encrypted image payload support in room messages.
 - AI demo: persona-based streaming text demo through Groq.
 - Payments: Stripe checkout + webhook-driven subscription activation/revocation.
@@ -65,6 +66,8 @@ Primary collections used:
 
 - `users`: profile, auth provider, admin/blocked flags, moderation metadata.
 - `rooms`: room state, participants, presence, participant profiles, E2EE public keys.
+	- `call`: current in-chat call session (`ringing` / `active` / `ended`, kind, caller, timestamps, end reason).
+	- `callWebrtc.{callId}`: per-call offer/answer/ICE bucket, deleted when the call ends.
 - `rooms/{roomId}/messages`: chat message stream (+ encrypted payload metadata).
 - `rooms/{roomId}/webrtcCandidates`: fallback signaling candidates.
 - `waitingUsers`: waiting/matchmaking state used by admin stats and cleanup paths.
@@ -262,7 +265,7 @@ Client -> server events:
 - `queue_ping`
 - `queue_leave`
 - `signal` `{ roomId, toUid, kind: "offer"|"answer"|"ice", payload }`
-- `chat` `{ roomId, toUid, data }`
+- `chat` `{ roomId, toUid, data }` (also carries `{ type: "call", call }` as the low-latency path for call ring/accept/end; `rooms/{roomId}.call` stays the source of truth)
 - `peer_left` `{ roomId, toUid }`
 - `room_leave` `{ roomId }`
 
