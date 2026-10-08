@@ -4470,17 +4470,20 @@ export default function Home() {
    */
   const publishCallSession = useCallback(async (roomId: string, next: CallSession) => {
     const peerUid = getPeerUid();
-    if (peerUid) {
-      sendRealtimeEvent("chat", { roomId, toUid: peerUid, data: { type: "call", call: next } });
-    }
+    const realtimeDelivered = peerUid
+      ? sendRealtimeEvent("chat", { roomId, toUid: peerUid, data: { type: "call", call: next } })
+      : false;
 
     try {
       await updateDoc(doc(db, "rooms", roomId), {
         call: next,
         callUpdatedAt: serverTimestamp(),
       });
-    } catch {
-      setCallError("Call signaling failed. Check your connection.");
+    } catch (error) {
+      console.warn("[call] Firestore state write failed", error);
+      if (!realtimeDelivered) {
+        setCallError("Call signaling failed. Check your connection.");
+      }
     }
   }, [getPeerUid, sendRealtimeEvent]);
 
