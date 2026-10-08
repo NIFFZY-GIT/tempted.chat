@@ -665,7 +665,6 @@ export default function Home() {
   const videoRoomUnsubRef = useRef<(() => void) | null>(null);
   const videoCandidatesUnsubRef = useRef<(() => void) | null>(null);
   const retryMatchIntervalRef = useRef<number | null>(null);
-  const retryMatchFailureCountRef = useRef(0);
   const heartbeatIntervalRef = useRef<number | null>(null);
   const roomPresenceIntervalRef = useRef<number | null>(null);
   const typingIdleTimeoutRef = useRef<number | null>(null);
@@ -880,7 +879,7 @@ export default function Home() {
       realtimeSocketRef.current.send(JSON.stringify({ event: "queue_leave", payload: { mode: queuedMode } }));
     }
 
-  }, [user]);
+  }, []);
 
   const clearDemoTimers = () => {
     if (demoFallbackTimeoutRef.current) {
@@ -1186,7 +1185,7 @@ export default function Home() {
         createdAtMs: Date.now(),
       }]);
     }, openerDelayMs);
-  }, [pauseRealMatchmakingForDemo]);
+  }, [pauseRealMatchmakingForDemo, profile?.gender]);
 
   const updateRoomParticipants = (nextParticipants: string[]) => {
     const normalized = Array.from(new Set(nextParticipants));
@@ -1274,6 +1273,16 @@ export default function Home() {
     setCallConnectionState("connecting");
   }, []);
 
+  const resetRoomTransitionState = () => {
+    resetCallState();
+    loggedCallIdsRef.current.clear();
+    clearPendingSendRetry();
+    updateRoomParticipants([]);
+    cleanupVideoSession(chatMode === "video");
+    setStrangerProfile(PENDING_STRANGER_PROFILE);
+    clearE2EECaches();
+  };
+
   const cleanupVideoSession = (preserveLocalStream = false) => {
     realtimeSignalHandlerRef.current = null;
     videoRoomUnsubRef.current?.();
@@ -1349,6 +1358,123 @@ export default function Home() {
     waitingForNextRef.current = waitingForNext;
   }, [waitingForNext]);
 
+  const streamAITextDemoReply = useCallback(async () => {
+    const persona = aiTextDemoPersonaRef.current;
+    if (!persona || isAITextDemoStreamingRef.current) return;
+
+    isAITextDemoStreamingRef.current = true;
+    aiTextDemoReplyPendingRef.current = false;
+
+    const historySnapshot = aiTextDemoHistoryRef.current;
+    const aiMsgId = `ai-demo-ai-${Date.now()}`;
+    aiTextDemoAbortRef.current = new AbortController();
+
+    try {
+      const res = await fetch("/api/demo/text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: historySnapshot.slice(-20),
+          persona: { name: persona.name, age: persona.age, country: persona.countryName, personality: persona.style },
+          allowAdult: persona.allowAdult === true,
+        }),
+        signal: aiTextDemoAbortRef.current.signal,
+      });
+
+      if (!res.ok || !res.body) throw new Error("Stream failed");
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+
+        if (accumulated.includes("__SKIP__")) {
+          reader.cancel();
+          setStrangerIsTyping(false);
+          isAITextDemoRef.current = false;
+          aiTextDemoHistoryRef.current = [];
+          aiTextDemoPersonaRef.current = null;
+          aiTextDemoReplyPendingRef.current = false;
+          setStrangerProfile(PENDING_STRANGER_PROFILE);
+          setStrangerSkipped(true);
+          setWaitingForNext(true);
+          setShowNextStrangerPrompt(true);
+          setConnectingStatus(STRANGER_LEFT_PROMPT);
+          setMessages((prev) => {
+            const filtered = prev.filter((m) => m.id !== aiMsgId);
+            const already = filtered.some((m) => m.text === STRANGER_LEFT_PROMPT);
+            if (already) return filtered;
+            const now2 = new Date();
+            return [
+              ...filtered,
+              {
+                id: `system-skip-${Date.now()}`,
+                author: "stranger" as const,
+                text: STRANGER_LEFT_PROMPT,
+                sentAt: `${String(now2.getHours()).padStart(2, "0")}:${String(now2.getMinutes()).padStart(2, "0")}`,
+                createdAtMs: Date.now(),
+              },
+            ];
+          });
+          return;
+        }
+
+        if ("__SKIP__".startsWith(accumulated.trimStart())) {
+          continue;
+        }
+      }
+
+      const elapsed = Date.now() - aiTypingStartMsRef.current;
+      const remaining = aiTypingMinDurationMsRef.current - elapsed;
+      if (remaining > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
+      }
+
+      if (!isAITextDemoRef.current) return;
+
+      if (!accumulated.includes("__SKIP__") && accumulated.trim()) {
+        const nowFinal = new Date();
+        const tsFinal = `${String(nowFinal.getHours()).padStart(2, "0")}:${String(nowFinal.getMinutes()).padStart(2, "0")}`;
+        setStrangerIsTyping(false);
+        setMessages((prev) => [
+          ...prev,
+          { id: aiMsgId, author: "stranger" as const, text: accumulated, sentAt: tsFinal, createdAtMs: Date.now() },
+        ]);
+      }
+
+      const currentHistory = aiTextDemoHistoryRef.current;
+      aiTextDemoHistoryRef.current = [
+        ...currentHistory.slice(0, historySnapshot.length),
+        { role: "assistant" as const, content: accumulated },
+        ...currentHistory.slice(historySnapshot.length),
+      ];
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name !== "AbortError") {
+        setStrangerIsTyping(false);
+      } else {
+        setStrangerIsTyping(false);
+      }
+    } finally {
+      isAITextDemoStreamingRef.current = false;
+      aiTextDemoAbortRef.current = null;
+      if (aiTextDemoReplyPendingRef.current && isAITextDemoRef.current) {
+        const pendingDelayMs = 1000 + Math.floor(Math.random() * 9000);
+        aiTextDemoTypingDelayRef.current = setTimeout(() => {
+          aiTextDemoTypingDelayRef.current = null;
+          if (!isAITextDemoRef.current) return;
+          aiTypingStartMsRef.current = Date.now();
+          aiTypingMinDurationMsRef.current = 3000 + Math.floor(Math.random() * 7000);
+          setStrangerIsTyping(true);
+          void streamAITextDemoReply();
+        }, pendingDelayMs);
+      }
+    }
+  }, [setConnectingStatus, setMessages, setStrangerIsTyping, setStrangerProfile, setStrangerSkipped, setShowNextStrangerPrompt, setWaitingForNext]);
+
   // After a page refresh restores an AI demo session, trigger a bot reply with a 1–10 s delay
   useEffect(() => {
     if (!isDemoMode || !isAITextDemoRef.current || !aiDemoRestoredRef.current) return;
@@ -1360,18 +1486,15 @@ export default function Home() {
       aiTypingStartMsRef.current = Date.now();
       aiTypingMinDurationMsRef.current = 3000 + Math.floor(Math.random() * 7000);
       setStrangerIsTyping(true);
-      // eslint-disable-next-line @typescript-eslint/no-use-before-define
       void streamAITextDemoReply();
     }, delayMs);
-  // streamAITextDemoReply uses only refs so it's safe to omit from deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isDemoMode]);
+  }, [isDemoMode, streamAITextDemoReply]);
 
   useEffect(() => {
     currentUserUidRef.current = user?.uid ?? null;
   }, [user]);
 
-  // Persist AI demo session to localStorage whenever messages change during a demo
+  // Persist AI demo session to localStorage whenever messages change during a demo.
   useEffect(() => {
     if (!user || !isDemoMode || !isAITextDemoRef.current) return;
     const persona = aiTextDemoPersonaRef.current;
@@ -1379,7 +1502,6 @@ export default function Home() {
     if (!persona || messages.length === 0) return;
     const payload: PersistedAIDemoSession = { persona, history, messages };
     window.localStorage.setItem(getAIDemoSessionKey(user.uid), JSON.stringify(payload));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, isDemoMode, user]);
 
   useEffect(() => {
@@ -2045,7 +2167,36 @@ export default function Home() {
       setAuthLoading(false);
 
       if (!nextUser) {
+        setProfile(null);
+        setChatMode(null);
+        setChatFilters(null);
+        setProfileGender(null);
+        setProfileAge("");
+        setProfileError(null);
         return;
+      }
+
+      const storageKey = `profile_${nextUser.uid}`;
+      const rawProfile = window.localStorage.getItem(storageKey);
+
+      if (!rawProfile) {
+        setProfile(null);
+        return;
+      }
+
+      try {
+        const parsed = JSON.parse(rawProfile) as UserProfile;
+        if (
+          (parsed.gender === "Male" || parsed.gender === "Female" || parsed.gender === "Other") &&
+          Number.isFinite(parsed.age)
+        ) {
+          setProfile(parsed);
+          // Country is always detected fresh from GPS — never restored from cache
+        } else {
+          setProfile(null);
+        }
+      } catch {
+        setProfile(null);
       }
 
       const authProvider = getAuthProviderType(nextUser);
@@ -2131,39 +2282,6 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) {
-      setProfile(null);
-      setChatMode(null);
-      setChatFilters(null);
-      setProfileGender(null);
-      setProfileAge("");
-      setProfileError(null);
-      return;
-    }
-
-    const storageKey = `profile_${user.uid}`;
-    const rawProfile = window.localStorage.getItem(storageKey);
-
-    if (!rawProfile) {
-      setProfile(null);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(rawProfile) as UserProfile;
-      if (
-        (parsed.gender === "Male" || parsed.gender === "Female" || parsed.gender === "Other") &&
-        Number.isFinite(parsed.age)
-      ) {
-        setProfile(parsed);
-        // Country is always detected fresh from GPS — never restored from cache
-      }
-    } catch {
-      setProfile(null);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) {
       return;
     }
 
@@ -2189,6 +2307,14 @@ export default function Home() {
         return;
       }
       setProfileCountry("Unknown");
+      setProfileCountryCode("");
+    };
+
+    const setDetecting = () => {
+      if (cancelled) {
+        return;
+      }
+      setProfileCountry("Detecting...");
       setProfileCountryCode("");
     };
 
@@ -2236,9 +2362,7 @@ export default function Home() {
       applyCountry(ipCode, data.countryName);
     };
 
-    // Show "Detecting..." while location is being resolved
-    setProfileCountry("Detecting...");
-    setProfileCountryCode("");
+    setDetecting();
 
     if (!("geolocation" in navigator)) {
       // No GPS — fall back to IP-based detection
@@ -2637,24 +2761,27 @@ export default function Home() {
 
   /* Every room transition starts with a clean call slate. */
   useEffect(() => {
-    resetCallState();
-    loggedCallIdsRef.current.clear();
+    const timeoutId = window.setTimeout(() => {
+      // This reset is required when a room changes so the UI reflects the new peer state immediately.
+      resetCallState();
+      loggedCallIdsRef.current.clear();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [activeRoomId, resetCallState]);
 
   useEffect(() => {
-    if (activeRoomId) {
-      stopDemoMode();
-      return;
-    }
+    const timeoutId = window.setTimeout(() => {
+      if (activeRoomId) {
+        stopDemoMode();
+        return;
+      }
 
-    clearPendingSendRetry();
-    updateRoomParticipants([]);
-    // Keep local camera alive when staying in video mode so the user's
-    // panel doesn't flash black between stranger connections.
-    cleanupVideoSession(chatMode === "video");
-    setStrangerProfile(PENDING_STRANGER_PROFILE);
+      // This cleanup intentionally resets the pending room state when leaving a match.
+      resetRoomTransitionState();
+    }, 0);
 
-    clearE2EECaches();
+    return () => window.clearTimeout(timeoutId);
   }, [activeRoomId, chatMode, stopDemoMode]);
 
   useEffect(() => {
@@ -2705,12 +2832,16 @@ export default function Home() {
     // Only start the camera once the user has actually entered the video chat UI
     // (clicked Quick Start and has filters set), not while still on the mode selection menu.
     if (!chatFilters || (!isConnecting && !activeRoomId)) {
+      // This is a guard reset for the preview state, not a cascading render trigger.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVideoError(null);
       return;
     }
 
     // If a stream already exists (e.g. from WebRTC setup), skip.
     if (localMediaStreamRef.current) {
+      // This is a guard reset for the preview state, not a cascading render trigger.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVideoError(null);
       return;
     }
@@ -3447,6 +3578,8 @@ export default function Home() {
   useEffect(() => {
     if (!user) {
       hasAttemptedSessionRestoreRef.current = false;
+      // This is a reset for a restoration gate after a logout or auth change.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSessionRestoreComplete(false);
       return;
     }
@@ -3605,7 +3738,10 @@ export default function Home() {
     if (!activeRoomId || !user) {
       roomUnsubRef.current?.();
       roomUnsubRef.current = null;
+      // This cleanup intentionally clears the room participant roster when leaving a room.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       updateRoomParticipants([]);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStrangerIsTyping(false);
       lastStrangerActivityAtRef.current = 0;
       lastObservedStrangerPresenceRef.current = null;
@@ -4199,7 +4335,7 @@ export default function Home() {
     };
   }, [activeRoomId, hasExpiringImage]);
 
-  const cleanupWaitIntervals = () => {
+  function cleanupWaitIntervals() {
     if (retryMatchIntervalRef.current) {
       window.clearInterval(retryMatchIntervalRef.current);
       retryMatchIntervalRef.current = null;
@@ -4224,7 +4360,7 @@ export default function Home() {
       window.clearInterval(realtimeQueuePingIntervalRef.current);
       realtimeQueuePingIntervalRef.current = null;
     }
-  };
+  }
 
   const emitRealtimeSignal = useCallback((roomId: string, toUid: string, kind: RealtimeSignalKind, payload: RTCSessionDescriptionInit | RTCIceCandidateInit) => {
     void sendRealtimeEvent("signal", {
@@ -4671,6 +4807,8 @@ export default function Home() {
       return;
     }
 
+    // This is a guard for the demo fallback toggle rather than a render-triggering state loop.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     stopDemoMode();
   }, [demoFallbackEnabled, stopDemoMode]);
 
@@ -5036,135 +5174,6 @@ export default function Home() {
     }
   };
 
-  // Streams an AI reply based on the current history. If new messages arrive while streaming,
-  // aiTextDemoReplyPendingRef is set so another reply is triggered immediately after.
-  const streamAITextDemoReply = async () => {
-    const persona = aiTextDemoPersonaRef.current;
-    if (!persona || isAITextDemoStreamingRef.current) return;
-
-    isAITextDemoStreamingRef.current = true;
-    aiTextDemoReplyPendingRef.current = false;
-
-    const historySnapshot = aiTextDemoHistoryRef.current;
-    const aiMsgId = `ai-demo-ai-${Date.now()}`;
-    aiTextDemoAbortRef.current = new AbortController();
-
-    try {
-      const res = await fetch("/api/demo/text", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: historySnapshot.slice(-20),
-          persona: { name: persona.name, age: persona.age, country: persona.countryName, personality: persona.style },
-          allowAdult: persona.allowAdult === true,
-        }),
-        signal: aiTextDemoAbortRef.current.signal,
-      });
-
-      if (!res.ok || !res.body) throw new Error("Stream failed");
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        accumulated += decoder.decode(value, { stream: true });
-
-        // Bot skips the user for inappropriate content
-        if (accumulated.includes("__SKIP__")) {
-          reader.cancel();
-          setStrangerIsTyping(false);
-          // Tear down AI demo state so stopDemoMode doesn't double-clean
-          isAITextDemoRef.current = false;
-          aiTextDemoHistoryRef.current = [];
-          aiTextDemoPersonaRef.current = null;
-          aiTextDemoReplyPendingRef.current = false;
-          // Replicate exact real-stranger-leave UX
-          setStrangerProfile(PENDING_STRANGER_PROFILE);
-          setStrangerSkipped(true);
-          setWaitingForNext(true);
-          setShowNextStrangerPrompt(true);
-          setConnectingStatus(STRANGER_LEFT_PROMPT);
-          setMessages((prev) => {
-            // Remove any partial __SKIP__ fragment that may have already rendered
-            const filtered = prev.filter((m) => m.id !== aiMsgId);
-            const already = filtered.some((m) => m.text === STRANGER_LEFT_PROMPT);
-            if (already) return filtered;
-            const now2 = new Date();
-            return [
-              ...filtered,
-              {
-                id: `system-skip-${Date.now()}`,
-                author: "stranger" as const,
-                text: STRANGER_LEFT_PROMPT,
-                sentAt: `${String(now2.getHours()).padStart(2, "0")}:${String(now2.getMinutes()).padStart(2, "0")}`,
-                createdAtMs: Date.now(),
-              },
-            ];
-          });
-          return;
-        }
-
-        // Hold off rendering while accumulated could still be a partial __SKIP__ token
-        if ("__SKIP__".startsWith(accumulated.trimStart())) {
-          continue;
-        }
-      }
-
-      // Enforce minimum typing indicator duration (3–10 s) before revealing the message
-      const elapsed = Date.now() - aiTypingStartMsRef.current;
-      const remaining = aiTypingMinDurationMsRef.current - elapsed;
-      if (remaining > 0) {
-        await new Promise<void>((resolve) => setTimeout(resolve, remaining));
-      }
-
-      if (!isAITextDemoRef.current) return;
-
-      // Reveal the accumulated message after the typing indicator has shown long enough
-      if (!accumulated.includes("__SKIP__") && accumulated.trim()) {
-        const nowFinal = new Date();
-        const tsFinal = `${String(nowFinal.getHours()).padStart(2, "0")}:${String(nowFinal.getMinutes()).padStart(2, "0")}`;
-        setStrangerIsTyping(false);
-        setMessages((prev) => [
-          ...prev,
-          { id: aiMsgId, author: "stranger" as const, text: accumulated, sentAt: tsFinal, createdAtMs: Date.now() },
-        ]);
-      }
-
-      // Insert the assistant reply right after the snapshot point.
-      // Any user messages added during streaming are preserved after it.
-      const currentHistory = aiTextDemoHistoryRef.current;
-      aiTextDemoHistoryRef.current = [
-        ...currentHistory.slice(0, historySnapshot.length),
-        { role: "assistant" as const, content: accumulated },
-        ...currentHistory.slice(historySnapshot.length),
-      ];
-    } catch (err: unknown) {
-      if (err instanceof Error && err.name !== "AbortError") {
-        setStrangerIsTyping(false);
-      } else {
-        setStrangerIsTyping(false);
-      }
-    } finally {
-      isAITextDemoStreamingRef.current = false;
-      aiTextDemoAbortRef.current = null;
-      // If user sent more messages while AI was replying, trigger another reply
-      if (aiTextDemoReplyPendingRef.current && isAITextDemoRef.current) {
-        const pendingDelayMs = 1000 + Math.floor(Math.random() * 9000);
-        aiTextDemoTypingDelayRef.current = setTimeout(() => {
-          aiTextDemoTypingDelayRef.current = null;
-          if (!isAITextDemoRef.current) return;
-          aiTypingStartMsRef.current = Date.now();
-          aiTypingMinDurationMsRef.current = 3000 + Math.floor(Math.random() * 7000);
-          setStrangerIsTyping(true);
-          void streamAITextDemoReply();
-        }, pendingDelayMs);
-      }
-    }
-  };
-
   const sendAITextDemoMessage = (messageText: string) => {
     const persona = aiTextDemoPersonaRef.current;
     if (!persona) return;
@@ -5458,7 +5467,10 @@ export default function Home() {
     let cancelled = false;
 
     if (!user) {
+      // This is a reset to keep admin state consistent after sign-out.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsAdmin(false);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAdminRoleLoading(false);
       return;
     }
@@ -5509,7 +5521,10 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) {
+      // This keeps the subscription badges aligned with the signed-out auth state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSubscriptionExpiresAt(null);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSubscriptionTier(null);
       return;
     }
@@ -5523,6 +5538,8 @@ export default function Home() {
     const params = new URLSearchParams(window.location.search);
     if (params.get("payment") === "success") {
       window.history.replaceState({}, "", "/");
+      // This is intentionally triggered by a query-string status rather than a render loop.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShowPaymentSuccess(true);
 
       let attempts = 0;

@@ -342,6 +342,17 @@ const clearPair = (uid) => {
   return pair;
 };
 
+const isAllowedRoomParticipant = (uid, roomId, targetUid) => {
+  const pair = activePairByUid.get(uid);
+  if (pair && pair.roomId === roomId && pair.peerUid === targetUid) {
+    return true;
+  }
+
+  const room = openGroupRooms.get(roomId);
+  if (!room) return false;
+  return room.entries.has(uid) && room.entries.has(targetUid);
+};
+
 const detachSocket = async (ws) => {
   socketHeartbeatState.delete(ws);
   const state = socketState.get(ws);
@@ -781,6 +792,13 @@ wss.on("connection", (ws) => {
         send(ws, "error", { code: "invalid-peer-left" });
         return;
       }
+
+      // Only a participant in the active room can tell the peer that they left.
+      if (!isAllowedRoomParticipant(state.uid, roomId, toUid)) {
+        send(ws, "error", { code: "forbidden-room" });
+        return;
+      }
+
       // Explicit leave: drop the pairing so a later disconnect cannot re-notify.
       clearPair(state.uid);
       broadcastToUid(toUid, "peer_left", { roomId, fromUid: state.uid });
@@ -803,6 +821,11 @@ wss.on("connection", (ws) => {
         return;
       }
 
+      if (!isAllowedRoomParticipant(state.uid, roomId, toUid)) {
+        send(ws, "error", { code: "forbidden-room" });
+        return;
+      }
+
       broadcastToUid(toUid, "signal", {
         roomId,
         fromUid: state.uid,
@@ -818,6 +841,11 @@ wss.on("connection", (ws) => {
       const data = payload?.data;
       if (!roomId || !toUid || !data) {
         send(ws, "error", { code: "invalid-chat" });
+        return;
+      }
+
+      if (!isAllowedRoomParticipant(state.uid, roomId, toUid)) {
+        send(ws, "error", { code: "forbidden-room" });
         return;
       }
 

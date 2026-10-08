@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { TierLogo } from "@/components/tier-logo";
 import { auth, storage } from "@/lib/firebase";
@@ -187,15 +187,42 @@ const COUNTRY_OPTIONS: { code: string; name: string }[] = [
   { code: "LK", name: "Sri Lanka" },
 ];
 
-export default function AdminDashboardPage() {
+export default function AdminDashboardPageRoot() {
+  return (
+    <Suspense fallback={<div className="flex min-h-screen items-center justify-center bg-[#080812] text-sm text-white/60">Loading dashboard…</div>}>
+      <AdminDashboardPage />
+    </Suspense>
+  );
+}
+
+function AdminDashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const initialUser = auth.currentUser;
   const [user, setUser] = useState<User | null>(initialUser);
   const [loading, setLoading] = useState(initialUser === null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [roleLoading, setRoleLoading] = useState(initialUser !== null);
   const [stats, setStats] = useState<DashboardStats>(INITIAL_STATS);
-  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
+  const activeTab = useMemo<AdminTab>(() => {
+    const requestedTab = searchParams.get("tab");
+    switch (requestedTab) {
+      case "users":
+        return "users";
+      case "rooms":
+        return "rooms";
+      case "demo":
+        return "demo";
+      case "lostfound":
+        return "lostfound";
+      case "admins":
+        return "admins";
+      case "feedback":
+        return "feedback";
+      default:
+        return "overview";
+    }
+  }, [searchParams]);
   const [demoFallbackEnabled, setDemoFallbackEnabled] = useState(true);
   const [demoFallbackSaving, setDemoFallbackSaving] = useState(false);
 
@@ -253,85 +280,47 @@ export default function AdminDashboardPage() {
   const [fbFilterStatus, setFbFilterStatus] = useState<FeedbackStatus | "all">("all");
   const [fbSelected, setFbSelected] = useState<FeedbackItem | null>(null);
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [currentTimeMs, setCurrentTimeMs] = useState<number>(() => Date.now());
   const demoFileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (nextUser) => {
+    const timer = window.setInterval(() => {
+      setCurrentTimeMs(Date.now());
+    }, 30000);
+
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (nextUser) => {
       setUser(nextUser);
       setLoading(false);
+
+      if (!nextUser) {
+        setIsAdmin(false);
+        setRoleLoading(false);
+        return;
+      }
+
+      setRoleLoading(true);
+      try {
+        const role = await getUserRole(nextUser.uid);
+        setIsAdmin(role === "admin");
+      } catch {
+        setIsAdmin(false);
+      } finally {
+        setRoleLoading(false);
+      }
     });
 
     return () => unsub();
   }, []);
 
   useEffect(() => {
-    let cancelled = false;
-
-    if (!user) {
-      setIsAdmin(false);
-      setRoleLoading(false);
-      return;
-    }
-
-    setRoleLoading(true);
-    void getUserRole(user.uid)
-      .then((role) => {
-        if (!cancelled) {
-          setIsAdmin(role === "admin");
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setIsAdmin(false);
-        }
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setRoleLoading(false);
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user]);
-
-  useEffect(() => {
-    const syncTabFromLocation = () => {
-      const requestedTab = new URLSearchParams(window.location.search).get("tab");
-      const nextTab: AdminTab = requestedTab === "users"
-        ? "users"
-        : requestedTab === "rooms"
-          ? "rooms"
-          : requestedTab === "demo"
-        ? "demo"
-        : requestedTab === "lostfound"
-          ? "lostfound"
-          : requestedTab === "admins"
-            ? "admins"
-            : requestedTab === "feedback"
-              ? "feedback"
-              : "overview";
-      setActiveTab((current) => (current === nextTab ? current : nextTab));
-    };
-
-    syncTabFromLocation();
-    window.addEventListener("popstate", syncTabFromLocation);
-
-    return () => {
-      window.removeEventListener("popstate", syncTabFromLocation);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!user || !isAdmin || activeTab !== "users") {
-      setAdminUsers([]);
-      setUserSubscriptions({});
-      setUsersLoading(false);
       return;
     }
 
-    setUsersLoading(true);
     const usersQuery = query(collection(db, "users"), orderBy("lastSeenAt", "desc"));
     const unsubscribe = onSnapshot(usersQuery, (snapshot) => {
       setAdminUsers(snapshot.docs.map((entry) => ({ id: entry.id, ...(entry.data() as Omit<AdminUserEntry, "id">) })));
@@ -346,7 +335,6 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!user || !isAdmin || activeTab !== "users") {
-      setUserSubscriptions({});
       return;
     }
 
@@ -370,12 +358,9 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!user || !isAdmin || activeTab !== "rooms") {
-      setRooms([]);
-      setRoomsLoading(false);
       return;
     }
 
-    setRoomsLoading(true);
     const roomsQuery = query(collection(db, "rooms"), orderBy("updatedAt", "desc"));
     const unsubscribe = onSnapshot(
       roomsQuery,
@@ -659,33 +644,19 @@ export default function AdminDashboardPage() {
   };
 
   const openTab = (tab: AdminTab) => {
-    setActiveTab(tab);
-    if (tab === "users") {
-      router.replace("/admin?tab=users");
-      return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (tab === "overview") {
+      params.delete("tab");
+    } else {
+      params.set("tab", tab);
     }
-    if (tab === "rooms") {
-      router.replace("/admin?tab=rooms");
-      return;
-    }
-    if (tab === "demo") {
-      router.replace("/admin?tab=demo");
-      return;
-    }
-    if (tab === "lostfound") {
-      router.replace("/admin?tab=lostfound");
-      return;
-    }
+
+    const nextUrl = params.size > 0 ? `/admin?${params.toString()}` : "/admin";
+    router.replace(nextUrl);
+
     if (tab === "admins") {
-      router.replace("/admin?tab=admins");
       void loadAdmins();
-      return;
     }
-    if (tab === "feedback") {
-      router.replace("/admin?tab=feedback");
-      return;
-    }
-    router.replace("/admin");
   };
 
   useEffect(() => {
@@ -701,7 +672,6 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!user || !isAdmin) {
-      setStats(INITIAL_STATS);
       return;
     }
 
@@ -929,7 +899,6 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!user || !isAdmin) {
-      setDemoFallbackEnabled(true);
       return;
     }
 
@@ -951,7 +920,7 @@ export default function AdminDashboardPage() {
     return () => unsubscribe();
   }, [isAdmin, user]);
 
-  const toggleDemoFallback = async () => {
+  const toggleDemoFallback = useCallback(async () => {
     if (demoFallbackSaving) {
       return;
     }
@@ -975,16 +944,14 @@ export default function AdminDashboardPage() {
     } finally {
       setDemoFallbackSaving(false);
     }
-  };
+  }, [demoFallbackEnabled, demoFallbackSaving, user]);
 
   // Load demo videos from Firestore
   useEffect(() => {
     if (!user || !isAdmin) {
-      setDemoVideos([]);
       return;
     }
 
-    setDemoVideosLoading(true);
     const unsubscribe = onSnapshot(collection(db, "demoVideos"), (snapshot) => {
       const videos: DemoVideoEntry[] = [];
       snapshot.forEach((videoDoc) => {
@@ -1015,7 +982,7 @@ export default function AdminDashboardPage() {
     return () => unsubscribe();
   }, [isAdmin, user]);
 
-  const handleDemoVideoUpload = async () => {
+  const handleDemoVideoUpload = useCallback(async () => {
     if (!demoUploadFile || !user || demoUploading) {
       return;
     }
@@ -1083,9 +1050,9 @@ export default function AdminDashboardPage() {
     } finally {
       setDemoUploading(false);
     }
-  };
+  }, [demoUploading, demoUploadAge, demoUploadCountry, demoUploadFile, demoUploadGender, demoUploadStyle, user]);
 
-  const handleDemoVideoDelete = async (video: DemoVideoEntry) => {
+  const handleDemoVideoDelete = useCallback(async (video: DemoVideoEntry) => {
     if (demoDeleting) {
       return;
     }
@@ -1109,15 +1076,13 @@ export default function AdminDashboardPage() {
     } finally {
       setDemoDeleting(null);
     }
-  };
+  }, [demoDeleting]);
 
   useEffect(() => {
     if (!user || !isAdmin) {
-      setLostFoundEntries([]);
       return;
     }
 
-    setLostFoundLoading(true);
     const unsubscribe = onSnapshot(query(collection(db, "lostFoundPosts"), orderBy("createdAt", "desc")), (snapshot) => {
       const nextEntries: LostFoundEntry[] = [];
       snapshot.forEach((entryDoc) => {
@@ -1170,7 +1135,7 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const resetDemoVideoEditor = () => {
+  const resetDemoVideoEditor = useCallback(() => {
     setEditingVideoId(null);
     setEditingFile(null);
     setEditingGender("Female");
@@ -1179,9 +1144,9 @@ export default function AdminDashboardPage() {
     setEditingCountry("US");
     setEditingSaving(false);
     setEditingError(null);
-  };
+  }, []);
 
-  const startDemoVideoEdit = (video: DemoVideoEntry) => {
+  const startDemoVideoEdit = useCallback((video: DemoVideoEntry) => {
     setEditingVideoId(video.id);
     setEditingFile(null);
     setEditingGender(video.gender);
@@ -1189,9 +1154,9 @@ export default function AdminDashboardPage() {
     setEditingStyle(video.style);
     setEditingCountry(video.countryCode || "US");
     setEditingError(null);
-  };
+  }, []);
 
-  const handleDemoVideoSave = async (video: DemoVideoEntry) => {
+  const handleDemoVideoSave = useCallback(async (video: DemoVideoEntry) => {
     if (editingSaving) {
       return;
     }
@@ -1271,7 +1236,7 @@ export default function AdminDashboardPage() {
       setEditingError(error instanceof Error ? error.message : "Could not update video.");
       setEditingSaving(false);
     }
-  };
+  }, [editingAge, editingCountry, editingFile, editingGender, editingSaving, editingStyle, resetDemoVideoEditor, user]);
 
   if (loading || roleLoading) {
     return (
@@ -1399,7 +1364,7 @@ export default function AdminDashboardPage() {
             <h1 className="text-lg font-bold text-white/90">{activeTab === "overview" ? "Overview" : activeTab === "users" ? "Users" : activeTab === "rooms" ? "Rooms" : activeTab === "demo" ? "Demo Videos" : activeTab === "lostfound" ? "Lost & Found" : activeTab === "admins" ? "Admins" : activeTab === "feedback" ? "Feedback" : "Overview"}</h1>
             <p className="text-[11px] text-white/30">{activeTab === "overview" ? "Real-time analytics dashboard" : activeTab === "users" ? `${adminUsers.length} profiles · ${adminUsers.filter((entry) => entry.isBlocked).length} blocked · ${adminUsers.filter((entry) => {
               const subscription = userSubscriptions[entry.id];
-              return subscription?.expiresAt && subscription.expiresAt > Date.now();
+              return subscription?.expiresAt && subscription.expiresAt > currentTimeMs;
             }).length} premium` : activeTab === "rooms" ? `${rooms.filter((entry) => entry.status === "active").length} active rooms right now` : activeTab === "demo" ? "Manage demo fallback videos & settings" : activeTab === "lostfound" ? "Review and remove community reconnect posts" : activeTab === "admins" ? "Manage administrator access" : activeTab === "feedback" ? `${feedbackItems.length} total · ${feedbackItems.filter(i=>i.status==="open").length} open · ${feedbackItems.filter(i=>i.status==="in-progress").length} in progress` : ""}</p>
           </div>
           <div className="flex items-center gap-3">
@@ -1543,7 +1508,7 @@ export default function AdminDashboardPage() {
                     <p className="text-[11px] font-semibold uppercase tracking-wider text-white/30">VIP / VVIP</p>
                     <p className="mt-3 text-3xl font-extrabold tracking-tight text-amber-300">{adminUsers.filter((entry) => {
                       const subscription = userSubscriptions[entry.id];
-                      return subscription?.expiresAt && subscription.expiresAt > Date.now();
+                      return subscription?.expiresAt && subscription.expiresAt > currentTimeMs;
                     }).length}</p>
                   </div>
                 </div>
@@ -1591,7 +1556,7 @@ export default function AdminDashboardPage() {
                           ? entry.lastWarnedAt
                           : entry.lastWarnedAt?.toMillis?.() ?? null;
                         const subscription = userSubscriptions[entry.id];
-                        const hasPremium = Boolean(subscription?.expiresAt && subscription.expiresAt > Date.now());
+                        const hasPremium = Boolean(subscription?.expiresAt && subscription.expiresAt > currentTimeMs);
 
                         return (
                           <div key={entry.id} className="rounded-xl border border-white/[0.05] bg-white/[0.02] px-4 py-3">
