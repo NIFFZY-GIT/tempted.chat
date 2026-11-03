@@ -1294,6 +1294,7 @@ export function ChatRoomView({
     }
 
     // Resync straight away — the clock was parked while nothing was counting down.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNowMs(Date.now());
     const timerId = window.setInterval(() => {
       setNowMs(Date.now());
@@ -1389,7 +1390,7 @@ export function ChatRoomView({
         // Use scrollIntoView with smooth behavior but prevent layout shift
         try {
           input.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "nearest" });
-        } catch (e) {
+        } catch {
           // Fallback for older browsers
           input.scrollIntoView();
         }
@@ -1421,6 +1422,7 @@ export function ChatRoomView({
   useEffect(() => {
     if (!callId || callStatus === "ended") {
       autoExpandedCallIdRef.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsCallExpanded(false);
       return;
     }

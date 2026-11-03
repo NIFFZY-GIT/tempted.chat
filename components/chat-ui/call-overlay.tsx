@@ -155,17 +155,19 @@ function useCallElapsedSeconds(acceptedAtMs?: number): number {
 
   React.useEffect(() => {
     if (!acceptedAtMs) {
-      setElapsedSeconds(0);
       return;
     }
 
     const tick = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - acceptedAtMs) / 1000)));
     tick();
     const intervalId = window.setInterval(tick, 1000);
-    return () => window.clearInterval(intervalId);
+    return () => {
+      window.clearInterval(intervalId);
+      setElapsedSeconds(0);
+    };
   }, [acceptedAtMs]);
 
-  return elapsedSeconds;
+  return acceptedAtMs ? elapsedSeconds : 0;
 }
 
 /** Countdown shown while a call is still ringing. */

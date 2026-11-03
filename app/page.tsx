@@ -2782,6 +2782,7 @@ export default function Home() {
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRoomId, chatMode, stopDemoMode]);
 
   useEffect(() => {
@@ -2841,7 +2842,6 @@ export default function Home() {
     // If a stream already exists (e.g. from WebRTC setup), skip.
     if (localMediaStreamRef.current) {
       // This is a guard reset for the preview state, not a cascading render trigger.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVideoError(null);
       return;
     }
@@ -3741,7 +3741,6 @@ export default function Home() {
       // This cleanup intentionally clears the room participant roster when leaving a room.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       updateRoomParticipants([]);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStrangerIsTyping(false);
       lastStrangerActivityAtRef.current = 0;
       lastObservedStrangerPresenceRef.current = null;
@@ -5473,7 +5472,6 @@ export default function Home() {
       // This is a reset to keep admin state consistent after sign-out.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsAdmin(false);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAdminRoleLoading(false);
       return;
     }
@@ -5527,7 +5525,6 @@ export default function Home() {
       // This keeps the subscription badges aligned with the signed-out auth state.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSubscriptionExpiresAt(null);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSubscriptionTier(null);
       return;
     }
